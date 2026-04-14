@@ -132,12 +132,6 @@ export default function CheckoutPage() {
         }
       }
 
-      try {
-        await fetch('/api/access/consume', { method: 'POST' });
-      } catch {
-        // non-fatal
-      }
-
       cartStore.clear();
       router.push(`/checkout/confirmation?name=${encodeURIComponent(cart.customer_name.trim())}`);
     } catch (err) {

@@ -37,7 +37,27 @@ export async function GET(req: NextRequest) {
   }
 
   const cookieValue = await signSession(data.id);
-  const res = NextResponse.redirect(new URL('/', origin), 302);
+
+  // Return a 200 HTML page instead of a 302 redirect.
+  // iOS Safari (ITP) silently drops Set-Cookie headers on redirect responses,
+  // treating them as tracking cookies. A 200 response with a meta-refresh is
+  // accepted as a first-party cookie in all browsers.
+  const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0;url=/" />
+    <title>Redirecting…</title>
+  </head>
+  <body>
+    <script>window.location.replace('/');</script>
+  </body>
+</html>`;
+
+  const res = new NextResponse(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html' },
+  });
   res.cookies.set(SESSION_COOKIE, cookieValue, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
