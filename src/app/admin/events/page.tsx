@@ -42,9 +42,12 @@ export default function AdminEventsPage() {
   }
 
   async function toggleActive(event: Event) {
-    // Deactivate all, then activate this one (or deactivate if already active)
-    await supabase.from('events').update({ is_active: false }).neq('id', '');
-    if (!event.is_active) {
+    if (event.is_active) {
+      // Just deactivate this event
+      await supabase.from('events').update({ is_active: false }).eq('id', event.id);
+    } else {
+      // Deactivate all others, then activate this one
+      await supabase.from('events').update({ is_active: false }).neq('id', event.id);
       await supabase.from('events').update({ is_active: true }).eq('id', event.id);
     }
     fetchData();
