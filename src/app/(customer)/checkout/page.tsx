@@ -132,6 +132,9 @@ export default function CheckoutPage() {
         }
       }
 
+      // Consume the session so the grant link can't be reused until the next PushPay payment
+      await fetch('/api/access/consume', { method: 'POST' }).catch(() => {});
+
       cartStore.clear();
       router.push(`/checkout/confirmation?name=${encodeURIComponent(cart.customer_name.trim())}`);
     } catch (err) {

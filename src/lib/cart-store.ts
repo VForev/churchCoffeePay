@@ -49,18 +49,17 @@ export const cartStore = {
   },
 
   addItem: (menuItem: MenuItem, selectedModifiers: Modifier[], specialInstructions: string, _eventFree: boolean) => {
-    const itemTotal = 0; // All orders are free — paid via PushPay
-
+    // One drink per session — replace whatever is in the cart
     const cartItem: CartItem = {
       id: generateId(),
       menu_item: menuItem,
       quantity: 1,
       selected_modifiers: selectedModifiers,
       special_instructions: specialInstructions,
-      item_total: itemTotal,
+      item_total: 0,
     };
 
-    state = { ...state, items: [...state.items, cartItem] };
+    state = { ...state, items: [cartItem] };
     recalculate();
     notify();
   },

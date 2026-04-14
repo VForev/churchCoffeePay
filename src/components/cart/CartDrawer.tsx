@@ -74,24 +74,7 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }: CartDrawerPr
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => cartStore.updateQuantity(item.id, item.quantity - 1)}
-                          className="w-7 h-7 rounded-full bg-surface border border-gray-200 flex items-center justify-center text-sm font-bold hover:bg-gray-50 cursor-pointer"
-                        >
-                          -
-                        </button>
-                        <span className="text-sm font-accent font-semibold w-6 text-center">
-                          {item.quantity}
-                        </span>
-                        <button
-                          onClick={() => cartStore.updateQuantity(item.id, item.quantity + 1)}
-                          className="w-7 h-7 rounded-full bg-surface border border-gray-200 flex items-center justify-center text-sm font-bold hover:bg-gray-50 cursor-pointer"
-                        >
-                          +
-                        </button>
-                      </div>
+                    <div className="flex justify-end mt-2">
                       <button
                         onClick={() => cartStore.removeItem(item.id)}
                         className="text-xs text-danger hover:underline cursor-pointer"
