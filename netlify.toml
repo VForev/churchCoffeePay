@@ -1,0 +1,16 @@
+[build]
+  command = "next build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Required environment variables (set these in the Netlify UI):
+#   ACCESS_SECRET                    - shared secret in the Pushpay redirect URL
+#   SESSION_SIGNING_KEY              - HMAC key for signing the session cookie
+#   SUPABASE_SERVICE_ROLE_KEY        - server-only Supabase key
+#   NEXT_PUBLIC_SUPABASE_URL
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY
+#   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+#   STRIPE_SECRET_KEY
+#   STRIPE_WEBHOOK_SECRET

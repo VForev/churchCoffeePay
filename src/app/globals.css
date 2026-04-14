@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary: #4054B2;
+  --color-primary-light: #5A6FCC;
+  --color-secondary: #6EC1E4;
+  --color-secondary-light: #8ED1EC;
+  --color-success: #23A455;
+  --color-success-light: #61CE70;
+  --color-warm: #6B5D4B;
+  --color-warm-light: #8A7A68;
+  --color-bg: #F0F4F7;
+  --color-surface: #FFFFFF;
+  --color-text: #54595F;
+  --color-text-dark: #000000;
+  --color-text-light: #7A7A7A;
+  --color-danger: #DC2626;
+  --color-warning: #F59E0B;
+}
+
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-primary-light: var(--color-primary-light);
+  --color-secondary: var(--color-secondary);
+  --color-secondary-light: var(--color-secondary-light);
+  --color-success: var(--color-success);
+  --color-success-light: var(--color-success-light);
+  --color-warm: var(--color-warm);
+  --color-warm-light: var(--color-warm-light);
+  --color-bg: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-text: var(--color-text);
+  --color-text-dark: var(--color-text-dark);
+  --color-text-light: var(--color-text-light);
+  --color-danger: var(--color-danger);
+  --color-warning: var(--color-warning);
+  --font-heading: 'Kumbh Sans', sans-serif;
+  --font-body: 'Nunito', sans-serif;
+  --font-accent: 'Roboto', sans-serif;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  color: var(--color-text-dark);
+}
