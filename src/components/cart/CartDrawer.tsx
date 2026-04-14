@@ -69,8 +69,8 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }: CartDrawerPr
                           </p>
                         )}
                       </div>
-                      <span className="font-accent font-bold text-sm ml-2">
-                        {item.item_total === 0 ? 'Free' : `$${item.item_total.toFixed(2)}`}
+                      <span className="font-accent font-bold text-sm ml-2 text-success">
+                        Free
                       </span>
                     </div>
 
@@ -107,23 +107,9 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }: CartDrawerPr
 
           {/* Footer */}
           {cart.items.length > 0 && (
-            <div className="border-t border-gray-100 p-5 space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-text-light">Subtotal</span>
-                <span className="font-accent font-semibold">${cart.subtotal.toFixed(2)}</span>
-              </div>
-              {cart.discount_amount > 0 && (
-                <div className="flex justify-between text-sm text-success">
-                  <span>Discount</span>
-                  <span className="font-accent font-semibold">-${cart.discount_amount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-base font-heading font-bold border-t border-gray-100 pt-3">
-                <span>Total</span>
-                <span>${cart.total.toFixed(2)}</span>
-              </div>
+            <div className="border-t border-gray-100 p-5">
               <Button fullWidth size="lg" onClick={onCheckout}>
-                Checkout
+                Review Order
               </Button>
             </div>
           )}

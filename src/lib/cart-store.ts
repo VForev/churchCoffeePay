@@ -48,11 +48,8 @@ export const cartStore = {
     return () => listeners.delete(listener);
   },
 
-  addItem: (menuItem: MenuItem, selectedModifiers: Modifier[], specialInstructions: string, eventFree: boolean) => {
-    const modifierTotal = selectedModifiers.reduce((sum, m) => sum + m.price_adjustment, 0);
-    const effectivePrice = eventFree ? 0 : (menuItem.is_free ? 0 : menuItem.base_price);
-    const effectiveModPrice = eventFree ? 0 : modifierTotal;
-    const itemTotal = (effectivePrice + effectiveModPrice);
+  addItem: (menuItem: MenuItem, selectedModifiers: Modifier[], specialInstructions: string, _eventFree: boolean) => {
+    const itemTotal = 0; // All orders are free — paid via PushPay
 
     const cartItem: CartItem = {
       id: generateId(),

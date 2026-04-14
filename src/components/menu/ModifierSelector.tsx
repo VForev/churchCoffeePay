@@ -12,7 +12,6 @@ interface ModifierSelectorProps {
   onClose: () => void;
   item: MenuItem;
   modifierGroups: ModifierGroup[];
-  eventFree?: boolean;
   onAddToCart: (selectedModifiers: Modifier[], specialInstructions: string) => void;
 }
 
@@ -21,7 +20,6 @@ export default function ModifierSelector({
   onClose,
   item,
   modifierGroups,
-  eventFree,
   onAddToCart,
 }: ModifierSelectorProps) {
   const [selections, setSelections] = useState<Record<string, Modifier[]>>({});
@@ -71,27 +69,9 @@ export default function ModifierSelector({
     .filter((g) => g.is_required)
     .every((g) => (selections[g.id] || []).length > 0);
 
-  // Calculate running total
-  const modifierTotal = Object.values(selections)
-    .flat()
-    .reduce((sum, m) => sum + (eventFree ? 0 : m.price_adjustment), 0);
-  const basePrice = eventFree ? 0 : (item.is_free ? 0 : item.base_price);
-  const totalPrice = basePrice + modifierTotal;
-
   const footerContent = (
-    <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between">
-      <div className="text-lg font-heading font-bold text-text-dark">
-        {totalPrice === 0 ? (
-          <span className="text-success">Free</span>
-        ) : (
-          <span>${totalPrice.toFixed(2)}</span>
-        )}
-      </div>
-      <Button
-        onClick={handleAdd}
-        disabled={!requiredMet}
-        size="lg"
-      >
+    <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end">
+      <Button onClick={handleAdd} disabled={!requiredMet} size="lg">
         Add to Order
       </Button>
     </div>
@@ -133,11 +113,6 @@ export default function ModifierSelector({
                     )}
                   >
                     {modifier.name}
-                    {modifier.price_adjustment > 0 && !eventFree && (
-                      <span className="ml-1 text-xs opacity-75">
-                        +${modifier.price_adjustment.toFixed(2)}
-                      </span>
-                    )}
                   </button>
                 ))}
             </div>

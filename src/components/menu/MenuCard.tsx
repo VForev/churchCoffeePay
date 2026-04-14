@@ -31,13 +31,7 @@ export default function MenuCard({ item, eventFree, effectivePrice, onClick }: M
         )}
       </div>
       <div className="mt-3 flex items-center justify-between">
-        {isFree ? (
-          <Badge variant="success">Free</Badge>
-        ) : (
-          <span className="font-accent font-bold text-primary text-lg">
-            ${price.toFixed(2)}
-          </span>
-        )}
+        <Badge variant="success">Free</Badge>
         {!item.is_available && (
           <Badge variant="neutral">Unavailable</Badge>
         )}

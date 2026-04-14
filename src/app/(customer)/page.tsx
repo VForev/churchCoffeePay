@@ -171,7 +171,6 @@ export default function MenuPage() {
             className="w-full bg-primary text-white rounded-full py-3 font-accent font-semibold flex items-center justify-center gap-2 cursor-pointer"
           >
             View Order ({cart.itemCount})
-            <span className="text-sm opacity-75">${cart.total.toFixed(2)}</span>
           </button>
         </div>
       )}
@@ -183,7 +182,6 @@ export default function MenuPage() {
           onClose={() => setSelectedItem(null)}
           item={selectedItem}
           modifierGroups={modifierGroups}
-          eventFree={isEventFree}
           onAddToCart={handleAddToCart}
         />
       )}

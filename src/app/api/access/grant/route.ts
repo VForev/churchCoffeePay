@@ -12,7 +12,12 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get('key');
-  const origin = req.nextUrl.origin;
+
+  // Use the Host header so local dev (0.0.0.0) redirects back to localhost,
+  // not 0.0.0.0 (which the browser treats as a different origin and drops the cookie).
+  const host = req.headers.get('host') ?? req.nextUrl.host;
+  const proto = req.nextUrl.protocol ?? 'http:';
+  const origin = `${proto}//${host}`;
 
   if (!constantTimeKeyMatch(key, process.env.ACCESS_SECRET)) {
     return NextResponse.redirect(new URL('/access-denied', origin), 302);

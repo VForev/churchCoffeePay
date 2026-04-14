@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE, isSessionActive, verifySession } from '@/lib/access';
+import { SESSION_COOKIE, isSessionActive, verifySession } from '@/lib/access-edge';
 
 export const config = {
   matcher: ['/', '/checkout', '/checkout/:path*'],
