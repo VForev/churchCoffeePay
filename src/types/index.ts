@@ -167,5 +167,4 @@ export interface CartState {
   total: number;
   coupon: Coupon | null;
   customer_name: string;
-  customer_phone: string;
 }

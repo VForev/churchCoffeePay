@@ -72,13 +72,6 @@ export default function BaristaPage() {
 
   async function updateStatus(orderId: string, newStatus: string) {
     await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
-    if (newStatus === 'ready') {
-      fetch('/api/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId }),
-      }).catch(() => {});
-    }
     fetchOrders();
   }
 

@@ -13,7 +13,6 @@ let state: CartState = {
   total: 0,
   coupon: null,
   customer_name: '',
-  customer_phone: '',
 };
 
 const listeners = new Set<CartListener>();
@@ -97,11 +96,6 @@ export const cartStore = {
     notify();
   },
 
-  setCustomerPhone: (phone: string) => {
-    state = { ...state, customer_phone: phone };
-    notify();
-  },
-
   setTip: (amount: number) => {
     state = { ...state, tip_amount: amount };
     recalculate();
@@ -129,7 +123,6 @@ export const cartStore = {
       total: 0,
       coupon: null,
       customer_name: '',
-      customer_phone: '',
     };
     notify();
   },
