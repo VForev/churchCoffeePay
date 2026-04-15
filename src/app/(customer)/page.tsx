@@ -8,7 +8,6 @@ import CategoryTabs from '@/components/menu/CategoryTabs';
 import MenuCard from '@/components/menu/MenuCard';
 import ModifierSelector from '@/components/menu/ModifierSelector';
 import CartDrawer from '@/components/cart/CartDrawer';
-import AccessCountdown from '@/components/AccessCountdown';
 import type { Category, MenuItem, ModifierGroup, Modifier, Event } from '@/types';
 import { useRouter } from 'next/navigation';
 
@@ -107,7 +106,6 @@ export default function MenuPage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <AccessCountdown />
       {/* Header */}
       <header className="bg-surface border-b border-gray-100 sticky top-0 z-30">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">

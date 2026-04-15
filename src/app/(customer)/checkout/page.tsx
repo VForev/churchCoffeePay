@@ -10,7 +10,6 @@ import { useCart } from '@/lib/hooks';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
-import AccessCountdown from '@/components/AccessCountdown';
 import type { Coupon } from '@/types';
 
 function CheckoutForm() {
@@ -223,15 +222,6 @@ function CheckoutForm() {
         }
       }
 
-      // Mark the access session consumed so the link can't be reused.
-      // Webhook also consumes for paid orders; this covers free orders and
-      // provides a faster confirmation for the redirect.
-      try {
-        await fetch('/api/access/consume', { method: 'POST' });
-      } catch {
-        // non-fatal: middleware will still expire the session in 1h
-      }
-
       // Clear cart and redirect to confirmation
       cartStore.clear();
       router.push(`/checkout/confirmation?name=${encodeURIComponent(cart.customer_name.trim())}`);
@@ -243,7 +233,6 @@ function CheckoutForm() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <AccessCountdown />
       <header className="bg-surface border-b border-gray-100 sticky top-0 z-30">
         <div className="max-w-xl mx-auto px-4 py-4 flex items-center gap-3">
           <button
