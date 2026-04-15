@@ -125,6 +125,7 @@ function CheckoutForm() {
         .from('orders')
         .insert({
           customer_name: cart.customer_name.trim(),
+          customer_phone: cart.customer_phone.trim() || null,
           status: 'pending',
           subtotal: cart.subtotal,
           discount_amount: cart.discount_amount,
@@ -266,6 +267,18 @@ function CheckoutForm() {
               onChange={(e) => cartStore.setCustomerName(e.target.value)}
               required
             />
+            <div className="mt-3">
+              <Input
+                label="Phone Number (optional)"
+                type="tel"
+                placeholder="e.g. +1 555 123 4567"
+                value={cart.customer_phone}
+                onChange={(e) => cartStore.setCustomerPhone(e.target.value)}
+              />
+              <p className="text-xs text-text-light mt-1">
+                We&apos;ll text you when your order is ready.
+              </p>
+            </div>
           </Card>
 
           {/* Order Summary */}

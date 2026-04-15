@@ -117,6 +117,7 @@ create table coupons (
 create table orders (
   id uuid primary key default uuid_generate_v4(),
   customer_name text not null,
+  customer_phone text,
   status text not null default 'pending' check (status in ('pending', 'in_progress', 'ready', 'completed', 'cancelled')),
   subtotal decimal(10,2) not null default 0,
   discount_amount decimal(10,2) not null default 0,

@@ -46,6 +46,7 @@ export interface ItemModifierGroup {
 export interface Order {
   id: string;
   customer_name: string;
+  customer_phone: string | null;
   status: OrderStatus;
   subtotal: number;
   tip_amount: number;
@@ -166,4 +167,5 @@ export interface CartState {
   total: number;
   coupon: Coupon | null;
   customer_name: string;
+  customer_phone: string;
 }
