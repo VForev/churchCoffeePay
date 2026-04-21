@@ -200,11 +200,10 @@ export default function BaristaPage() {
                     actions={
                       <Button
                         size="sm"
-                        variant="ghost"
-                        className="border border-gray-200"
+                        variant="success"
                         onClick={() => updateStatus(order.id, 'completed')}
                       >
-                        Complete
+                        Order Picked Up ✓
                       </Button>
                     }
                   />
