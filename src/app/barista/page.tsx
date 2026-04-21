@@ -14,10 +14,28 @@ interface FullOrder extends Order {
   })[];
 }
 
+// Total items across an order
+function orderItemCount(order: FullOrder): number {
+  return order.order_items?.reduce((s, i) => s + i.quantity, 0) ?? 1;
+}
+
+// Wait time for a given order: items in orders placed before it + items in this order
+function calcWaitMinutes(allOrders: FullOrder[], targetOrder: FullOrder): number {
+  const active = allOrders
+    .filter((o) => o.status === 'pending' || o.status === 'in_progress')
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  let itemsAhead = 0;
+  for (const o of active) {
+    if (o.id === targetOrder.id) break;
+    itemsAhead += orderItemCount(o);
+  }
+  return itemsAhead + orderItemCount(targetOrder);
+}
+
 export default function BaristaPage() {
   const [orders, setOrders] = useState<FullOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const prevCountRef = useRef(0);
 
   async function fetchOrders() {
@@ -39,7 +57,6 @@ export default function BaristaPage() {
 
     if (data) {
       setOrders(data as unknown as FullOrder[]);
-      // Play sound if new orders arrived
       if (data.length > prevCountRef.current && prevCountRef.current > 0) {
         playNotification();
       }
@@ -58,15 +75,12 @@ export default function BaristaPage() {
 
   useEffect(() => {
     fetchOrders();
-
-    // Subscribe to real-time changes
     const channel = supabase
       .channel('barista-orders')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         fetchOrders();
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, []);
 
@@ -79,6 +93,11 @@ export default function BaristaPage() {
   const inProgressOrders = orders.filter((o) => o.status === 'in_progress');
   const readyOrders = orders.filter((o) => o.status === 'ready');
 
+  // Queue stats
+  const totalItems = orders
+    .filter((o) => o.status === 'pending' || o.status === 'in_progress')
+    .reduce((s, o) => s + orderItemCount(o), 0);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -90,12 +109,24 @@ export default function BaristaPage() {
   return (
     <div className="min-h-screen bg-bg">
       <header className="bg-primary text-white sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-heading font-bold">Barista Dashboard</h1>
-          <div className="flex items-center gap-3">
-            <span className="text-sm opacity-75">
-              {orders.length} active order{orders.length !== 1 ? 's' : ''}
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+          <h1 className="text-xl font-heading font-bold">Barista Dashboard</h1>
+          <div className="flex items-center gap-4 text-sm">
+            <span className="opacity-75">
+              {orders.length} order{orders.length !== 1 ? 's' : ''}
             </span>
+            {totalItems > 0 && (
+              <span className="bg-white/20 px-3 py-1 rounded-full font-accent">
+                {totalItems} drink{totalItems !== 1 ? 's' : ''} · ~{totalItems} min queue
+              </span>
+            )}
+            <a
+              href="/live"
+              target="_blank"
+              className="opacity-75 hover:opacity-100 underline text-xs font-accent"
+            >
+              Live Screen ↗
+            </a>
           </div>
         </div>
       </header>
@@ -120,6 +151,7 @@ export default function BaristaPage() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    waitMinutes={calcWaitMinutes(orders, order)}
                     actions={
                       <Button size="sm" onClick={() => updateStatus(order.id, 'in_progress')}>
                         Start Making
@@ -133,7 +165,7 @@ export default function BaristaPage() {
             {/* In Progress Column */}
             <div>
               <h2 className="font-heading font-bold text-lg text-primary mb-3 flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-primary" />
+                <span className="w-3 h-3 rounded-full bg-primary animate-pulse" />
                 Making ({inProgressOrders.length})
               </h2>
               <div className="space-y-3">
@@ -141,6 +173,7 @@ export default function BaristaPage() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    waitMinutes={calcWaitMinutes(orders, order)}
                     actions={
                       <Button size="sm" variant="success" onClick={() => updateStatus(order.id, 'ready')}>
                         Mark Ready
@@ -162,9 +195,15 @@ export default function BaristaPage() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    waitMinutes={null}
                     highlight
                     actions={
-                      <Button size="sm" variant="ghost" className="border border-gray-200" onClick={() => updateStatus(order.id, 'completed')}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="border border-gray-200"
+                        onClick={() => updateStatus(order.id, 'completed')}
+                      >
                         Complete
                       </Button>
                     }
@@ -179,21 +218,42 @@ export default function BaristaPage() {
   );
 }
 
-function OrderCard({ order, actions, highlight }: { order: FullOrder; actions: React.ReactNode; highlight?: boolean }) {
+function OrderCard({
+  order,
+  actions,
+  highlight,
+  waitMinutes,
+}: {
+  order: FullOrder;
+  actions: React.ReactNode;
+  highlight?: boolean;
+  waitMinutes: number | null;
+}) {
   const timeAgo = getTimeAgo(order.created_at);
+  const itemCount = orderItemCount(order);
 
   return (
     <Card className={highlight ? 'ring-2 ring-success/30 bg-success/5' : ''}>
       <div className="flex items-start justify-between mb-2">
-        <div>
+        <div className="min-w-0">
           <h3 className="font-heading font-bold text-lg text-text-dark">
             {order.customer_name}
           </h3>
-          <p className="text-xs text-text-light">{timeAgo} &middot; {order.order_source}</p>
+          <p className="text-xs text-text-light">
+            {timeAgo} · {order.order_source}
+            {' · '}{itemCount} item{itemCount !== 1 ? 's' : ''}
+          </p>
         </div>
-        <div className="flex gap-1.5">
-          <OrderStatusBadge status={order.status} />
-          <PaymentBadge status={order.payment_status} />
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="flex gap-1">
+            <OrderStatusBadge status={order.status} />
+            <PaymentBadge status={order.payment_status} />
+          </div>
+          {waitMinutes !== null && (
+            <span className="text-xs font-accent text-text-light bg-bg px-2 py-0.5 rounded-full">
+              ~{waitMinutes} min
+            </span>
+          )}
         </div>
       </div>
 
@@ -202,7 +262,7 @@ function OrderCard({ order, actions, highlight }: { order: FullOrder; actions: R
           <div key={item.id} className="text-sm">
             <div className="flex justify-between">
               <span className="font-body font-semibold">
-                {item.quantity}x {item.menu_item?.name}
+                {item.quantity}× {item.menu_item?.name}
               </span>
             </div>
             {item.order_item_modifiers?.length > 0 && (

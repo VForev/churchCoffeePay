@@ -35,6 +35,7 @@ export interface Modifier {
   price_adjustment: number;
   is_default: boolean;
   is_available: boolean;
+  display_order: number;
 }
 
 export interface ItemModifierGroup {
@@ -58,6 +59,7 @@ export interface Order {
   order_source: OrderSource;
   event_id: string | null;
   created_at: string;
+  archived_at: string | null;
   order_items?: OrderItem[];
 }
 
