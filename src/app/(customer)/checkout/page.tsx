@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
@@ -22,8 +22,34 @@ function CheckoutForm() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
+  const [queueWait, setQueueWait] = useState<number | null>(null);
 
   const isFreeOrder = cart.total === 0;
+  const cartItemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+
+  useEffect(() => {
+    async function fetchQueueWait() {
+      const { data: activeOrders } = await supabase
+        .from('orders')
+        .select('id')
+        .in('status', ['pending', 'in_progress'])
+        .is('archived_at', null);
+
+      if (!activeOrders || activeOrders.length === 0) {
+        setQueueWait(0);
+        return;
+      }
+
+      const orderIds = activeOrders.map((o) => o.id);
+      const { data: items } = await supabase
+        .from('order_items')
+        .select('quantity')
+        .in('order_id', orderIds);
+
+      setQueueWait(items?.reduce((sum, i) => sum + i.quantity, 0) ?? 0);
+    }
+    fetchQueueWait();
+  }, []);
 
   async function applyCoupon() {
     if (!couponCode.trim()) return;
@@ -132,7 +158,7 @@ function CheckoutForm() {
           payment_status: isFreeOrder ? 'free' : 'paid',
           stripe_payment_id: stripePaymentId,
           coupon_id: cart.coupon?.id || null,
-          order_source: 'counter', // TODO: detect mobile vs counter
+          order_source: 'mobile',
         })
         .select()
         .single();
@@ -223,7 +249,9 @@ function CheckoutForm() {
 
       // Clear cart and redirect to confirmation
       cartStore.clear();
-      router.push(`/checkout/confirmation?name=${encodeURIComponent(cart.customer_name.trim())}`);
+      const estimatedWait = queueWait !== null ? queueWait + cartItemCount : null;
+      const waitParam = estimatedWait !== null ? `&wait=${estimatedWait}` : '';
+      router.push(`/checkout/confirmation?name=${encodeURIComponent(cart.customer_name.trim())}${waitParam}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setProcessing(false);
@@ -380,6 +408,22 @@ function CheckoutForm() {
               </div>
             </div>
           </Card>
+
+          {/* Estimated wait */}
+          {queueWait !== null && (
+            <div className="flex items-center gap-3 bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
+              <span className="text-xl">&#8987;</span>
+              <div>
+                <p className="text-sm font-body text-text">
+                  Estimated wait:{' '}
+                  <strong className="font-accent text-primary">
+                    ~{queueWait + cartItemCount} min
+                  </strong>
+                </p>
+                <p className="text-xs text-text-light">Based on current queue + your order</p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <p className="text-danger text-sm text-center">{error}</p>

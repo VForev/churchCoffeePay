@@ -56,7 +56,7 @@ const STATUS_CONFIG = {
 export default function LiveOrdersPage() {
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [now, setNow] = useState(Date.now());
   // Track orders that just became "ready" to briefly highlight them
   const prevOrdersRef = useRef<LiveOrder[]>([]);
 
@@ -76,7 +76,6 @@ export default function LiveOrdersPage() {
     if (data) {
       prevOrdersRef.current = orders;
       setOrders(data as unknown as LiveOrder[]);
-      setLastUpdated(new Date());
     }
     setLoading(false);
   }
@@ -91,7 +90,13 @@ export default function LiveOrdersPage() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    // Tick every 30s so countdown stays live
+    const ticker = setInterval(() => setNow(Date.now()), 30000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(ticker);
+    };
   }, []);
 
   // Separate ready orders (pinned top) from queue orders
@@ -128,7 +133,7 @@ export default function LiveOrdersPage() {
               {orders.length} active order{orders.length !== 1 ? 's' : ''}
             </p>
             <p className="text-xs opacity-50 mt-0.5">
-              Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
         </div>
@@ -153,7 +158,7 @@ export default function LiveOrdersPage() {
               Ready for pickup
             </h2>
             {readyOrders.map((order) => (
-              <OrderCard key={order.id} order={order} waitMinutes={null} position={null} />
+              <OrderCard key={order.id} order={order} waitMinutes={null} position={null} now={now} />
             ))}
           </div>
         )}
@@ -172,6 +177,7 @@ export default function LiveOrdersPage() {
                 order={order}
                 waitMinutes={calculateWaitMinutes(orders, order)}
                 position={queuePosition(order)}
+                now={now}
               />
             ))}
           </div>
@@ -192,16 +198,26 @@ function OrderCard({
   order,
   waitMinutes,
   position,
+  now,
 }: {
   order: LiveOrder;
   waitMinutes: number | null;
   position: number | null;
+  now: number;
 }) {
   const config = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG];
   if (!config) return null;
 
   const isReady = order.status === 'ready';
   const totalItems = order.order_items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
+
+  // Compute live remaining time: estimate when this order will be done
+  // based on when it was placed + total estimated wait, minus time already elapsed
+  let remainingMinutes: number | null = null;
+  if (!isReady && waitMinutes !== null) {
+    const estimatedDoneAt = new Date(order.created_at).getTime() + waitMinutes * 60000;
+    remainingMinutes = Math.max(0, Math.ceil((estimatedDoneAt - now) / 60000));
+  }
 
   return (
     <div
@@ -256,13 +272,17 @@ function OrderCard({
           </div>
           {isReady ? (
             <p className="text-xs text-success font-body">Pick up at the counter!</p>
-          ) : waitMinutes !== null ? (
-            <div>
-              <p className="text-lg font-heading font-bold text-text-dark">
-                ~{waitMinutes} min
-              </p>
-              <p className="text-xs text-text-light">estimated</p>
-            </div>
+          ) : remainingMinutes !== null ? (
+            remainingMinutes === 0 ? (
+              <p className="text-sm font-accent font-bold text-success">Any moment!</p>
+            ) : (
+              <div>
+                <p className="text-lg font-heading font-bold text-text-dark">
+                  ~{remainingMinutes} min
+                </p>
+                <p className="text-xs text-text-light">remaining</p>
+              </div>
+            )
           ) : null}
         </div>
       </div>

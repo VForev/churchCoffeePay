@@ -22,6 +22,32 @@ export default function MenuPage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
+  const [queueWait, setQueueWait] = useState<number | null>(null);
+
+  // Fetch queue wait estimate once on mount
+  useEffect(() => {
+    async function fetchQueueWait() {
+      const { data: activeOrders } = await supabase
+        .from('orders')
+        .select('id')
+        .in('status', ['pending', 'in_progress'])
+        .is('archived_at', null);
+
+      if (!activeOrders || activeOrders.length === 0) {
+        setQueueWait(0);
+        return;
+      }
+
+      const orderIds = activeOrders.map((o) => o.id);
+      const { data: items } = await supabase
+        .from('order_items')
+        .select('quantity')
+        .in('order_id', orderIds);
+
+      setQueueWait(items?.reduce((sum, i) => sum + i.quantity, 0) ?? 0);
+    }
+    fetchQueueWait();
+  }, []);
 
   // Fetch categories, items, and active event
   useEffect(() => {
@@ -115,6 +141,11 @@ export default function MenuPage() {
               <p className="text-xs font-accent text-warm mt-0.5">
                 {activeEvent.name}
                 {isEventFree && ' — Everything Free!'}
+              </p>
+            )}
+            {queueWait !== null && (
+              <p className={`text-xs font-accent mt-0.5 ${queueWait === 0 ? 'text-success' : 'text-text-light'}`}>
+                {queueWait === 0 ? 'No wait — order now!' : `~${queueWait} min current wait`}
               </p>
             )}
           </div>
