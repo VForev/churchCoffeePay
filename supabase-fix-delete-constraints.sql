@@ -40,6 +40,8 @@ alter table orders
 -- These stay restrictive. order_items reads the item name through this join,
 -- so nulling it would blank out the line items on every past receipt, and
 -- cascading would delete the order lines themselves and corrupt revenue
--- totals. A menu item that has been sold cannot be deleted; mark it
--- unavailable instead, which hides it from the menu and keeps history intact.
--- The admin UI now says this rather than failing silently.
+-- totals.
+--
+-- The admin UI no longer offers a delete for menu items or modifiers at all.
+-- Both are hidden with a Hide/Show availability toggle, which keeps every past
+-- order readable. Nothing is ever removed from these two tables.

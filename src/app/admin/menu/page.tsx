@@ -62,20 +62,6 @@ export default function AdminMenuPage() {
     fetchData();
   }
 
-  async function deleteItem(id: string) {
-    if (!confirm('Delete this item?')) return;
-    const { error } = await supabase.from('menu_items').delete().eq('id', id);
-    if (error) {
-      alert(
-        error.code === '23503'
-          ? 'This item appears in past orders, so deleting it would break the order history. Edit it and uncheck "Available" to hide it from the menu instead.'
-          : `Could not delete this item: ${error.message}`,
-      );
-      return;
-    }
-    fetchData();
-  }
-
   async function saveCat() {
     if (!editCat) return;
     setSaving(true);
@@ -128,7 +114,14 @@ export default function AdminMenuPage() {
   }
 
   async function toggleAvailable(item: MenuItem) {
-    await supabase.from('menu_items').update({ is_available: !item.is_available }).eq('id', item.id);
+    const { error } = await supabase
+      .from('menu_items')
+      .update({ is_available: !item.is_available })
+      .eq('id', item.id);
+    if (error) {
+      alert(`Could not update availability: ${error.message}`);
+      return;
+    }
     fetchData();
   }
 
@@ -244,7 +237,6 @@ export default function AdminMenuPage() {
                         {item.is_available ? 'Hide' : 'Show'}
                       </button>
                       <button onClick={() => setEditItem(item)} className="text-sm text-primary hover:underline cursor-pointer px-2 py-1">Edit</button>
-                      <button onClick={() => deleteItem(item.id)} className="text-sm text-danger hover:underline cursor-pointer px-2 py-1">Del</button>
                     </div>
                   </div>
                 </Card>

@@ -71,15 +71,13 @@ export default function AdminModifiersPage() {
     setSaving(false); setEditMod(null); fetchData();
   }
 
-  async function deleteMod(id: string) {
-    if (!confirm('Delete this modifier?')) return;
-    const { error } = await supabase.from('modifiers').delete().eq('id', id);
+  async function toggleModAvailable(mod: Modifier) {
+    const { error } = await supabase
+      .from('modifiers')
+      .update({ is_available: !mod.is_available })
+      .eq('id', mod.id);
     if (error) {
-      alert(
-        error.code === '23503'
-          ? 'This option was chosen on a past order, so deleting it would break the order history. Edit it and uncheck "Available" to hide it instead.'
-          : `Could not delete this modifier: ${error.message}`,
-      );
+      alert(`Could not update availability: ${error.message}`);
       return;
     }
     fetchData();
@@ -203,9 +201,18 @@ export default function AdminModifiersPage() {
                       {!mod.is_available && <Badge variant="neutral">Hidden</Badge>}
                     </div>
 
-                    <div className="flex gap-1 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => toggleModAvailable(mod)}
+                        className={`text-xs px-2 py-1 rounded-lg border transition-colors cursor-pointer ${
+                          mod.is_available
+                            ? 'border-gray-200 text-text-light hover:bg-gray-50'
+                            : 'border-success/30 text-success hover:bg-success/5'
+                        }`}
+                      >
+                        {mod.is_available ? 'Hide' : 'Show'}
+                      </button>
                       <button onClick={() => setEditMod(mod)} className="text-xs text-primary hover:underline cursor-pointer px-1.5 py-1">Edit</button>
-                      <button onClick={() => deleteMod(mod.id)} className="text-xs text-danger hover:underline cursor-pointer px-1.5 py-1">Del</button>
                     </div>
                   </div>
                 ))}
