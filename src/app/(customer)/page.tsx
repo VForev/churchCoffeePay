@@ -149,17 +149,26 @@ export default function MenuPage() {
               </p>
             )}
           </div>
-          <button
-            onClick={() => setCartOpen(true)}
-            className="relative bg-primary text-white rounded-full px-5 py-2.5 font-accent font-semibold text-sm transition-all hover:bg-primary-light cursor-pointer"
-          >
-            Order
-            {cart.itemCount > 0 && (
-              <span className="absolute -top-2 -right-2 bg-success text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
-                {cart.itemCount}
-              </span>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push('/live')}
+              className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2.5 font-accent font-semibold text-sm text-primary transition-all hover:bg-primary/10 cursor-pointer"
+            >
+              <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+              Track Order
+            </button>
+            <button
+              onClick={() => setCartOpen(true)}
+              className="relative bg-primary text-white rounded-full px-5 py-2.5 font-accent font-semibold text-sm transition-all hover:bg-primary-light cursor-pointer"
+            >
+              Order
+              {cart.itemCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-success text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                  {cart.itemCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
