@@ -54,7 +54,16 @@ export default function AdminEventsPage() {
   }
 
   async function deleteEvent(id: string) {
-    await supabase.from('events').delete().eq('id', id);
+    if (!confirm('Delete this event?')) return;
+    const { error } = await supabase.from('events').delete().eq('id', id);
+    if (error) {
+      alert(
+        error.code === '23503'
+          ? 'Could not delete this event because orders placed during it still reference it. Run supabase-fix-delete-constraints.sql in the Supabase SQL editor, then try again.'
+          : `Could not delete this event: ${error.message}`,
+      );
+      return;
+    }
     fetchData();
   }
 

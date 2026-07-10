@@ -54,7 +54,16 @@ export default function AdminCouponsPage() {
   }
 
   async function deleteCoupon(id: string) {
-    await supabase.from('coupons').delete().eq('id', id);
+    if (!confirm('Delete this coupon?')) return;
+    const { error } = await supabase.from('coupons').delete().eq('id', id);
+    if (error) {
+      alert(
+        error.code === '23503'
+          ? 'Could not delete this coupon because orders that redeemed it still reference it. Run supabase-fix-delete-constraints.sql in the Supabase SQL editor, then try again.'
+          : `Could not delete this coupon: ${error.message}`,
+      );
+      return;
+    }
     fetchData();
   }
 

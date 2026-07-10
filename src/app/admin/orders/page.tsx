@@ -34,6 +34,7 @@ export default function AdminOrdersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ type: 'archive' | 'delete' | 'restore'; order: FullOrder } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function fetchOrders() {
     let query = supabase
@@ -73,25 +74,50 @@ export default function AdminOrdersPage() {
   useEffect(() => { fetchOrders(); }, [dateFilter, showArchived]);
 
   async function archiveOrder(order: FullOrder) {
+    setActionError(null);
     setActionLoading(true);
-    await supabase.from('orders').update({ archived_at: new Date().toISOString() }).eq('id', order.id);
+    const { error } = await supabase
+      .from('orders')
+      .update({ archived_at: new Date().toISOString() })
+      .eq('id', order.id);
     setActionLoading(false);
+    if (error) {
+      setActionError(`Could not archive this order: ${error.message}`);
+      return;
+    }
     setConfirmModal(null);
     fetchOrders();
   }
 
   async function restoreOrder(order: FullOrder) {
+    setActionError(null);
     setActionLoading(true);
-    await supabase.from('orders').update({ archived_at: null }).eq('id', order.id);
+    const { error } = await supabase
+      .from('orders')
+      .update({ archived_at: null })
+      .eq('id', order.id);
     setActionLoading(false);
+    if (error) {
+      setActionError(`Could not restore this order: ${error.message}`);
+      return;
+    }
     setConfirmModal(null);
     fetchOrders();
   }
 
   async function deleteOrder(order: FullOrder) {
+    setActionError(null);
     setActionLoading(true);
-    await supabase.from('orders').delete().eq('id', order.id);
+    const { error } = await supabase.from('orders').delete().eq('id', order.id);
     setActionLoading(false);
+    if (error) {
+      setActionError(
+        error.code === '23503'
+          ? 'Could not delete this order because other records still reference it. Run supabase-fix-delete-constraints.sql in the Supabase SQL editor, then try again.'
+          : `Could not delete this order: ${error.message}`,
+      );
+      return;
+    }
     setConfirmModal(null);
     fetchOrders();
   }
@@ -309,7 +335,7 @@ export default function AdminOrdersPage() {
       {confirmModal && (
         <Modal
           isOpen
-          onClose={() => setConfirmModal(null)}
+          onClose={() => { setConfirmModal(null); setActionError(null); }}
           title={
             confirmModal.type === 'archive'
               ? 'Archive Order'
@@ -328,8 +354,17 @@ export default function AdminOrdersPage() {
               {confirmModal.type === 'delete' &&
                 `Permanently delete order for ${confirmModal.order.customer_name}? This cannot be undone.`}
             </p>
+            {actionError && (
+              <p className="text-sm text-danger bg-danger/5 border border-danger/20 rounded-lg px-3 py-2">
+                {actionError}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setConfirmModal(null)} disabled={actionLoading}>
+              <Button
+                variant="ghost"
+                onClick={() => { setConfirmModal(null); setActionError(null); }}
+                disabled={actionLoading}
+              >
                 Cancel
               </Button>
               <Button

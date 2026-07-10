@@ -64,7 +64,15 @@ export default function AdminMenuPage() {
 
   async function deleteItem(id: string) {
     if (!confirm('Delete this item?')) return;
-    await supabase.from('menu_items').delete().eq('id', id);
+    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    if (error) {
+      alert(
+        error.code === '23503'
+          ? 'This item appears in past orders, so deleting it would break the order history. Edit it and uncheck "Available" to hide it from the menu instead.'
+          : `Could not delete this item: ${error.message}`,
+      );
+      return;
+    }
     fetchData();
   }
 

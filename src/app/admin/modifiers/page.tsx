@@ -73,7 +73,15 @@ export default function AdminModifiersPage() {
 
   async function deleteMod(id: string) {
     if (!confirm('Delete this modifier?')) return;
-    await supabase.from('modifiers').delete().eq('id', id);
+    const { error } = await supabase.from('modifiers').delete().eq('id', id);
+    if (error) {
+      alert(
+        error.code === '23503'
+          ? 'This option was chosen on a past order, so deleting it would break the order history. Edit it and uncheck "Available" to hide it instead.'
+          : `Could not delete this modifier: ${error.message}`,
+      );
+      return;
+    }
     fetchData();
   }
 

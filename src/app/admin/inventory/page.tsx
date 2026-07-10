@@ -67,7 +67,12 @@ export default function AdminInventoryPage() {
   }
 
   async function deleteItem(id: string) {
-    await supabase.from('inventory_items').delete().eq('id', id);
+    if (!confirm('Delete this ingredient? Its stock history will be removed too.')) return;
+    const { error } = await supabase.from('inventory_items').delete().eq('id', id);
+    if (error) {
+      alert(`Could not delete this ingredient: ${error.message}`);
+      return;
+    }
     fetchData();
   }
 
