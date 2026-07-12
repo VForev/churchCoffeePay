@@ -8,10 +8,17 @@ import { cn } from '@/lib/utils';
 interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  /** When false, the shop isn't taking orders and the order can't be submitted. */
+  orderingOpen?: boolean;
   onCheckout: () => void;
 }
 
-export default function CartDrawer({ isOpen, onClose, onCheckout }: CartDrawerProps) {
+export default function CartDrawer({
+  isOpen,
+  onClose,
+  orderingOpen = true,
+  onCheckout,
+}: CartDrawerProps) {
   const cart = useCart();
 
   return (
@@ -122,9 +129,21 @@ export default function CartDrawer({ isOpen, onClose, onCheckout }: CartDrawerPr
                 <span>Total</span>
                 <span>${cart.total.toFixed(2)}</span>
               </div>
-              <Button fullWidth size="lg" onClick={onCheckout}>
-                Checkout
-              </Button>
+
+              {orderingOpen ? (
+                <Button fullWidth size="lg" onClick={onCheckout}>
+                  Place Your Coffee Order
+                </Button>
+              ) : (
+                <>
+                  <Button fullWidth size="lg" disabled>
+                    Ordering Is Closed
+                  </Button>
+                  <p className="text-center text-xs text-text-light font-body">
+                    Your drinks are saved — come back when we open.
+                  </p>
+                </>
+              )}
             </div>
           )}
         </div>

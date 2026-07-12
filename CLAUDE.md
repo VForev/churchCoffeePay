@@ -88,6 +88,15 @@ ALTER TABLE modifiers ADD COLUMN IF NOT EXISTS display_order INT NOT NULL DEFAUL
 
 **`supabase-access-sessions.sql`** — Auth session configuration.
 
+**`supabase-v2-features.sql`** — **Required** for sold-out flags, shop settings, ordering hours, and per-drink modifier overrides. Safe to re-run. Adds:
+- `menu_items.is_sold_out` and `modifiers.is_sold_out` — barista "86" flags
+- `shop_settings` — service banner, donation toggle, open/closed override (single row, `id = 1`)
+- `ordering_hours` — one row per weekday (0 = Sunday)
+- `item_modifier_overrides` — hide or lock one option on one drink
+- Realtime on `menu_items`, `modifiers`, `shop_settings`, `ordering_hours`
+
+Until this migration runs, the app falls back to sensible defaults (nothing sold out, always open, donations on) rather than erroring.
+
 ### Seed data
 `supabase-seed.sql` — Loads sample categories, modifier groups, modifiers, and menu items to get started.
 
@@ -100,7 +109,7 @@ ALTER TABLE modifiers ADD COLUMN IF NOT EXISTS display_order INT NOT NULL DEFAUL
 | Route | Description |
 |-------|-------------|
 | `/` | Main menu page — customers browse categories and items, add to cart |
-| `/checkout` | Checkout — customer name, coupon, tip, Stripe card payment |
+| `/checkout` | "Place Your Coffee Order" — customer name, coupon, donation, Stripe card payment. The word "checkout" is deliberately gone from the UI: customers read it as "order already placed" and bail. |
 | `/checkout/confirmation` | Order confirmation screen after successful payment |
 
 ### Staff
@@ -108,7 +117,7 @@ ALTER TABLE modifiers ADD COLUMN IF NOT EXISTS display_order INT NOT NULL DEFAUL
 | Route | Description | Who uses it |
 |-------|-------------|-------------|
 | `/tablet` | Counter POS — two-panel layout: menu left, cart right. Barista builds order, customer pays on same device | Barista at counter |
-| `/barista` | Barista dashboard — real-time kanban (Pending → Making → Ready) with estimated times | Barista making drinks |
+| `/barista` | Barista dashboard — two tabs: **Orders** (real-time kanban with back buttons + undo) and **Sold Out / 86** (mark drinks and add-ins out of stock) | Barista making drinks |
 | `/live` | Public live orders screen — shows queue position, status, and wait time for all active orders | Everyone (share the URL / QR code) |
 
 ### Admin (requires login)
@@ -123,6 +132,7 @@ ALTER TABLE modifiers ADD COLUMN IF NOT EXISTS display_order INT NOT NULL DEFAUL
 | `/admin/coupons` | Coupon codes — percentage, fixed amount, or free order discounts |
 | `/admin/inventory` | Track stock levels, set low-stock thresholds, log restocks |
 | `/admin/orders` | Full order history — expand rows, filter by status, search by name, archive or delete |
+| `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, donation on/off |
 
 ---
 
@@ -216,6 +226,11 @@ pending → in_progress → ready → completed
                               ↘ cancelled
 ```
 
+Baristas can move an order **backwards** if they tapped the wrong card:
+- "Making" cards have a **← Back to Pending** button
+- "Ready" cards have a **← Back to Making** button
+- Tapping "Order Picked Up" removes the card from the board, so an **Undo** bar appears for 12 seconds to put it back in Ready
+
 ### Wait time calculation
 Used on `/live` and `/barista`:
 - **1 minute per item** across the entire queue
@@ -238,6 +253,20 @@ Modifier groups are linked to menu items. Each group can be:
 
 To add 30 syrups: Go to `/admin/modifiers` → find the Syrups group → click `+ Option` for each syrup. They'll appear in the searchable dropdown automatically once the count hits 8.
 
+### Per-drink options (the Americano problem)
+
+Modifier groups are shared across the menu, but each drink can override them. Go to **`/admin/menu` → the drink → `Options`**:
+
+- **Group checkbox** — whether the drink offers that group at all. Uncheck **Milk** on an Americano and the group vanishes for that drink only.
+- **Per-option state** — inside a linked group, each option is one of:
+  - **Shown** — customer can pick it (the default)
+  - **Hidden** — not offered on this drink (e.g. Pumpkin syrup only on seasonal drinks)
+  - **Locked** — always included, customer cannot remove or swap it. Shows as a 🔒 "Included" chip.
+
+Stored in `item_modifier_overrides`. A locked option in a single-select group fixes that group's choice entirely. Locking two options in a single-select group doesn't make sense — the admin UI warns you, and only the first applies.
+
+The shared loader `src/lib/menu.ts` (`fetchItemModifierGroups`) applies all of this and is used by both the customer menu and the tablet POS.
+
 ---
 
 ## Events / Free Mode
@@ -248,6 +277,56 @@ Create an event at `/admin/events`. When you activate an event with "All Free" c
 - Orders are marked `payment_status: 'free'`
 
 Only one event can be active at a time.
+
+---
+
+## Sold Out ("86") — Barista Controlled
+
+When you run out of something mid-service, the barista flips it themselves — no admin login needed.
+
+**`/barista` → "Sold Out / 86" tab.** Tap any drink or add-in to toggle it. Tap again to restock.
+
+- A sold-out **drink** greys out on the customer menu with a red **SOLD OUT** badge and can't be tapped.
+- A sold-out **add-in** (oat milk, a syrup) shows struck-through and disabled inside the customization modal, so customers see *why* it's unavailable instead of wondering where it went.
+- If **every** option in a *required* group is sold out, the drink can't be made — the modal blocks "Add to Order" and says so.
+
+Updates reach every open phone instantly via Supabase Realtime on `menu_items` and `modifiers`. No refresh.
+
+**Two different "off" switches — don't confuse them:**
+
+| Flag | Set by | Meaning | Customer sees |
+|------|--------|---------|---------------|
+| `is_available` | Admin (`/admin/menu` → Hide) | Off the menu entirely | Nothing — item isn't listed |
+| `is_sold_out` | Barista (`/barista` → 86 tab) | Ran out today | Greyed out, "Sold Out" |
+
+---
+
+## Ordering Hours
+
+Customers can only place orders inside the windows set at **`/admin/settings`**.
+
+- **Weekly schedule** — per weekday, toggle open and set an open/close time. Sunday 9:00–11:30am is the default.
+- **Override** — three states:
+  - **Follow Schedule** (default) — auto opens/closes on the hours above
+  - **Force Open** — take orders now regardless of the schedule (started early)
+  - **Force Closed** — stop taking orders now (ran out of milk, packing up)
+
+When closed, the menu is still fully browsable but the cart button reads **"Ordering Is Closed"** and checkout is blocked. Checkout also **re-checks the schedule at submit time**, so an order can't slip through on a page that's been sitting open since before closing.
+
+Times are compared against the **device's local clock** — fine for a walk-up stand where staff and customers are in the same timezone.
+
+The big banner (service title, subtitle, open/closed state, "serving until 11:30 AM", weekly schedule) is `src/components/ShopBanner.tsx`, shown on both `/` and `/live`. Edit its text at `/admin/settings`.
+
+---
+
+## Donations (formerly Tips)
+
+Every customer-facing "tip" is now a **donation**, and it can be switched off entirely.
+
+- **`/admin/settings` → Donations** — toggle on/off, rename the label, set quick amounts (e.g. `1,2,5`).
+- When **off**, the donation box disappears from both `/checkout` and `/tablet`. Any amount already entered is zeroed out.
+
+**Database note:** the amount is still stored in `orders.tip_amount` — the column was left alone so existing orders and reports keep working. Only the UI language changed. Client-side, `CartState` calls it `donation_amount` and maps to `tip_amount` on insert.
 
 ---
 
@@ -314,7 +393,22 @@ For Netlify:
 **Add a new menu item:**
 1. Go to `/admin/menu`
 2. Click `+ Menu Item`, fill in name, category, price, description
-3. Go to `/admin/modifiers` to link modifier groups to the item (done automatically via `item_modifier_groups` table — currently managed via Supabase table editor directly)
+3. Click **`Options`** on the new item to choose which modifier groups it offers, and to hide or lock individual options on it
+
+**Set the service time / ordering window:**
+1. Go to `/admin/settings`
+2. Set the **Service Banner** title and subtitle (the big header customers see)
+3. Under **Ordering Hours**, tick each day you serve and set open/close times
+4. Use **Force Closed** if you run out and need to stop orders immediately
+
+**Mark something sold out mid-service:**
+1. On the tablet, open `/barista` → **Sold Out / 86** tab
+2. Tap the drink or add-in you ran out of — customers see it as Sold Out instantly
+3. Tap again to restock
+
+**Turn off donation requests:**
+1. Go to `/admin/settings` → **Donations**
+2. Untick "Ask customers for a donation" — the box disappears from checkout and the tablet
 
 **Run a free event (e.g., Sunday service):**
 1. Go to `/admin/events`

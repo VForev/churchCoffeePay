@@ -129,7 +129,7 @@ export default function AdminOrdersPage() {
   });
 
   const totalRevenue = filtered.reduce((sum, o) => sum + o.total, 0);
-  const totalTips = filtered.reduce((sum, o) => sum + o.tip_amount, 0);
+  const totalDonations = filtered.reduce((sum, o) => sum + o.tip_amount, 0);
 
   if (loading) {
     return (
@@ -208,8 +208,8 @@ export default function AdminOrdersPage() {
           <p className="text-2xl font-heading font-bold">${totalRevenue.toFixed(2)}</p>
         </Card>
         <Card>
-          <p className="text-sm text-text-light">Tips</p>
-          <p className="text-2xl font-heading font-bold">${totalTips.toFixed(2)}</p>
+          <p className="text-sm text-text-light">Donations</p>
+          <p className="text-2xl font-heading font-bold">${totalDonations.toFixed(2)}</p>
         </Card>
       </div>
 
@@ -238,7 +238,7 @@ export default function AdminOrdersPage() {
                       {new Date(order.created_at).toLocaleString()}
                       {' · '}{order.order_source}
                       {order.discount_amount > 0 && ` · -$${order.discount_amount.toFixed(2)} off`}
-                      {order.tip_amount > 0 && ` · $${order.tip_amount.toFixed(2)} tip`}
+                      {order.tip_amount > 0 && ` · $${order.tip_amount.toFixed(2)} donation`}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">

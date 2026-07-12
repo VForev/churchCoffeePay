@@ -1,14 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { cartStore } from '@/lib/cart-store';
 import { useCart } from '@/lib/hooks';
+import { fetchShopConfig, getShopStatus, DEFAULT_SETTINGS } from '@/lib/shop';
+import { fetchItemModifierGroups } from '@/lib/menu';
 import CategoryTabs from '@/components/menu/CategoryTabs';
 import MenuCard from '@/components/menu/MenuCard';
 import ModifierSelector from '@/components/menu/ModifierSelector';
 import CartDrawer from '@/components/cart/CartDrawer';
-import type { Category, MenuItem, ModifierGroup, Modifier, Event } from '@/types';
+import ShopBanner, { ClosedNotice } from '@/components/ShopBanner';
+import type {
+  Category,
+  MenuItem,
+  ModifierGroup,
+  Modifier,
+  Event,
+  ShopSettings,
+  OrderingHours,
+} from '@/types';
 import { useRouter } from 'next/navigation';
 
 export default function MenuPage() {
@@ -24,90 +35,91 @@ export default function MenuPage() {
   const [loading, setLoading] = useState(true);
   const [queueWait, setQueueWait] = useState<number | null>(null);
 
-  // Fetch queue wait estimate once on mount
-  useEffect(() => {
-    async function fetchQueueWait() {
-      const { data: activeOrders } = await supabase
-        .from('orders')
-        .select('id')
-        .in('status', ['pending', 'in_progress'])
-        .is('archived_at', null);
+  const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
+  const [hours, setHours] = useState<OrderingHours[]>([]);
+  // Re-evaluated on a timer so the shop closes itself while the page sits open.
+  const [now, setNow] = useState(() => new Date());
 
-      if (!activeOrders || activeOrders.length === 0) {
-        setQueueWait(0);
-        return;
-      }
+  const status = getShopStatus(settings, hours, now);
 
-      const orderIds = activeOrders.map((o) => o.id);
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('quantity')
-        .in('order_id', orderIds);
+  const fetchQueueWait = useCallback(async () => {
+    const { data: activeOrders } = await supabase
+      .from('orders')
+      .select('id')
+      .in('status', ['pending', 'in_progress'])
+      .is('archived_at', null);
 
-      setQueueWait(items?.reduce((sum, i) => sum + i.quantity, 0) ?? 0);
+    if (!activeOrders || activeOrders.length === 0) {
+      setQueueWait(0);
+      return;
     }
-    fetchQueueWait();
+
+    const { data: items } = await supabase
+      .from('order_items')
+      .select('quantity')
+      .in('order_id', activeOrders.map((o) => o.id));
+
+    setQueueWait(items?.reduce((sum, i) => sum + i.quantity, 0) ?? 0);
   }, []);
 
-  // Fetch categories, items, and active event
-  useEffect(() => {
-    async function fetchMenu() {
-      const [catRes, itemRes, eventRes] = await Promise.all([
-        supabase.from('categories').select('*').eq('is_active', true).order('display_order'),
-        supabase.from('menu_items').select('*').eq('is_available', true).order('display_order'),
-        supabase.from('events').select('*').eq('is_active', true).limit(1).single(),
-      ]);
+  const fetchMenu = useCallback(async () => {
+    const [catRes, itemRes, eventRes, config] = await Promise.all([
+      supabase.from('categories').select('*').eq('is_active', true).order('display_order'),
+      supabase.from('menu_items').select('*').eq('is_available', true).order('display_order'),
+      supabase.from('events').select('*').eq('is_active', true).limit(1).maybeSingle(),
+      fetchShopConfig(),
+    ]);
 
-      if (catRes.data) {
-        setCategories(catRes.data);
-        if (catRes.data.length > 0) setActiveCategory(catRes.data[0].id);
-      }
-      if (itemRes.data) setMenuItems(itemRes.data);
-      if (eventRes.data) setActiveEvent(eventRes.data);
-      setLoading(false);
+    if (catRes.data) {
+      setCategories(catRes.data);
+      setActiveCategory((prev) => prev ?? catRes.data[0]?.id ?? null);
     }
+    if (itemRes.data) setMenuItems(itemRes.data);
+    setActiveEvent((eventRes.data as Event) ?? null);
+    setSettings(config.settings);
+    setHours(config.hours);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
     fetchMenu();
-  }, []);
+    fetchQueueWait();
 
-  // Fetch modifier groups for selected item
+    // A barista marking something sold out, or an admin flipping the shop
+    // open/closed, should reach every phone with the menu open.
+    const channel = supabase
+      .channel('customer-menu')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'modifiers' }, fetchMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shop_settings' }, fetchMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ordering_hours' }, fetchMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchQueueWait)
+      .subscribe();
+
+    // Ticks the clock so ordering closes on schedule without a refresh.
+    const ticker = setInterval(() => setNow(new Date()), 30000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(ticker);
+    };
+  }, [fetchMenu, fetchQueueWait]);
+
+  // Load the selected drink's options, with its per-drink hide/lock rules applied.
   useEffect(() => {
     if (!selectedItem) return;
-    async function fetchModifiers() {
-      // Get modifier group IDs linked to this item
-      const { data: links } = await supabase
-        .from('item_modifier_groups')
-        .select('modifier_group_id')
-        .eq('menu_item_id', selectedItem!.id);
+    let cancelled = false;
 
-      if (!links || links.length === 0) {
-        setModifierGroups([]);
-        return;
-      }
+    // Clear first, or the modal flashes the previously-opened drink's options.
+    setModifierGroups([]);
 
-      const groupIds = links.map((l) => l.modifier_group_id);
-      const { data: groups } = await supabase
-        .from('modifier_groups')
-        .select('*')
-        .in('id', groupIds)
-        .order('display_order');
+    fetchItemModifierGroups(selectedItem.id).then((groups) => {
+      if (!cancelled) setModifierGroups(groups);
+    });
 
-      if (!groups) { setModifierGroups([]); return; }
-
-      // Fetch modifiers for each group
-      const { data: mods } = await supabase
-        .from('modifiers')
-        .select('*')
-        .in('group_id', groupIds)
-        .eq('is_available', true);
-
-      const groupsWithMods = groups.map((g) => ({
-        ...g,
-        modifiers: (mods || []).filter((m) => m.group_id === g.id),
-      }));
-
-      setModifierGroups(groupsWithMods);
-    }
-    fetchModifiers();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedItem]);
 
   const filteredItems = menuItems.filter((item) => item.category_id === activeCategory);
@@ -121,10 +133,10 @@ export default function MenuPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-text-light font-body">Loading menu...</p>
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
+          <p className="font-body text-text-light">Loading menu...</p>
         </div>
       </div>
     );
@@ -132,38 +144,37 @@ export default function MenuPage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      {/* Header */}
-      <header className="bg-surface border-b border-gray-100 sticky top-0 z-30">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-heading font-bold text-primary">LOTG Coffee</h1>
-            {activeEvent && (
-              <p className="text-xs font-accent text-warm mt-0.5">
-                {activeEvent.name}
-                {isEventFree && ' — Everything Free!'}
-              </p>
-            )}
-            {queueWait !== null && (
-              <p className={`text-xs font-accent mt-0.5 ${queueWait === 0 ? 'text-success' : 'text-text-light'}`}>
+      {/* Compact sticky bar — stays out of the way once you start scrolling */}
+      <header className="sticky top-0 z-30 border-b border-gray-100 bg-surface">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="truncate font-heading text-lg font-bold text-primary">
+              {settings.service_title}
+            </h2>
+            {queueWait !== null && status.isOpen && (
+              <p
+                className={`font-accent text-xs ${queueWait === 0 ? 'text-success' : 'text-text-light'}`}
+              >
                 {queueWait === 0 ? 'No wait — order now!' : `~${queueWait} min current wait`}
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex shrink-0 items-center gap-2">
             <button
               onClick={() => router.push('/live')}
-              className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2.5 font-accent font-semibold text-sm text-primary transition-all hover:bg-primary/10 cursor-pointer"
+              className="flex cursor-pointer items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2.5 font-accent text-sm font-semibold text-primary transition-all hover:bg-primary/10"
             >
-              <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+              <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
               Track Order
             </button>
             <button
               onClick={() => setCartOpen(true)}
-              className="relative bg-primary text-white rounded-full px-5 py-2.5 font-accent font-semibold text-sm transition-all hover:bg-primary-light cursor-pointer"
+              className="relative cursor-pointer rounded-full bg-primary px-5 py-2.5 font-accent text-sm font-semibold text-white transition-all hover:bg-primary-light"
             >
               Order
               {cart.itemCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-success text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-success text-xs font-bold text-white">
                   {cart.itemCount}
                 </span>
               )}
@@ -172,28 +183,42 @@ export default function MenuPage() {
         </div>
       </header>
 
-      {/* Category Tabs */}
-      <div className="max-w-5xl mx-auto px-4 pt-4">
-        <CategoryTabs
-          categories={categories}
-          activeId={activeCategory}
-          onSelect={setActiveCategory}
-        />
+      <div className="mx-auto max-w-5xl px-4 pt-5">
+        <ShopBanner settings={settings} status={status} />
+
+        {activeEvent && (
+          <div className="mt-3 rounded-2xl border border-warm/20 bg-warm/5 px-4 py-3">
+            <p className="font-accent text-sm font-semibold text-warm">
+              {activeEvent.name}
+              {isEventFree && ' — everything is free today!'}
+            </p>
+          </div>
+        )}
+
+        {!status.isOpen && (
+          <div className="mt-3">
+            <ClosedNotice settings={settings} status={status} />
+          </div>
+        )}
       </div>
 
-      {/* Menu Grid */}
-      <main className="max-w-5xl mx-auto px-4 py-6">
+      <div className="mx-auto max-w-5xl px-4 pt-5">
+        <CategoryTabs categories={categories} activeId={activeCategory} onSelect={setActiveCategory} />
+      </div>
+
+      <main className="mx-auto max-w-5xl px-4 py-6">
         {filteredItems.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="py-12 text-center">
             <p className="text-text-light">No items in this category</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredItems.map((item) => (
               <MenuCard
                 key={item.id}
                 item={item}
                 eventFree={isEventFree}
+                orderingClosed={!status.isOpen}
                 onClick={() => setSelectedItem(item)}
               />
             ))}
@@ -201,12 +226,12 @@ export default function MenuPage() {
         )}
       </main>
 
-      {/* Mobile cart button (fixed bottom) */}
-      {cart.itemCount > 0 && !cartOpen && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-surface/90 backdrop-blur-sm border-t border-gray-100 sm:hidden z-30">
+      {/* Mobile cart button */}
+      {cart.itemCount > 0 && !cartOpen && status.isOpen && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-100 bg-surface/90 p-4 backdrop-blur-sm sm:hidden">
           <button
             onClick={() => setCartOpen(true)}
-            className="w-full bg-primary text-white rounded-full py-3 font-accent font-semibold flex items-center justify-center gap-2 cursor-pointer"
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary py-3 font-accent font-semibold text-white"
           >
             View Order ({cart.itemCount})
             <span className="text-sm opacity-75">${cart.total.toFixed(2)}</span>
@@ -214,7 +239,6 @@ export default function MenuPage() {
         </div>
       )}
 
-      {/* Modifier Modal */}
       {selectedItem && (
         <ModifierSelector
           isOpen={!!selectedItem}
@@ -226,10 +250,10 @@ export default function MenuPage() {
         />
       )}
 
-      {/* Cart Drawer */}
       <CartDrawer
         isOpen={cartOpen}
         onClose={() => setCartOpen(false)}
+        orderingOpen={status.isOpen}
         onCheckout={() => {
           setCartOpen(false);
           router.push('/checkout');

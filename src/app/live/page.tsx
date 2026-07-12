@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { Order, OrderItem } from '@/types';
+import { fetchShopConfig, getShopStatus, DEFAULT_SETTINGS } from '@/lib/shop';
+import ShopBanner from '@/components/ShopBanner';
+import type { Order, OrderItem, ShopSettings, OrderingHours } from '@/types';
 
 interface LiveOrder extends Order {
   order_items: (OrderItem & { menu_item: { name: string } })[];
@@ -26,30 +28,31 @@ function calculateWaitMinutes(allOrders: LiveOrder[], currentOrder: LiveOrder): 
   return itemsAhead + thisOrderItems;
 }
 
+// Bold, saturated status colors — this screen is read from across the room.
 const STATUS_CONFIG = {
   pending: {
     label: 'Up Next',
-    bg: 'bg-warning/10',
-    border: 'border-warning/30',
-    dot: 'bg-warning',
-    text: 'text-amber-700',
-    badge: 'bg-warning/20 text-amber-800',
+    card: 'bg-amber-50 border-amber-400',
+    badge: 'bg-amber-500 text-white',
+    dot: 'bg-white',
+    numberChip: 'bg-amber-500 text-white',
+    time: 'text-amber-900',
   },
   in_progress: {
     label: 'Being Made',
-    bg: 'bg-primary/5',
-    border: 'border-primary/20',
-    dot: 'bg-primary animate-pulse',
-    text: 'text-primary',
-    badge: 'bg-primary/10 text-primary',
+    card: 'bg-blue-50 border-primary',
+    badge: 'bg-primary text-white',
+    dot: 'bg-white animate-pulse',
+    numberChip: 'bg-primary text-white',
+    time: 'text-primary',
   },
   ready: {
     label: 'Ready!',
-    bg: 'bg-success/10',
-    border: 'border-success/40',
-    dot: 'bg-success',
-    text: 'text-success',
-    badge: 'bg-success/20 text-success font-bold',
+    card: 'bg-emerald-50 border-success',
+    badge: 'bg-success text-white',
+    dot: 'bg-white animate-pulse',
+    numberChip: 'bg-success text-white',
+    time: 'text-success',
   },
 } as const;
 
@@ -57,63 +60,69 @@ export default function LiveOrdersPage() {
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
-  // Track orders that just became "ready" to briefly highlight them
-  const prevOrdersRef = useRef<LiveOrder[]>([]);
+  const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
+  const [hours, setHours] = useState<OrderingHours[]>([]);
 
-  async function fetchOrders() {
+  const status = getShopStatus(settings, hours, new Date(now));
+
+  const fetchOrders = useCallback(async () => {
     const { data } = await supabase
       .from('orders')
-      .select(`
+      .select(
+        `
         *,
         order_items (
           *,
           menu_item:menu_items (name)
         )
-      `)
+      `,
+      )
       .in('status', ['pending', 'in_progress', 'ready'])
       .order('created_at', { ascending: true });
 
-    if (data) {
-      prevOrdersRef.current = orders;
-      setOrders(data as unknown as LiveOrder[]);
-    }
+    if (data) setOrders(data as unknown as LiveOrder[]);
     setLoading(false);
-  }
+  }, []);
+
+  const loadConfig = useCallback(async () => {
+    const config = await fetchShopConfig();
+    setSettings(config.settings);
+    setHours(config.hours);
+  }, []);
 
   useEffect(() => {
     fetchOrders();
+    loadConfig();
 
     const channel = supabase
       .channel('live-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        fetchOrders();
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchOrders)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shop_settings' }, loadConfig)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ordering_hours' }, loadConfig)
       .subscribe();
 
-    // Tick every 30s so countdown stays live
+    // Tick every 30s so countdowns and the open/closed state stay live
     const ticker = setInterval(() => setNow(Date.now()), 30000);
 
     return () => {
       supabase.removeChannel(channel);
       clearInterval(ticker);
     };
-  }, []);
+  }, [fetchOrders, loadConfig]);
 
-  // Separate ready orders (pinned top) from queue orders
   const readyOrders = orders.filter((o) => o.status === 'ready');
   const queueOrders = orders.filter((o) => o.status === 'pending' || o.status === 'in_progress');
 
-  // Queue position: 1-indexed among pending+in_progress, sorted by created_at
   function queuePosition(order: LiveOrder): number {
     return queueOrders.indexOf(order) + 1;
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-bg">
         <div className="text-center">
-          <div className="w-14 h-14 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-text-light font-body text-lg">Loading orders...</p>
+          <div className="mx-auto mb-4 h-14 w-14 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
+          <p className="font-body text-lg text-text-light">Loading orders...</p>
         </div>
       </div>
     );
@@ -121,40 +130,40 @@ export default function LiveOrdersPage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      {/* Header */}
-      <header className="bg-primary text-white sticky top-0 z-30">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-heading font-bold">LOTG Coffee</h1>
-            <p className="text-sm opacity-75 mt-0.5">Live Order Status</p>
-          </div>
+      <header className="sticky top-0 z-30 bg-primary text-white">
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
+          <h1 className="font-heading text-lg font-bold">Live Order Status</h1>
           <div className="text-right">
             <p className="text-sm opacity-75">
               {orders.length} active order{orders.length !== 1 ? 's' : ''}
             </p>
-            <p className="text-xs opacity-50 mt-0.5">
+            <p className="mt-0.5 text-xs opacity-50">
               {new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-3">
-        {/* Empty state */}
+      <div className="mx-auto max-w-2xl px-4 pt-5">
+        <ShopBanner settings={settings} status={status} />
+      </div>
+
+      <main className="mx-auto max-w-2xl space-y-3 px-4 py-6">
         {orders.length === 0 && (
-          <div className="text-center py-20">
-            <p className="text-6xl mb-4">&#9749;</p>
-            <h2 className="text-2xl font-heading font-bold text-text-dark mb-2">
+          <div className="py-16 text-center">
+            <p className="mb-4 text-6xl">&#9749;</p>
+            <h2 className="mb-2 font-heading text-2xl font-bold text-text-dark">
               No orders right now
             </h2>
-            <p className="text-text-light font-body">Come grab a coffee!</p>
+            <p className="font-body text-text-light">
+              {status.isOpen ? 'Come grab a coffee!' : "We'll be back during service."}
+            </p>
           </div>
         )}
 
-        {/* Ready orders — pinned at top */}
         {readyOrders.length > 0 && (
           <div className="space-y-3">
-            <h2 className="text-sm font-accent font-semibold text-success uppercase tracking-wide px-1">
+            <h2 className="px-1 font-accent text-sm font-bold uppercase tracking-wide text-success">
               Ready for pickup
             </h2>
             {readyOrders.map((order) => (
@@ -163,11 +172,10 @@ export default function LiveOrdersPage() {
           </div>
         )}
 
-        {/* Queue */}
         {queueOrders.length > 0 && (
           <div className="space-y-3">
             {readyOrders.length > 0 && (
-              <h2 className="text-sm font-accent font-semibold text-text-light uppercase tracking-wide px-1 pt-2">
+              <h2 className="px-1 pt-2 font-accent text-sm font-bold uppercase tracking-wide text-text-light">
                 In queue
               </h2>
             )}
@@ -183,9 +191,8 @@ export default function LiveOrdersPage() {
           </div>
         )}
 
-        {/* Footer note */}
         {orders.length > 0 && (
-          <p className="text-center text-xs text-text-light pt-4 pb-2 font-body">
+          <p className="pb-2 pt-4 text-center font-body text-xs text-text-light">
             This page updates automatically · Est. 1 min per item
           </p>
         )}
@@ -211,8 +218,7 @@ function OrderCard({
   const isReady = order.status === 'ready';
   const totalItems = order.order_items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
 
-  // Compute live remaining time: estimate when this order will be done
-  // based on when it was placed + total estimated wait, minus time already elapsed
+  // Live countdown: when this order should be done, minus time already elapsed
   let remainingMinutes: number | null = null;
   if (!isReady && waitMinutes !== null) {
     const estimatedDoneAt = new Date(order.created_at).getTime() + waitMinutes * 60000;
@@ -221,34 +227,23 @@ function OrderCard({
 
   return (
     <div
-      className={`rounded-2xl border-2 p-4 transition-all ${config.bg} ${config.border} ${
+      className={`rounded-2xl border-2 p-4 transition-all ${config.card} ${
         isReady ? 'shadow-lg' : 'shadow-sm'
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        {/* Left side */}
-        <div className="flex items-start gap-3 min-w-0">
-          {/* Position number or checkmark */}
+        <div className="flex min-w-0 items-start gap-3">
           <div
-            className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-heading font-bold shrink-0 ${
-              isReady
-                ? 'bg-success text-white text-xl'
-                : 'bg-surface text-text-dark border-2 border-gray-200'
-            }`}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-heading text-lg font-bold shadow-sm ${config.numberChip}`}
           >
             {isReady ? '✓' : position}
           </div>
 
-          {/* Name and items */}
           <div className="min-w-0">
-            <h3
-              className={`font-heading font-bold text-xl leading-tight ${
-                isReady ? 'text-success' : 'text-text-dark'
-              }`}
-            >
+            <h3 className="font-heading text-xl font-bold leading-tight text-text-dark">
               {order.customer_name}
             </h3>
-            <p className="text-sm text-text-light mt-0.5 font-body">
+            <p className="mt-0.5 font-body text-sm text-text-light">
               {totalItems} item{totalItems !== 1 ? 's' : ''}
               {order.order_items?.length > 0 && (
                 <span className="ml-1">
@@ -262,22 +257,22 @@ function OrderCard({
           </div>
         </div>
 
-        {/* Right side — status + time */}
-        <div className="text-right shrink-0">
-          <div className="flex items-center gap-1.5 justify-end mb-1">
-            <span className={`w-2 h-2 rounded-full ${config.dot}`} />
-            <span className={`text-sm font-accent font-semibold ${config.text}`}>
-              {config.label}
-            </span>
-          </div>
+        <div className="shrink-0 text-right">
+          <span
+            className={`mb-1.5 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-accent text-sm font-bold shadow-sm ${config.badge}`}
+          >
+            <span className={`h-2 w-2 rounded-full ${config.dot}`} />
+            {config.label}
+          </span>
+
           {isReady ? (
-            <p className="text-xs text-success font-body">Pick up at the counter!</p>
+            <p className="font-accent text-xs font-bold text-success">Pick up at the counter!</p>
           ) : remainingMinutes !== null ? (
             remainingMinutes === 0 ? (
-              <p className="text-sm font-accent font-bold text-success">Any moment!</p>
+              <p className={`font-accent text-sm font-bold ${config.time}`}>Any moment!</p>
             ) : (
               <div>
-                <p className="text-lg font-heading font-bold text-text-dark">
+                <p className={`font-heading text-xl font-bold ${config.time}`}>
                   ~{remainingMinutes} min
                 </p>
                 <p className="text-xs text-text-light">remaining</p>

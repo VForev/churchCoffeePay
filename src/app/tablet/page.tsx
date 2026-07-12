@@ -1,13 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import ModifierSelector from '@/components/menu/ModifierSelector';
+import { fetchItemModifierGroups } from '@/lib/menu';
+import { fetchShopConfig, parseDonationPresets, DEFAULT_SETTINGS } from '@/lib/shop';
 import { cn } from '@/lib/utils';
 import { generateId } from '@/lib/utils';
-import type { Category, MenuItem, ModifierGroup, Modifier, Event, CartItem, Coupon } from '@/types';
+import type {
+  Category,
+  MenuItem,
+  ModifierGroup,
+  Modifier,
+  Event,
+  CartItem,
+  Coupon,
+  ShopSettings,
+} from '@/types';
 
 // ─── Local cart ───────────────────────────────────────────────────────────────
 
@@ -18,14 +29,14 @@ interface TabletCart {
   total: number;
   coupon: Coupon | null;
   discountAmount: number;
-  tipAmount: number;
+  donationAmount: number;
 }
 
 function buildCart(
   items: CartItem[],
   customerName: string,
   coupon: Coupon | null,
-  tipAmount: number,
+  donationAmount: number,
 ): TabletCart {
   const subtotal = items.reduce((s, i) => s + i.item_total, 0);
   let discountAmount = 0;
@@ -34,8 +45,8 @@ function buildCart(
     else if (coupon.discount_type === 'fixed_amount') discountAmount = Math.min(coupon.discount_value, subtotal);
     else if (coupon.discount_type === 'free_item') discountAmount = subtotal;
   }
-  const total = Math.max(0, subtotal - discountAmount) + tipAmount;
-  return { items, customerName, subtotal, total, coupon, discountAmount, tipAmount };
+  const total = Math.max(0, subtotal - discountAmount) + donationAmount;
+  return { items, customerName, subtotal, total, coupon, discountAmount, donationAmount };
 }
 
 // ─── Page wrapper ─────────────────────────────────────────────────────────────
@@ -68,10 +79,13 @@ function TabletInner() {
   // Cart state
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
-  const [tipAmount, setTipAmount] = useState(0);
+  const [donationAmount, setDonationAmount] = useState(0);
   const [coupon, setCoupon] = useState<Coupon | null>(null);
   const [couponCode, setCouponCode] = useState('');
   const [couponError, setCouponError] = useState('');
+
+  // Shop settings (donation label / on-off)
+  const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
 
   // UI state
   const [view, setView] = useState<TabletView>('order');
@@ -80,50 +94,63 @@ function TabletInner() {
   const [confirmedOrderName, setConfirmedOrderName] = useState('');
 
   const isEventFree = activeEvent?.is_all_free || false;
-  const cart = buildCart(cartItems, customerName, coupon, tipAmount);
+  const cart = buildCart(cartItems, customerName, coupon, donationAmount);
   const isFreeOrder = cart.total === 0;
   const totalItemCount = cartItems.reduce((s, i) => s + i.quantity, 0);
+  const donationPresets = parseDonationPresets(settings.donation_presets);
 
-  useEffect(() => {
-    async function fetchMenu() {
-      const [catRes, itemRes, eventRes] = await Promise.all([
-        supabase.from('categories').select('*').eq('is_active', true).order('display_order'),
-        supabase.from('menu_items').select('*').eq('is_available', true).order('display_order'),
-        supabase.from('events').select('*').eq('is_active', true).limit(1).single(),
-      ]);
-      if (catRes.data) {
-        setCategories(catRes.data);
-        if (catRes.data.length > 0) setActiveCategory(catRes.data[0].id);
-      }
-      if (itemRes.data) setMenuItems(itemRes.data);
-      if (eventRes.data) setActiveEvent(eventRes.data);
-      setMenuLoading(false);
+  const fetchMenu = useCallback(async () => {
+    const [catRes, itemRes, eventRes, config] = await Promise.all([
+      supabase.from('categories').select('*').eq('is_active', true).order('display_order'),
+      supabase.from('menu_items').select('*').eq('is_available', true).order('display_order'),
+      supabase.from('events').select('*').eq('is_active', true).limit(1).maybeSingle(),
+      fetchShopConfig(),
+    ]);
+    if (catRes.data) {
+      setCategories(catRes.data);
+      setActiveCategory((prev) => prev ?? catRes.data[0]?.id ?? null);
     }
-    fetchMenu();
+    if (itemRes.data) setMenuItems(itemRes.data);
+    setActiveEvent((eventRes.data as Event) ?? null);
+    setSettings(config.settings);
+    setMenuLoading(false);
   }, []);
 
   useEffect(() => {
+    fetchMenu();
+
+    // Keep the counter in sync when someone marks a drink sold out.
+    const channel = supabase
+      .channel('tablet-menu')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'modifiers' }, fetchMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shop_settings' }, fetchMenu)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchMenu]);
+
+  // Donations may be switched off mid-shift.
+  useEffect(() => {
+    if (!settings.donations_enabled && donationAmount > 0) setDonationAmount(0);
+  }, [settings.donations_enabled, donationAmount]);
+
+  useEffect(() => {
     if (!selectedItem) return;
-    async function fetchModifiers() {
-      const { data: links } = await supabase
-        .from('item_modifier_groups')
-        .select('modifier_group_id')
-        .eq('menu_item_id', selectedItem!.id);
-      if (!links || links.length === 0) { setModifierGroups([]); return; }
-      const groupIds = links.map((l) => l.modifier_group_id);
-      const [groupsRes, modsRes] = await Promise.all([
-        supabase.from('modifier_groups').select('*').in('id', groupIds).order('display_order'),
-        supabase.from('modifiers').select('*').in('group_id', groupIds).eq('is_available', true),
-      ]);
-      if (!groupsRes.data) { setModifierGroups([]); return; }
-      setModifierGroups(
-        groupsRes.data.map((g) => ({
-          ...g,
-          modifiers: (modsRes.data || []).filter((m) => m.group_id === g.id),
-        })),
-      );
-    }
-    fetchModifiers();
+    let cancelled = false;
+
+    // Clear first, or the modal flashes the previously-tapped drink's options.
+    setModifierGroups([]);
+
+    fetchItemModifierGroups(selectedItem.id).then((groups) => {
+      if (!cancelled) setModifierGroups(groups);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedItem]);
 
   function addToCart(modifiers: Modifier[], instructions: string) {
@@ -214,7 +241,7 @@ function TabletInner() {
           status: 'pending',
           subtotal: cart.subtotal,
           discount_amount: cart.discountAmount,
-          tip_amount: cart.tipAmount,
+          tip_amount: cart.donationAmount,
           total: cart.total,
           payment_status: isFreeOrder ? 'free' : 'paid',
           stripe_payment_id: stripePaymentId,
@@ -263,7 +290,7 @@ function TabletInner() {
   function resetForNextOrder() {
     setCartItems([]);
     setCustomerName('');
-    setTipAmount(0);
+    setDonationAmount(0);
     setCoupon(null);
     setCouponCode('');
     setCouponError('');
@@ -342,10 +369,10 @@ function TabletInner() {
                   <span className="font-accent">−${cart.discountAmount.toFixed(2)}</span>
                 </div>
               )}
-              {cart.tipAmount > 0 && (
+              {cart.donationAmount > 0 && (
                 <div className="flex justify-between text-sm text-text-light pt-1">
-                  <span>Tip</span>
-                  <span className="font-accent">${cart.tipAmount.toFixed(2)}</span>
+                  <span>{settings.donation_label}</span>
+                  <span className="font-accent">${cart.donationAmount.toFixed(2)}</span>
                 </div>
               )}
               <div className="pt-3 border-t border-gray-100 flex justify-between font-heading font-bold text-2xl">
@@ -487,19 +514,42 @@ function TabletInner() {
                 {couponError && <p className="text-xs text-danger mt-1">{couponError}</p>}
               </div>
 
-              {/* Tip */}
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-text-light font-body shrink-0">Tip ($)</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.50"
-                  placeholder="0.00"
-                  value={tipAmount || ''}
-                  onChange={(e) => setTipAmount(parseFloat(e.target.value) || 0)}
-                  className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-body focus:outline-none focus:border-primary"
-                />
-              </div>
+              {/* Donation — hidden when the admin turns donations off */}
+              {settings.donations_enabled && (
+                <div>
+                  <p className="mb-2 font-body text-sm text-text-light">
+                    {settings.donation_label} (optional)
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {donationPresets.map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() =>
+                          setDonationAmount(donationAmount === amount ? 0 : amount)
+                        }
+                        className={cn(
+                          'cursor-pointer touch-manipulation rounded-xl border-2 px-4 py-2.5 font-accent text-sm font-bold transition-all active:scale-95',
+                          donationAmount === amount
+                            ? 'border-success bg-success text-white'
+                            : 'border-gray-200 bg-surface text-text hover:border-success/40',
+                        )}
+                      >
+                        ${amount.toFixed(2)}
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.50"
+                      placeholder="Other"
+                      value={donationAmount || ''}
+                      onChange={(e) => setDonationAmount(Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="w-28 rounded-xl border border-gray-200 px-3 py-2.5 font-body text-sm focus:border-primary focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Total */}
               <div className="pt-3 border-t border-gray-100 flex justify-between font-heading font-bold text-xl">
@@ -602,37 +652,55 @@ function TabletInner() {
             <p className="text-center text-text-light py-20">No items in this category</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {filteredItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setSelectedItem(item)}
-                  disabled={!item.is_available}
-                  className={cn(
-                    'bg-surface rounded-2xl p-4 text-left shadow-sm border border-gray-100 transition-all cursor-pointer touch-manipulation',
-                    'active:scale-95 hover:shadow-md hover:border-primary/20',
-                    !item.is_available && 'opacity-40 cursor-not-allowed',
-                  )}
-                >
-                  {item.image_url && (
-                    <div className="w-full h-20 rounded-xl bg-bg mb-3 overflow-hidden">
-                      <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                    </div>
-                  )}
-                  <h3 className="font-heading font-bold text-text-dark text-sm leading-tight mb-1">
-                    {item.name}
-                  </h3>
-                  {item.description && (
-                    <p className="text-xs text-text-light line-clamp-2 mb-2">{item.description}</p>
-                  )}
-                  <div className="font-accent font-bold text-base mt-auto">
-                    {isEventFree || item.is_free ? (
-                      <span className="text-success">Free</span>
-                    ) : (
-                      <span className="text-primary">${item.base_price.toFixed(2)}</span>
+              {filteredItems.map((item) => {
+                const soldOut = item.is_sold_out;
+
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedItem(item)}
+                    disabled={soldOut}
+                    className={cn(
+                      'relative bg-surface rounded-2xl p-4 text-left shadow-sm border border-gray-100 transition-all touch-manipulation',
+                      soldOut
+                        ? 'cursor-not-allowed border-danger/30 bg-danger/5 opacity-70'
+                        : 'cursor-pointer active:scale-95 hover:shadow-md hover:border-primary/20',
                     )}
-                  </div>
-                </button>
-              ))}
+                  >
+                    {item.image_url && (
+                      <div className="w-full h-20 rounded-xl bg-bg mb-3 overflow-hidden">
+                        <img
+                          src={item.image_url}
+                          alt={item.name}
+                          className={cn('w-full h-full object-cover', soldOut && 'grayscale')}
+                        />
+                      </div>
+                    )}
+                    <h3 className="font-heading font-bold text-text-dark text-sm leading-tight mb-1">
+                      {item.name}
+                    </h3>
+                    {item.description && (
+                      <p className="text-xs text-text-light line-clamp-2 mb-2">{item.description}</p>
+                    )}
+                    <div className="mt-auto flex items-center justify-between gap-2">
+                      <span className="font-accent font-bold text-base">
+                        {isEventFree || item.is_free ? (
+                          <span className="text-success">Free</span>
+                        ) : (
+                          <span className={soldOut ? 'text-text-light line-through' : 'text-primary'}>
+                            ${item.base_price.toFixed(2)}
+                          </span>
+                        )}
+                      </span>
+                      {soldOut && (
+                        <span className="rounded-full bg-danger px-2 py-0.5 font-accent text-[10px] font-bold uppercase tracking-wide text-white">
+                          Sold Out
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

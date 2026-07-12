@@ -12,7 +12,10 @@ export interface MenuItem {
   description: string | null;
   base_price: number;
   image_url: string | null;
+  /** Admin took it off the menu entirely — customers never see it. */
   is_available: boolean;
+  /** Barista ran out today — customers see it greyed out as "Sold Out". */
+  is_sold_out: boolean;
   is_free: boolean;
   display_order: number;
   category?: Category;
@@ -34,14 +37,55 @@ export interface Modifier {
   name: string;
   price_adjustment: number;
   is_default: boolean;
+  /** Admin removed the option entirely. */
   is_available: boolean;
+  /** Barista ran out today (e.g. out of oat milk). */
+  is_sold_out: boolean;
   display_order: number;
+  /** Set per-drink from item_modifier_overrides — always applied, customer cannot remove it. */
+  is_locked?: boolean;
 }
 
 export interface ItemModifierGroup {
   id: string;
   menu_item_id: string;
   modifier_group_id: string;
+  display_order: number;
+}
+
+/**
+ * Per-drink control over a single modifier option. Lets an Americano hide every
+ * Milk option while a Latte still offers them, or lock "Whole Milk" as included.
+ */
+export interface ItemModifierOverride {
+  id: string;
+  menu_item_id: string;
+  modifier_id: string;
+  is_hidden: boolean;
+  is_locked: boolean;
+}
+
+export interface ShopSettings {
+  id: number;
+  service_title: string;
+  service_subtitle: string;
+  donations_enabled: boolean;
+  donation_label: string;
+  /** Comma-separated dollar amounts, e.g. "1,2,5". */
+  donation_presets: string;
+  ordering_override: OrderingOverride;
+  closed_message: string;
+}
+
+export type OrderingOverride = 'auto' | 'open' | 'closed';
+
+export interface OrderingHours {
+  /** 0 = Sunday ... 6 = Saturday, matching JavaScript's Date.getDay(). */
+  day_of_week: number;
+  is_open: boolean;
+  /** "HH:MM:SS" from Postgres. */
+  open_time: string;
+  close_time: string;
 }
 
 export interface Order {
@@ -50,6 +94,7 @@ export interface Order {
   customer_phone: string | null;
   status: OrderStatus;
   subtotal: number;
+  /** Stores the customer's donation. Kept as `tip_amount` to match the existing column. */
   tip_amount: number;
   total: number;
   discount_amount: number;
@@ -165,7 +210,8 @@ export interface CartState {
   items: CartItem[];
   subtotal: number;
   discount_amount: number;
-  tip_amount: number;
+  /** Saved to the order's `tip_amount` column. */
+  donation_amount: number;
   total: number;
   coupon: Coupon | null;
   customer_name: string;

@@ -9,7 +9,7 @@ let state: CartState = {
   items: [],
   subtotal: 0,
   discount_amount: 0,
-  tip_amount: 0,
+  donation_amount: 0,
   total: 0,
   coupon: null,
   customer_name: '',
@@ -37,7 +37,7 @@ function recalculate() {
   }
 
   const afterDiscount = Math.max(0, state.subtotal - state.discount_amount);
-  state.total = afterDiscount + state.tip_amount;
+  state.total = afterDiscount + state.donation_amount;
 }
 
 export const cartStore = {
@@ -96,8 +96,8 @@ export const cartStore = {
     notify();
   },
 
-  setTip: (amount: number) => {
-    state = { ...state, tip_amount: amount };
+  setDonation: (amount: number) => {
+    state = { ...state, donation_amount: Math.max(0, amount) };
     recalculate();
     notify();
   },
@@ -119,7 +119,7 @@ export const cartStore = {
       items: [],
       subtotal: 0,
       discount_amount: 0,
-      tip_amount: 0,
+      donation_amount: 0,
       total: 0,
       coupon: null,
       customer_name: '',

@@ -7,10 +7,18 @@ import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import { cartStore } from '@/lib/cart-store';
 import { useCart } from '@/lib/hooks';
+import {
+  fetchShopConfig,
+  getShopStatus,
+  parseDonationPresets,
+  DEFAULT_SETTINGS,
+} from '@/lib/shop';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
-import type { Coupon } from '@/types';
+import { ClosedNotice } from '@/components/ShopBanner';
+import { cn } from '@/lib/utils';
+import type { Coupon, ShopSettings, OrderingHours } from '@/types';
 
 function CheckoutForm() {
   const router = useRouter();
@@ -24,32 +32,51 @@ function CheckoutForm() {
   const [error, setError] = useState('');
   const [queueWait, setQueueWait] = useState<number | null>(null);
 
+  const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
+  const [hours, setHours] = useState<OrderingHours[]>([]);
+  const [configLoaded, setConfigLoaded] = useState(false);
+
+  const status = getShopStatus(settings, hours);
   const isFreeOrder = cart.total === 0;
   const cartItemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+  const donationPresets = parseDonationPresets(settings.donation_presets);
 
   useEffect(() => {
-    async function fetchQueueWait() {
-      const { data: activeOrders } = await supabase
-        .from('orders')
-        .select('id')
-        .in('status', ['pending', 'in_progress'])
-        .is('archived_at', null);
+    async function load() {
+      const [config, { data: activeOrders }] = await Promise.all([
+        fetchShopConfig(),
+        supabase
+          .from('orders')
+          .select('id')
+          .in('status', ['pending', 'in_progress'])
+          .is('archived_at', null),
+      ]);
+
+      setSettings(config.settings);
+      setHours(config.hours);
+      setConfigLoaded(true);
 
       if (!activeOrders || activeOrders.length === 0) {
         setQueueWait(0);
         return;
       }
 
-      const orderIds = activeOrders.map((o) => o.id);
       const { data: items } = await supabase
         .from('order_items')
         .select('quantity')
-        .in('order_id', orderIds);
+        .in('order_id', activeOrders.map((o) => o.id));
 
       setQueueWait(items?.reduce((sum, i) => sum + i.quantity, 0) ?? 0);
     }
-    fetchQueueWait();
+    load();
   }, []);
+
+  // Donations may have been switched off after something was already added.
+  useEffect(() => {
+    if (configLoaded && !settings.donations_enabled && cart.donation_amount > 0) {
+      cartStore.setDonation(0);
+    }
+  }, [configLoaded, settings.donations_enabled, cart.donation_amount]);
 
   async function applyCoupon() {
     if (!couponCode.trim()) return;
@@ -94,11 +121,19 @@ function CheckoutForm() {
       return;
     }
 
+    // Re-check against the live schedule — the shop may have closed while this page sat open.
+    const freshConfig = await fetchShopConfig();
+    if (!getShopStatus(freshConfig.settings, freshConfig.hours).isOpen) {
+      setSettings(freshConfig.settings);
+      setHours(freshConfig.hours);
+      setError('Ordering just closed — your order was not placed.');
+      return;
+    }
+
     setProcessing(true);
     setError('');
 
     try {
-      // Build order items for database
       const orderItems = cart.items.map((item) => ({
         menu_item_id: item.menu_item.id,
         quantity: item.quantity,
@@ -112,24 +147,18 @@ function CheckoutForm() {
 
       let stripePaymentId: string | null = null;
 
-      // Process payment if not free
       if (!isFreeOrder) {
-        // Create payment intent via API
         const res = await fetch('/api/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ amount: Math.round(cart.total * 100) }),
         });
 
-        if (!res.ok) {
-          throw new Error('Failed to create payment');
-        }
+        if (!res.ok) throw new Error('Failed to create payment');
 
         const { clientSecret } = await res.json();
 
-        if (!stripe || !elements) {
-          throw new Error('Stripe not loaded');
-        }
+        if (!stripe || !elements) throw new Error('Stripe not loaded');
 
         const cardElement = elements.getElement(CardElement);
         if (!cardElement) throw new Error('Card element not found');
@@ -138,14 +167,11 @@ function CheckoutForm() {
           payment_method: { card: cardElement },
         });
 
-        if (stripeError) {
-          throw new Error(stripeError.message);
-        }
+        if (stripeError) throw new Error(stripeError.message);
 
         stripePaymentId = paymentIntent?.id || null;
       }
 
-      // Create order in database
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -153,7 +179,7 @@ function CheckoutForm() {
           status: 'pending',
           subtotal: cart.subtotal,
           discount_amount: cart.discount_amount,
-          tip_amount: cart.tip_amount,
+          tip_amount: cart.donation_amount,
           total: cart.total,
           payment_status: isFreeOrder ? 'free' : 'paid',
           stripe_payment_id: stripePaymentId,
@@ -165,7 +191,6 @@ function CheckoutForm() {
 
       if (orderError || !order) throw new Error('Failed to create order');
 
-      // Insert order items
       for (const item of orderItems) {
         const { data: orderItem } = await supabase
           .from('order_items')
@@ -190,7 +215,6 @@ function CheckoutForm() {
         }
       }
 
-      // Increment coupon usage if used
       if (cart.coupon) {
         await supabase
           .from('coupons')
@@ -200,7 +224,6 @@ function CheckoutForm() {
 
       // Deduct inventory
       for (const item of cart.items) {
-        // Deduct for menu item
         const { data: itemIngredients } = await supabase
           .from('item_ingredients')
           .select('*, inventory_item:inventory_items(*)')
@@ -209,7 +232,8 @@ function CheckoutForm() {
         if (itemIngredients) {
           for (const ingredient of itemIngredients) {
             const amount = ingredient.quantity_used * item.quantity;
-            await supabase.from('inventory_items')
+            await supabase
+              .from('inventory_items')
               .update({ current_stock: ingredient.inventory_item.current_stock - amount })
               .eq('id', ingredient.inventory_item_id);
 
@@ -222,7 +246,6 @@ function CheckoutForm() {
           }
         }
 
-        // Deduct for modifiers
         for (const mod of item.selected_modifiers) {
           const { data: modIngredients } = await supabase
             .from('item_ingredients')
@@ -232,7 +255,8 @@ function CheckoutForm() {
           if (modIngredients) {
             for (const ingredient of modIngredients) {
               const amount = ingredient.quantity_used * item.quantity;
-              await supabase.from('inventory_items')
+              await supabase
+                .from('inventory_items')
                 .update({ current_stock: ingredient.inventory_item.current_stock - amount })
                 .eq('id', ingredient.inventory_item_id);
 
@@ -247,34 +271,41 @@ function CheckoutForm() {
         }
       }
 
-      // Clear cart and redirect to confirmation
+      const customerName = cart.customer_name.trim();
       cartStore.clear();
       const estimatedWait = queueWait !== null ? queueWait + cartItemCount : null;
       const waitParam = estimatedWait !== null ? `&wait=${estimatedWait}` : '';
-      router.push(`/checkout/confirmation?name=${encodeURIComponent(cart.customer_name.trim())}${waitParam}`);
+      router.push(`/checkout/confirmation?name=${encodeURIComponent(customerName)}${waitParam}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setProcessing(false);
     }
   }
 
+  const orderingClosed = configLoaded && !status.isOpen;
+
   return (
     <div className="min-h-screen bg-bg">
-      <header className="bg-surface border-b border-gray-100 sticky top-0 z-30">
-        <div className="max-w-xl mx-auto px-4 py-4 flex items-center gap-3">
+      <header className="sticky top-0 z-30 border-b border-gray-100 bg-surface">
+        <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-4">
           <button
             onClick={() => router.push('/')}
-            className="text-text-light hover:text-text cursor-pointer"
+            className="cursor-pointer text-text-light hover:text-text"
           >
             &larr;
           </button>
-          <h1 className="text-xl font-heading font-bold">Checkout</h1>
+          <h1 className="font-heading text-xl font-bold">Place Your Coffee Order</h1>
         </div>
       </header>
 
-      <main className="max-w-xl mx-auto px-4 py-6">
+      <main className="mx-auto max-w-xl px-4 py-6">
+        {orderingClosed && (
+          <div className="mb-6">
+            <ClosedNotice settings={settings} status={status} />
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Name */}
           <Card>
             <Input
               label="Your Name"
@@ -285,16 +316,17 @@ function CheckoutForm() {
             />
           </Card>
 
-          {/* Order Summary */}
           <Card>
-            <h3 className="font-heading font-bold text-text-dark mb-3">Order Summary</h3>
+            <h3 className="mb-3 font-heading font-bold text-text-dark">Your Drinks</h3>
             <div className="space-y-2">
               {cart.items.map((item) => (
                 <div key={item.id} className="flex justify-between text-sm">
                   <div>
-                    <span className="font-body">{item.quantity}x {item.menu_item.name}</span>
+                    <span className="font-body">
+                      {item.quantity}x {item.menu_item.name}
+                    </span>
                     {item.selected_modifiers.length > 0 && (
-                      <span className="text-text-light text-xs block">
+                      <span className="block text-xs text-text-light">
                         {item.selected_modifiers.map((m) => m.name).join(', ')}
                       </span>
                     )}
@@ -307,23 +339,24 @@ function CheckoutForm() {
             </div>
           </Card>
 
-          {/* Coupon */}
           <Card>
-            <h3 className="font-heading font-bold text-text-dark mb-3">Coupon Code</h3>
+            <h3 className="mb-3 font-heading font-bold text-text-dark">Coupon Code</h3>
             {cart.coupon ? (
-              <div className="flex items-center justify-between bg-success/5 p-3 rounded-xl">
+              <div className="flex items-center justify-between rounded-xl bg-success/5 p-3">
                 <div>
                   <span className="font-accent font-semibold text-success">{cart.coupon.code}</span>
-                  <span className="text-sm text-text-light ml-2">
-                    {cart.coupon.discount_type === 'percentage' && `${cart.coupon.discount_value}% off`}
-                    {cart.coupon.discount_type === 'fixed_amount' && `$${cart.coupon.discount_value.toFixed(2)} off`}
+                  <span className="ml-2 text-sm text-text-light">
+                    {cart.coupon.discount_type === 'percentage' &&
+                      `${cart.coupon.discount_value}% off`}
+                    {cart.coupon.discount_type === 'fixed_amount' &&
+                      `$${cart.coupon.discount_value.toFixed(2)} off`}
                     {cart.coupon.discount_type === 'free_item' && 'Free order'}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => cartStore.removeCoupon()}
-                  className="text-xs text-danger hover:underline cursor-pointer"
+                  className="cursor-pointer text-xs text-danger hover:underline"
                 >
                   Remove
                 </button>
@@ -349,24 +382,62 @@ function CheckoutForm() {
             )}
           </Card>
 
-          {/* Tip */}
-          <Card>
-            <h3 className="font-heading font-bold text-text-dark mb-3">Add a Tip</h3>
-            <Input
-              type="number"
-              placeholder="0.00"
-              min="0"
-              step="0.01"
-              value={cart.tip_amount || ''}
-              onChange={(e) => cartStore.setTip(parseFloat(e.target.value) || 0)}
-            />
-          </Card>
+          {/* Donation — hidden entirely when the admin turns donations off */}
+          {settings.donations_enabled && (
+            <Card>
+              <h3 className="font-heading font-bold text-text-dark">
+                Add a {settings.donation_label}
+              </h3>
+              <p className="mb-3 mt-0.5 font-body text-xs text-text-light">
+                Optional — supports the coffee ministry.
+              </p>
 
-          {/* Payment */}
+              {donationPresets.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {donationPresets.map((amount) => (
+                    <button
+                      key={amount}
+                      type="button"
+                      onClick={() =>
+                        cartStore.setDonation(cart.donation_amount === amount ? 0 : amount)
+                      }
+                      className={cn(
+                        'cursor-pointer rounded-xl border-2 px-4 py-2 font-accent text-sm font-semibold transition-all',
+                        cart.donation_amount === amount
+                          ? 'border-success bg-success text-white'
+                          : 'border-gray-200 bg-surface text-text hover:border-success/40',
+                      )}
+                    >
+                      ${amount.toFixed(2)}
+                    </button>
+                  ))}
+                  {cart.donation_amount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => cartStore.setDonation(0)}
+                      className="cursor-pointer px-3 py-2 font-accent text-sm text-text-light hover:text-danger"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <Input
+                type="number"
+                placeholder="Or enter another amount"
+                min="0"
+                step="0.01"
+                value={cart.donation_amount || ''}
+                onChange={(e) => cartStore.setDonation(parseFloat(e.target.value) || 0)}
+              />
+            </Card>
+          )}
+
           {!isFreeOrder && (
             <Card>
-              <h3 className="font-heading font-bold text-text-dark mb-3">Payment</h3>
-              <div className="border border-gray-200 rounded-xl p-3">
+              <h3 className="mb-3 font-heading font-bold text-text-dark">Payment</h3>
+              <div className="rounded-xl border border-gray-200 p-3">
                 <CardElement
                   options={{
                     style: {
@@ -383,7 +454,6 @@ function CheckoutForm() {
             </Card>
           )}
 
-          {/* Totals */}
           <Card>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
@@ -396,25 +466,24 @@ function CheckoutForm() {
                   <span className="font-accent">-${cart.discount_amount.toFixed(2)}</span>
                 </div>
               )}
-              {cart.tip_amount > 0 && (
+              {cart.donation_amount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-text-light">Tip</span>
-                  <span className="font-accent">${cart.tip_amount.toFixed(2)}</span>
+                  <span className="text-text-light">{settings.donation_label}</span>
+                  <span className="font-accent">${cart.donation_amount.toFixed(2)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-lg font-heading font-bold border-t border-gray-100 pt-2">
+              <div className="flex justify-between border-t border-gray-100 pt-2 font-heading text-lg font-bold">
                 <span>Total</span>
                 <span>{isFreeOrder ? 'Free' : `$${cart.total.toFixed(2)}`}</span>
               </div>
             </div>
           </Card>
 
-          {/* Estimated wait */}
-          {queueWait !== null && (
-            <div className="flex items-center gap-3 bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
+          {queueWait !== null && !orderingClosed && (
+            <div className="flex items-center gap-3 rounded-xl border border-primary/10 bg-primary/5 px-4 py-3">
               <span className="text-xl">&#8987;</span>
               <div>
-                <p className="text-sm font-body text-text">
+                <p className="font-body text-sm text-text">
                   Estimated wait:{' '}
                   <strong className="font-accent text-primary">
                     ~{queueWait + cartItemCount} min
@@ -425,18 +494,28 @@ function CheckoutForm() {
             </div>
           )}
 
-          {error && (
-            <p className="text-danger text-sm text-center">{error}</p>
-          )}
+          {error && <p className="text-center text-sm text-danger">{error}</p>}
 
           <Button
             type="submit"
             fullWidth
             size="lg"
-            disabled={processing || cart.items.length === 0}
+            disabled={processing || cart.items.length === 0 || orderingClosed}
           >
-            {processing ? 'Processing...' : isFreeOrder ? 'Place Order' : `Pay $${cart.total.toFixed(2)}`}
+            {orderingClosed
+              ? 'Ordering Is Closed'
+              : processing
+                ? 'Placing your order...'
+                : isFreeOrder
+                  ? 'Place Order'
+                  : `Place Order · $${cart.total.toFixed(2)}`}
           </Button>
+
+          {!orderingClosed && !processing && cart.items.length > 0 && (
+            <p className="text-center font-body text-xs text-text-light">
+              Your order is sent to the baristas once you tap the button above.
+            </p>
+          )}
         </form>
       </main>
     </div>
