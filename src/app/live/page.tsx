@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { fetchShopConfig, getShopStatus, DEFAULT_SETTINGS } from '@/lib/shop';
+import { safeDisplayName } from '@/lib/profanity';
 import ShopBanner from '@/components/ShopBanner';
 import type { Order, OrderItem, ShopSettings, OrderingHours } from '@/types';
 
@@ -236,8 +237,9 @@ function OrderCard({
           </div>
 
           <div className="min-w-0">
+            {/* Never render the raw name — this is a TV in the church lobby. */}
             <h3 className="font-heading text-xl font-bold leading-tight text-text-dark">
-              {order.customer_name}
+              {safeDisplayName(order.customer_name)}
             </h3>
             <p className="mt-0.5 font-body text-sm text-text-light">
               {totalItems} item{totalItems !== 1 ? 's' : ''}

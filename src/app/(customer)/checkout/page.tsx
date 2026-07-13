@@ -17,6 +17,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import { ClosedNotice } from '@/components/ShopBanner';
+import { validateName } from '@/lib/profanity';
 import { cn } from '@/lib/utils';
 import type { Coupon, ShopSettings, OrderingHours } from '@/types';
 
@@ -30,6 +31,7 @@ function CheckoutForm() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
+  const [nameError, setNameError] = useState('');
   const [queueWait, setQueueWait] = useState<number | null>(null);
 
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
@@ -123,10 +125,15 @@ function CheckoutForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!cart.customer_name.trim()) {
-      setError('Please enter your name');
+
+    // This name goes up on the lobby TV, so it has to pass before we take money.
+    const nameCheck = validateName(cart.customer_name);
+    if (!nameCheck.ok) {
+      setNameError(nameCheck.error ?? 'Please enter a valid name');
+      setError('');
       return;
     }
+    setNameError('');
 
     // Re-check against the live schedule — the shop may have closed while this page sat open.
     const freshConfig = await fetchShopConfig();
@@ -318,9 +325,21 @@ function CheckoutForm() {
               label="Your Name"
               placeholder="Name for your order"
               value={cart.customer_name}
-              onChange={(e) => cartStore.setCustomerName(e.target.value)}
+              maxLength={30}
+              error={nameError}
+              onChange={(e) => {
+                cartStore.setCustomerName(e.target.value);
+                if (nameError) setNameError('');
+              }}
+              onBlur={(e) => {
+                const check = validateName(e.target.value);
+                if (e.target.value.trim() && !check.ok) setNameError(check.error ?? '');
+              }}
               required
             />
+            <p className="mt-1.5 font-body text-xs text-text-light">
+              We&apos;ll call this out when your order is ready.
+            </p>
           </Card>
 
           <Card>

@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import ModifierSelector from '@/components/menu/ModifierSelector';
 import { fetchItemModifierGroups } from '@/lib/menu';
 import { fetchShopConfig, parseDonationPresets, DEFAULT_SETTINGS } from '@/lib/shop';
+import { validateName } from '@/lib/profanity';
 import { cn } from '@/lib/utils';
 import { generateId } from '@/lib/utils';
 import type {
@@ -83,6 +84,7 @@ function TabletInner() {
   const [coupon, setCoupon] = useState<Coupon | null>(null);
   const [couponCode, setCouponCode] = useState('');
   const [couponError, setCouponError] = useState('');
+  const [nameError, setNameError] = useState('');
 
   // Shop settings (donation label / on-off)
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
@@ -188,6 +190,17 @@ function TabletInner() {
         }),
       );
     }
+  }
+
+  /** The name lands on the public /live screen, so it gets checked before payment. */
+  function goToPayment() {
+    const check = validateName(customerName);
+    if (!check.ok) {
+      setNameError(check.error ?? 'Please enter a valid name');
+      return;
+    }
+    setNameError('');
+    setView('payment');
   }
 
   async function applyCoupon() {
@@ -298,6 +311,7 @@ function TabletInner() {
     setCoupon(null);
     setCouponCode('');
     setCouponError('');
+    setNameError('');
     setPayError('');
     setView('order');
   }
@@ -573,15 +587,23 @@ function TabletInner() {
                 type="text"
                 placeholder="Enter name..."
                 value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && customerName.trim() && setView('payment')}
+                maxLength={30}
+                onChange={(e) => {
+                  setCustomerName(e.target.value);
+                  if (nameError) setNameError('');
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && goToPayment()}
                 autoFocus
-                className="w-full px-4 py-4 rounded-xl border-2 border-gray-200 focus:border-primary bg-bg font-body text-xl text-text-dark placeholder:text-text-light focus:outline-none transition-colors"
+                className={cn(
+                  'w-full px-4 py-4 rounded-xl border-2 bg-bg font-body text-xl text-text-dark placeholder:text-text-light focus:outline-none transition-colors',
+                  nameError ? 'border-danger' : 'border-gray-200 focus:border-primary',
+                )}
               />
+              {nameError && <p className="mt-2 text-sm font-body text-danger">{nameError}</p>}
             </div>
 
             <button
-              onClick={() => setView('payment')}
+              onClick={goToPayment}
               disabled={!customerName.trim()}
               className={cn(
                 'w-full py-5 rounded-2xl font-accent font-bold text-xl transition-all touch-manipulation',
