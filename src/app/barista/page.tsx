@@ -50,9 +50,24 @@ function calcWaitMinutes(allOrders: FullOrder[], targetOrder: FullOrder): number
 }
 
 type Tab = 'orders' | 'stock';
+type ColumnKey = 'pending' | 'in_progress' | 'ready';
+type ColumnColor = 'warning' | 'primary' | 'success';
+
+const COLUMNS: { key: ColumnKey; title: string; color: ColumnColor }[] = [
+  { key: 'pending', title: 'Pending', color: 'warning' },
+  { key: 'in_progress', title: 'Making', color: 'primary' },
+  { key: 'ready', title: 'Ready', color: 'success' },
+];
+
+const COLUMN_STYLES: Record<ColumnColor, { text: string; dot: string; activeBg: string }> = {
+  warning: { text: 'text-warning', dot: 'bg-warning', activeBg: 'bg-warning' },
+  primary: { text: 'text-primary', dot: 'bg-primary', activeBg: 'bg-primary' },
+  success: { text: 'text-success', dot: 'bg-success', activeBg: 'bg-success' },
+};
 
 export default function BaristaPage() {
   const [tab, setTab] = useState<Tab>('orders');
+  const [phoneColumn, setPhoneColumn] = useState<ColumnKey>('pending');
   const [orders, setOrders] = useState<FullOrder[]>([]);
   const [loading, setLoading] = useState(true);
   /** Lets a barista undo a "Picked Up" tap that closed the wrong order. */
@@ -131,13 +146,66 @@ export default function BaristaPage() {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
   }
 
-  const pendingOrders = orders.filter((o) => o.status === 'pending');
-  const inProgressOrders = orders.filter((o) => o.status === 'in_progress');
-  const readyOrders = orders.filter((o) => o.status === 'ready');
+  const ordersByStatus: Record<ColumnKey, FullOrder[]> = {
+    pending: orders.filter((o) => o.status === 'pending'),
+    in_progress: orders.filter((o) => o.status === 'in_progress'),
+    ready: orders.filter((o) => o.status === 'ready'),
+  };
 
   const totalItems = orders
     .filter((o) => o.status === 'pending' || o.status === 'in_progress')
     .reduce((s, o) => s + orderItemCount(o), 0);
+
+  /** One card definition per column, so phone and kanban layouts never drift apart. */
+  function renderCard(order: FullOrder, column: ColumnKey) {
+    if (column === 'pending') {
+      return (
+        <OrderCard
+          key={order.id}
+          order={order}
+          waitMinutes={calcWaitMinutes(orders, order)}
+          actions={
+            <Button size="lg" fullWidth onClick={() => updateStatus(order.id, 'in_progress')}>
+              Start Making
+            </Button>
+          }
+        />
+      );
+    }
+
+    if (column === 'in_progress') {
+      return (
+        <OrderCard
+          key={order.id}
+          order={order}
+          waitMinutes={calcWaitMinutes(orders, order)}
+          onBack={() => updateStatus(order.id, PREVIOUS_STATUS.in_progress!)}
+          backLabel="Back to Pending"
+          actions={
+            <Button size="lg" fullWidth variant="success" onClick={() => updateStatus(order.id, 'ready')}>
+              Mark Ready
+            </Button>
+          }
+        />
+      );
+    }
+
+    return (
+      <OrderCard
+        key={order.id}
+        order={order}
+        waitMinutes={null}
+        highlight
+        onBack={() => updateStatus(order.id, PREVIOUS_STATUS.ready!)}
+        backLabel="Back to Making"
+        actions={
+          <Button size="lg" fullWidth variant="success" onClick={() => completeOrder(order)}>
+            Order Picked Up ✓
+          </Button>
+        }
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -204,57 +272,60 @@ export default function BaristaPage() {
               <p className="text-text-light">Waiting for customers...</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-              <Column title="Pending" count={pendingOrders.length} color="warning">
-                {pendingOrders.map((order) => (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    waitMinutes={calcWaitMinutes(orders, order)}
-                    actions={
-                      <Button size="sm" onClick={() => updateStatus(order.id, 'in_progress')}>
-                        Start Making
-                      </Button>
-                    }
-                  />
-                ))}
-              </Column>
+            <>
+              {/* Phone: one column at a time. Stacking all three means scrolling
+                  past every pending order to reach the one you're making. */}
+              <div className="mb-4 flex gap-2 md:hidden">
+                {COLUMNS.map((col) => {
+                  const count = ordersByStatus[col.key].length;
+                  const active = phoneColumn === col.key;
+                  return (
+                    <button
+                      key={col.key}
+                      onClick={() => setPhoneColumn(col.key)}
+                      className={cn(
+                        'flex-1 cursor-pointer touch-manipulation rounded-xl border-2 px-2 py-3 transition-all active:scale-95',
+                        active
+                          ? `${COLUMN_STYLES[col.color].activeBg} border-transparent text-white`
+                          : 'border-gray-200 bg-surface text-text-light',
+                      )}
+                    >
+                      <span className="block font-heading text-2xl font-bold leading-none">
+                        {count}
+                      </span>
+                      <span className="mt-1 block font-accent text-xs font-semibold">
+                        {col.title}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
-              <Column title="Making" count={inProgressOrders.length} color="primary" pulse>
-                {inProgressOrders.map((order) => (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    waitMinutes={calcWaitMinutes(orders, order)}
-                    onBack={() => updateStatus(order.id, PREVIOUS_STATUS.in_progress!)}
-                    backLabel="Back to Pending"
-                    actions={
-                      <Button size="sm" variant="success" onClick={() => updateStatus(order.id, 'ready')}>
-                        Mark Ready
-                      </Button>
-                    }
-                  />
-                ))}
-              </Column>
+              <div className="space-y-4 md:hidden">
+                {ordersByStatus[phoneColumn].length === 0 ? (
+                  <p className="py-12 text-center font-body text-text-light">
+                    Nothing in {COLUMNS.find((c) => c.key === phoneColumn)!.title.toLowerCase()}
+                  </p>
+                ) : (
+                  ordersByStatus[phoneColumn].map((order) => renderCard(order, phoneColumn))
+                )}
+              </div>
 
-              <Column title="Ready" count={readyOrders.length} color="success">
-                {readyOrders.map((order) => (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    waitMinutes={null}
-                    highlight
-                    onBack={() => updateStatus(order.id, PREVIOUS_STATUS.ready!)}
-                    backLabel="Back to Making"
-                    actions={
-                      <Button size="sm" variant="success" onClick={() => completeOrder(order)}>
-                        Order Picked Up ✓
-                      </Button>
-                    }
-                  />
+              {/* Tablet and up: full kanban */}
+              <div className="hidden gap-6 md:grid md:grid-cols-3">
+                {COLUMNS.map((col) => (
+                  <Column
+                    key={col.key}
+                    title={col.title}
+                    count={ordersByStatus[col.key].length}
+                    color={col.color}
+                    pulse={col.key === 'in_progress'}
+                  >
+                    {ordersByStatus[col.key].map((order) => renderCard(order, col.key))}
+                  </Column>
                 ))}
-              </Column>
-            </div>
+              </div>
+            </>
           )}
         </main>
       )}
@@ -287,20 +358,19 @@ function Column({
 }: {
   title: string;
   count: number;
-  color: 'warning' | 'primary' | 'success';
+  color: ColumnColor;
   pulse?: boolean;
   children: React.ReactNode;
 }) {
-  const textColor = { warning: 'text-warning', primary: 'text-primary', success: 'text-success' }[color];
-  const dotColor = { warning: 'bg-warning', primary: 'bg-primary', success: 'bg-success' }[color];
+  const style = COLUMN_STYLES[color];
 
   return (
     <div>
-      <h2 className={cn('mb-3 flex items-center gap-2 font-heading text-lg font-bold', textColor)}>
-        <span className={cn('h-3 w-3 rounded-full', dotColor, pulse && 'animate-pulse')} />
+      <h2 className={cn('mb-3 flex items-center gap-2 font-heading text-lg font-bold', style.text)}>
+        <span className={cn('h-3 w-3 rounded-full', style.dot, pulse && 'animate-pulse')} />
         {title} ({count})
       </h2>
-      <div className="space-y-3">{children}</div>
+      <div className="space-y-4">{children}</div>
     </div>
   );
 }
@@ -324,62 +394,79 @@ function OrderCard({
   const itemCount = orderItemCount(order);
 
   return (
-    <Card className={highlight ? 'bg-success/5 ring-2 ring-success/30' : ''}>
-      <div className="mb-2 flex items-start justify-between">
+    <Card className={cn('p-4', highlight && 'bg-success/5 ring-2 ring-success/30')}>
+      {/* Who it's for — the thing the barista shouts */}
+      <div className="mb-3 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="font-heading text-lg font-bold text-text-dark">{order.customer_name}</h3>
-          <p className="text-xs text-text-light">
-            {timeAgo} · {order.order_source} · {itemCount} item{itemCount !== 1 ? 's' : ''}
+          <h3 className="font-heading text-2xl font-bold leading-tight text-text-dark">
+            {order.customer_name}
+          </h3>
+          <p className="mt-0.5 font-accent text-sm text-text-light">
+            {timeAgo} · {itemCount} item{itemCount !== 1 ? 's' : ''}
+            {waitMinutes !== null && ` · ~${waitMinutes} min`}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <div className="flex gap-1">
-            <OrderStatusBadge status={order.status} />
-            <PaymentBadge status={order.payment_status} />
-          </div>
-          {waitMinutes !== null && (
-            <span className="rounded-full bg-bg px-2 py-0.5 font-accent text-xs text-text-light">
-              ~{waitMinutes} min
-            </span>
-          )}
+          <OrderStatusBadge status={order.status} />
+          <PaymentBadge status={order.payment_status} />
         </div>
       </div>
 
-      <div className="mb-3 space-y-1.5">
+      {/* What to make */}
+      <div className="mb-4 space-y-2">
         {order.order_items?.map((item) => (
-          <div key={item.id} className="text-sm">
-            <div className="flex justify-between">
-              <span className="font-body font-semibold">
-                {item.quantity}× {item.menu_item?.name}
+          <div key={item.id} className="rounded-xl bg-bg p-3">
+            <div className="flex items-start gap-2.5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary font-accent text-sm font-bold text-white">
+                {item.quantity}
               </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-heading text-lg font-bold leading-snug text-text-dark">
+                  {item.menu_item?.name}
+                </p>
+
+                {item.order_item_modifiers?.length > 0 && (
+                  <ul className="mt-1.5 space-y-0.5">
+                    {item.order_item_modifiers.map((m) => (
+                      <li
+                        key={m.id}
+                        className="flex items-center gap-1.5 font-body text-base text-text"
+                      >
+                        <span className="text-primary">•</span>
+                        {m.modifier?.name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
-            {item.order_item_modifiers?.length > 0 && (
-              <p className="pl-4 text-xs text-text-light">
-                {item.order_item_modifiers.map((m) => m.modifier?.name).filter(Boolean).join(', ')}
-              </p>
-            )}
+
+            {/* Special requests get their own loud box — easiest thing to miss */}
             {item.special_instructions && (
-              <p className="pl-4 text-xs italic text-warm">
-                &ldquo;{item.special_instructions}&rdquo;
-              </p>
+              <div className="mt-2 rounded-lg border-l-4 border-warm bg-warm/10 px-3 py-2">
+                <p className="font-accent text-xs font-bold uppercase tracking-wide text-warm">
+                  Note
+                </p>
+                <p className="font-body text-base font-semibold text-text-dark">
+                  {item.special_instructions}
+                </p>
+              </div>
             )}
           </div>
         ))}
       </div>
 
-      <div className="flex items-center justify-between gap-2">
-        {onBack ? (
+      {/* Actions — big enough to hit with a wet hand */}
+      <div className="space-y-2">
+        {actions}
+        {onBack && (
           <button
             onClick={onBack}
-            title={backLabel}
-            className="flex cursor-pointer touch-manipulation items-center gap-1 rounded-full border border-gray-200 px-3 py-1.5 font-accent text-xs font-semibold text-text-light transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-text"
+            className="w-full cursor-pointer touch-manipulation rounded-full border border-gray-200 py-2.5 font-accent text-sm font-semibold text-text-light transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-text"
           >
             ← {backLabel}
           </button>
-        ) : (
-          <span />
         )}
-        {actions}
       </div>
     </Card>
   );
