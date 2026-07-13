@@ -16,9 +16,8 @@ import type { ModifierGroup, Modifier, ItemModifierOverride } from '@/types';
 export async function fetchItemModifierGroups(menuItemId: string): Promise<ModifierGroup[]> {
   const { data: links } = await supabase
     .from('item_modifier_groups')
-    .select('modifier_group_id, display_order')
-    .eq('menu_item_id', menuItemId)
-    .order('display_order');
+    .select('modifier_group_id')
+    .eq('menu_item_id', menuItemId);
 
   if (!links || links.length === 0) return [];
 
@@ -48,14 +47,22 @@ export async function fetchItemModifierGroups(menuItemId: string): Promise<Modif
     .filter((m) => !hidden.has(m.id))
     .map((m) => ({ ...m, is_locked: locked.has(m.id) }));
 
-  // The link table decides the order groups appear in on this particular drink.
-  const groupOrder = new Map(links.map((l) => [l.modifier_group_id, l.display_order ?? 0]));
-
   return (groupsRes.data as ModifierGroup[])
-    .map((g) => ({ ...g, modifiers: mods.filter((m) => m.group_id === g.id) }))
+    .map((g) => ({
+      ...g,
+      modifiers: mods
+        .filter((m) => m.group_id === g.id)
+        .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0) || a.name.localeCompare(b.name)),
+    }))
     // A group whose options are all hidden on this drink shouldn't render at all.
     .filter((g) => (g.modifiers?.length ?? 0) > 0)
-    .sort((a, b) => (groupOrder.get(a.id) ?? 0) - (groupOrder.get(b.id) ?? 0));
+    // Groups appear in the order set at /admin/modifiers — one list, every drink.
+    // (The link table has its own display_order, but nothing sets it meaningfully,
+    // so ordering by it silently ignored the admin's ▲/▼ buttons.)
+    .sort(
+      (a, b) =>
+        (a.display_order ?? 0) - (b.display_order ?? 0) || a.name.localeCompare(b.name),
+    );
 }
 
 /** Options the customer can actually pick right now — not sold out, not locked. */

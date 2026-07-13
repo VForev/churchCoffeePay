@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
 import { OrderStatusBadge, PaymentBadge } from '@/components/ui/Badge';
-import Card from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
+import { drinkTemperature, TEMP_LABEL, TEMP_EMOJI, type DrinkTemp } from '@/lib/temperature';
 import type {
   Order,
   OrderItem,
@@ -59,11 +59,62 @@ const COLUMNS: { key: ColumnKey; title: string; color: ColumnColor }[] = [
   { key: 'ready', title: 'Ready', color: 'success' },
 ];
 
-const COLUMN_STYLES: Record<ColumnColor, { text: string; dot: string; activeBg: string }> = {
-  warning: { text: 'text-warning', dot: 'bg-warning', activeBg: 'bg-warning' },
-  primary: { text: 'text-primary', dot: 'bg-primary', activeBg: 'bg-primary' },
-  success: { text: 'text-success', dot: 'bg-success', activeBg: 'bg-success' },
+const COLUMN_STYLES: Record<
+  ColumnColor,
+  { text: string; dot: string; activeBg: string; cardBg: string; cardRing: string; strip: string }
+> = {
+  warning: {
+    text: 'text-warning',
+    dot: 'bg-warning',
+    activeBg: 'bg-warning',
+    cardBg: 'bg-warning/5',
+    cardRing: 'ring-2 ring-warning/40',
+    strip: 'bg-warning',
+  },
+  primary: {
+    text: 'text-primary',
+    dot: 'bg-primary',
+    activeBg: 'bg-primary',
+    cardBg: 'bg-primary/5',
+    cardRing: 'ring-2 ring-primary/40',
+    strip: 'bg-primary',
+  },
+  success: {
+    text: 'text-success',
+    dot: 'bg-success',
+    activeBg: 'bg-success',
+    cardBg: 'bg-success/5',
+    cardRing: 'ring-2 ring-success/40',
+    strip: 'bg-success',
+  },
 };
+
+/** Hot and cold read as opposites at a glance — red-warm vs blue-cold, never subtle. */
+const TEMP_STYLES: Record<DrinkTemp, string> = {
+  hot: 'bg-warm text-white',
+  iced: 'bg-secondary text-text-dark',
+};
+
+/** The cups this order needs, in the order the barista should grab them. */
+function cupSummary(order: FullOrder): { temp: DrinkTemp; count: number }[] {
+  const counts: Record<DrinkTemp, number> = { hot: 0, iced: 0 };
+
+  for (const item of order.order_items ?? []) {
+    const temp = itemTemperature(item);
+    if (temp) counts[temp] += item.quantity;
+  }
+
+  return (['hot', 'iced'] as DrinkTemp[])
+    .filter((t) => counts[t] > 0)
+    .map((temp) => ({ temp, count: counts[temp] }));
+}
+
+function itemTemperature(item: FullOrder['order_items'][number]): DrinkTemp | null {
+  return drinkTemperature(
+    item.menu_item?.name,
+    (item.order_item_modifiers ?? []).map((m) => m.modifier?.name),
+  );
+}
 
 export default function BaristaPage() {
   const [tab, setTab] = useState<Tab>('orders');
@@ -163,6 +214,7 @@ export default function BaristaPage() {
         <OrderCard
           key={order.id}
           order={order}
+          color="warning"
           waitMinutes={calcWaitMinutes(orders, order)}
           actions={
             <Button size="lg" fullWidth onClick={() => updateStatus(order.id, 'in_progress')}>
@@ -178,6 +230,7 @@ export default function BaristaPage() {
         <OrderCard
           key={order.id}
           order={order}
+          color="primary"
           waitMinutes={calcWaitMinutes(orders, order)}
           onBack={() => updateStatus(order.id, PREVIOUS_STATUS.in_progress!)}
           backLabel="Back to Pending"
@@ -194,8 +247,8 @@ export default function BaristaPage() {
       <OrderCard
         key={order.id}
         order={order}
+        color="success"
         waitMinutes={null}
-        highlight
         onBack={() => updateStatus(order.id, PREVIOUS_STATUS.ready!)}
         backLabel="Back to Making"
         actions={
@@ -378,97 +431,146 @@ function Column({
 function OrderCard({
   order,
   actions,
-  highlight,
+  color,
   waitMinutes,
   onBack,
   backLabel,
 }: {
   order: FullOrder;
   actions: React.ReactNode;
-  highlight?: boolean;
+  /** Matches the column the card sits in, so status is readable from across the bar. */
+  color: ColumnColor;
   waitMinutes: number | null;
   onBack?: () => void;
   backLabel?: string;
 }) {
   const timeAgo = getTimeAgo(order.created_at);
   const itemCount = orderItemCount(order);
+  const style = COLUMN_STYLES[color];
+  const cups = cupSummary(order);
 
+  // A plain div, not <Card> — the card carries its own padding and surface color,
+  // and this one needs a full-bleed status strip and a status-tinted background.
   return (
-    <Card className={cn('p-4', highlight && 'bg-success/5 ring-2 ring-success/30')}>
-      {/* Who it's for — the thing the barista shouts */}
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="font-heading text-2xl font-bold leading-tight text-text-dark">
-            {order.customer_name}
-          </h3>
-          <p className="mt-0.5 font-accent text-sm text-text-light">
-            {timeAgo} · {itemCount} item{itemCount !== 1 ? 's' : ''}
-            {waitMinutes !== null && ` · ~${waitMinutes} min`}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <OrderStatusBadge status={order.status} />
-          <PaymentBadge status={order.payment_status} />
-        </div>
-      </div>
+    <div
+      className={cn(
+        'overflow-hidden rounded-2xl border border-gray-100 shadow-sm',
+        style.cardBg,
+        style.cardRing,
+      )}
+    >
+      <div className={cn('h-2 w-full', style.strip)} />
 
-      {/* What to make */}
-      <div className="mb-4 space-y-2">
-        {order.order_items?.map((item) => (
-          <div key={item.id} className="rounded-xl bg-bg p-3">
-            <div className="flex items-start gap-2.5">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary font-accent text-sm font-bold text-white">
-                {item.quantity}
+      <div className="p-4">
+        {/* Cups first — it's the first thing your hands do */}
+        {cups.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {cups.map(({ temp, count }) => (
+              <span
+                key={temp}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-accent text-base font-extrabold uppercase tracking-wide',
+                  TEMP_STYLES[temp],
+                )}
+              >
+                <span aria-hidden>{TEMP_EMOJI[temp]}</span>
+                {count} × {TEMP_LABEL[temp]}
               </span>
-              <div className="min-w-0 flex-1">
-                <p className="font-heading text-lg font-bold leading-snug text-text-dark">
-                  {item.menu_item?.name}
-                </p>
+            ))}
+          </div>
+        )}
 
-                {item.order_item_modifiers?.length > 0 && (
-                  <ul className="mt-1.5 space-y-0.5">
-                    {item.order_item_modifiers.map((m) => (
-                      <li
-                        key={m.id}
-                        className="flex items-center gap-1.5 font-body text-base text-text"
-                      >
-                        <span className="text-primary">•</span>
-                        {m.modifier?.name}
-                      </li>
-                    ))}
-                  </ul>
+        {/* Who it's for — the thing the barista shouts */}
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="font-heading text-2xl font-extrabold leading-tight text-text-dark">
+              {order.customer_name}
+            </h3>
+            <p className="mt-0.5 font-accent text-sm font-semibold text-text">
+              {timeAgo} · {itemCount} item{itemCount !== 1 ? 's' : ''}
+              {waitMinutes !== null && ` · ~${waitMinutes} min`}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <OrderStatusBadge status={order.status} />
+            <PaymentBadge status={order.payment_status} />
+          </div>
+        </div>
+
+        {/* What to make */}
+        <div className="mb-4 space-y-2">
+          {order.order_items?.map((item) => {
+            const temp = itemTemperature(item);
+
+            return (
+              <div key={item.id} className="rounded-xl bg-surface p-3 shadow-sm">
+                {temp && (
+                  <span
+                    className={cn(
+                      'mb-2 inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-accent text-xs font-extrabold uppercase tracking-wider',
+                      TEMP_STYLES[temp],
+                    )}
+                  >
+                    <span aria-hidden>{TEMP_EMOJI[temp]}</span>
+                    {TEMP_LABEL[temp]}
+                  </span>
+                )}
+
+                <div className="flex items-start gap-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-text-dark font-accent text-base font-extrabold text-white">
+                    {item.quantity}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-heading text-xl font-extrabold leading-snug text-text-dark">
+                      {item.menu_item?.name}
+                    </p>
+
+                    {item.order_item_modifiers?.length > 0 && (
+                      <ul className="mt-1.5 space-y-0.5">
+                        {item.order_item_modifiers.map((m) => (
+                          <li
+                            key={m.id}
+                            className="flex items-center gap-1.5 font-body text-base font-bold text-text-dark"
+                          >
+                            <span className="text-primary">•</span>
+                            {m.modifier?.name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                {/* Special requests get their own loud box — easiest thing to miss */}
+                {item.special_instructions && (
+                  <div className="mt-2 rounded-lg border-l-4 border-warm bg-warm/15 px-3 py-2">
+                    <p className="font-accent text-xs font-extrabold uppercase tracking-wide text-warm">
+                      Note
+                    </p>
+                    <p className="font-body text-base font-bold text-text-dark">
+                      {item.special_instructions}
+                    </p>
+                  </div>
                 )}
               </div>
-            </div>
+            );
+          })}
+        </div>
 
-            {/* Special requests get their own loud box — easiest thing to miss */}
-            {item.special_instructions && (
-              <div className="mt-2 rounded-lg border-l-4 border-warm bg-warm/10 px-3 py-2">
-                <p className="font-accent text-xs font-bold uppercase tracking-wide text-warm">
-                  Note
-                </p>
-                <p className="font-body text-base font-semibold text-text-dark">
-                  {item.special_instructions}
-                </p>
-              </div>
-            )}
-          </div>
-        ))}
+        {/* Actions — big enough to hit with a wet hand */}
+        <div className="space-y-2">
+          {actions}
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="w-full cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface py-2.5 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
+            >
+              ← {backLabel}
+            </button>
+          )}
+        </div>
       </div>
-
-      {/* Actions — big enough to hit with a wet hand */}
-      <div className="space-y-2">
-        {actions}
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="w-full cursor-pointer touch-manipulation rounded-full border border-gray-200 py-2.5 font-accent text-sm font-semibold text-text-light transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-text"
-          >
-            ← {backLabel}
-          </button>
-        )}
-      </div>
-    </Card>
+    </div>
   );
 }
 

@@ -10,7 +10,7 @@
  * Run this after touching any list in profanity.ts.
  */
 
-import { validateName, safeDisplayName } from './profanity';
+import { validateName, validateFullName, safeDisplayName } from './profanity';
 
 /** Must be blocked. */
 const MUST_BLOCK = [
@@ -84,16 +84,41 @@ for (const s of MUST_PASS) {
 }
 if (falsePositives === 0) console.log('  none ✓');
 
+/** Orders need a first name plus a last name or initial. */
+const FULL_NAME_CASES: [string, boolean][] = [
+  ['Sarah K', true],
+  ['Sarah K.', true],
+  ['Sarah Kowalczyk', true],
+  ["Mary-Kate O'Brien", true],
+  ['Juan Carlos Ramirez', true],
+  ['Sarah', false],
+  ['   Sarah   ', false],
+  ['K', false],
+  ['', false],
+];
+
+console.log('\n── first + last name required ────────────────');
+let shapeFailures = 0;
+for (const [name, shouldPass] of FULL_NAME_CASES) {
+  if (validateFullName(name).ok !== shouldPass) {
+    console.log(`  WRONG   ${JSON.stringify(name)} — expected ${shouldPass ? 'pass' : 'reject'}`);
+    shapeFailures++;
+  }
+}
+if (shapeFailures === 0) console.log('  none ✓');
+
 console.log('\n── public screen (safeDisplayName) ───────────');
 for (const s of ['fuck', 'Dillon', '', '   ', 'n i g g e r']) {
   console.log(`  ${JSON.stringify(s).padEnd(14)} -> ${JSON.stringify(safeDisplayName(s))}`);
 }
 
-const total = MUST_BLOCK.length + MUST_PASS.length;
+const total = MUST_BLOCK.length + MUST_PASS.length + FULL_NAME_CASES.length;
+const failures = misses + falsePositives + shapeFailures;
 console.log(
-  `\n${misses + falsePositives === 0 ? '✅ PASS' : '❌ FAIL'} — ` +
+  `\n${failures === 0 ? '✅ PASS' : '❌ FAIL'} — ` +
     `${MUST_BLOCK.length} attacks, ${MUST_PASS.length} real names, ` +
-    `${misses} missed, ${falsePositives} false positives (${total} cases)`,
+    `${FULL_NAME_CASES.length} name shapes, ${misses} missed, ` +
+    `${falsePositives} false positives, ${shapeFailures} wrong shape (${total} cases)`,
 );
 
-if (misses + falsePositives > 0) process.exit(1);
+if (failures > 0) process.exit(1);

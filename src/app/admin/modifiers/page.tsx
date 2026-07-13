@@ -11,6 +11,15 @@ import type { ModifierGroup, Modifier } from '@/types';
 
 type GroupWithMods = ModifierGroup & { modifiers: Modifier[] };
 
+/** The one ordering rule — same as the customer menu's, so admin previews the real thing. */
+function sortByOrder<T extends { display_order: number; name?: string }>(rows: T[]): T[] {
+  return [...rows].sort(
+    (a, b) =>
+      (a.display_order ?? 0) - (b.display_order ?? 0) ||
+      (a.name ?? '').localeCompare(b.name ?? ''),
+  );
+}
+
 export default function AdminModifiersPage() {
   const [groups, setGroups] = useState<GroupWithMods[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,7 +29,7 @@ export default function AdminModifiersPage() {
 
   async function fetchData() {
     const { data: groupData } = await supabase.from('modifier_groups').select('*').order('display_order');
-    const { data: modData } = await supabase.from('modifiers').select('*');
+    const { data: modData } = await supabase.from('modifiers').select('*').order('display_order');
 
     const groupsWithMods = (groupData || []).map((g) => ({
       ...g,
@@ -83,42 +92,58 @@ export default function AdminModifiersPage() {
     fetchData();
   }
 
-  async function moveGroup(group: ModifierGroup, direction: 'up' | 'down') {
-    const sorted = [...groups].sort((a, b) => a.display_order - b.display_order);
-    const idx = sorted.findIndex((g) => g.id === group.id);
+  /**
+   * Reorders a list and renumbers EVERY row 0,1,2,…
+   *
+   * Swapping just the two rows' display_order values looks equivalent but isn't:
+   * seeded rows all share display_order = 0, so a swap writes 0 over 0 and the
+   * ▲/▼ button appears to do nothing. Renumbering the whole list repairs the
+   * ties on the first click.
+   */
+  async function persistOrder(
+    table: 'modifier_groups' | 'modifiers',
+    list: { id: string; display_order: number }[],
+    movingId: string,
+    direction: 'up' | 'down',
+  ) {
+    const sorted = sortByOrder(list);
+    const idx = sorted.findIndex((r) => r.id === movingId);
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= sorted.length) return;
-    const other = sorted[swapIdx];
-    await Promise.all([
-      supabase.from('modifier_groups').update({ display_order: other.display_order }).eq('id', group.id),
-      supabase.from('modifier_groups').update({ display_order: group.display_order }).eq('id', other.id),
-    ]);
+    if (idx < 0 || swapIdx < 0 || swapIdx >= sorted.length) return;
+
+    [sorted[idx], sorted[swapIdx]] = [sorted[swapIdx], sorted[idx]];
+
+    const results = await Promise.all(
+      sorted.map((row, i) =>
+        supabase.from(table).update({ display_order: i }).eq('id', row.id),
+      ),
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) alert(`Could not save the new order: ${failed.error.message}`);
     fetchData();
   }
 
-  async function moveMod(groupId: string, mod: Modifier, direction: 'up' | 'down') {
+  const moveGroup = (group: ModifierGroup, direction: 'up' | 'down') =>
+    persistOrder('modifier_groups', groups, group.id, direction);
+
+  const moveMod = (groupId: string, mod: Modifier, direction: 'up' | 'down') => {
     const group = groups.find((g) => g.id === groupId);
-    if (!group) return;
-    const sorted = [...group.modifiers].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
-    const idx = sorted.findIndex((m) => m.id === mod.id);
-    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= sorted.length) return;
-    const other = sorted[swapIdx];
-    await Promise.all([
-      supabase.from('modifiers').update({ display_order: other.display_order ?? swapIdx }).eq('id', mod.id),
-      supabase.from('modifiers').update({ display_order: mod.display_order ?? idx }).eq('id', other.id),
-    ]);
-    fetchData();
-  }
+    if (group) persistOrder('modifiers', group.modifiers, mod.id, direction);
+  };
 
   if (loading) return <div className="flex justify-center py-20"><div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
 
-  const sortedGroups = [...groups].sort((a, b) => a.display_order - b.display_order);
+  const sortedGroups = sortByOrder(groups);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
-        <h1 className="text-2xl font-heading font-bold text-text-dark">Modifier Groups</h1>
+        <div>
+          <h1 className="text-2xl font-heading font-bold text-text-dark">Modifier Groups</h1>
+          <p className="text-sm font-body text-text-light mt-0.5">
+            The ▲/▼ order here is the order customers see when they customize a drink.
+          </p>
+        </div>
         <Button size="sm" onClick={() => setEditGroup({ name: '', is_required: false, allow_multiple: false, display_order: groups.length })}>
           + Group
         </Button>
@@ -126,7 +151,7 @@ export default function AdminModifiersPage() {
 
       <div className="space-y-4">
         {sortedGroups.map((group, gIdx) => {
-          const sortedMods = [...group.modifiers].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+          const sortedMods = sortByOrder(group.modifiers);
           return (
             <Card key={group.id}>
               {/* Group header */}

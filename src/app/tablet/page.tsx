@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import ModifierSelector from '@/components/menu/ModifierSelector';
 import { fetchItemModifierGroups } from '@/lib/menu';
 import { fetchShopConfig, parseDonationPresets, DEFAULT_SETTINGS } from '@/lib/shop';
-import { validateName } from '@/lib/profanity';
+import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
 import { cn } from '@/lib/utils';
 import { generateId } from '@/lib/utils';
 import type {
@@ -194,7 +194,7 @@ function TabletInner() {
 
   /** The name lands on the public /live screen, so it gets checked before payment. */
   function goToPayment() {
-    const check = validateName(customerName);
+    const check = validateFullName(customerName);
     if (!check.ok) {
       setNameError(check.error ?? 'Please enter a valid name');
       return;
@@ -264,6 +264,8 @@ function TabletInner() {
           stripe_payment_id: stripePaymentId,
           coupon_id: coupon?.id || null,
           order_source: 'counter',
+          // Stamps which event this order belongs to, so the dashboard can report per-event.
+          event_id: activeEvent?.id ?? null,
         })
         .select().single();
 
@@ -580,14 +582,17 @@ function TabletInner() {
 
             {/* Name input */}
             <div className="bg-surface rounded-2xl p-5 shadow-sm">
-              <label className="block font-heading font-bold text-text-dark text-lg mb-3">
-                What&apos;s the customer&apos;s name?
+              <label className="block font-heading font-bold text-text-dark text-lg mb-1">
+                Customer&apos;s first &amp; last name
               </label>
+              <p className="mb-3 font-body text-sm text-text-light">
+                A last initial is enough — e.g. Sarah K
+              </p>
               <input
                 type="text"
-                placeholder="Enter name..."
+                placeholder="e.g. Sarah K"
                 value={customerName}
-                maxLength={30}
+                maxLength={MAX_NAME_LENGTH}
                 onChange={(e) => {
                   setCustomerName(e.target.value);
                   if (nameError) setNameError('');

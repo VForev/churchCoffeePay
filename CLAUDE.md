@@ -109,7 +109,7 @@ Until this migration runs, the app falls back to sensible defaults (nothing sold
 | Route | Description |
 |-------|-------------|
 | `/` | Main menu page — customers browse categories and items, add to cart |
-| `/checkout` | "Place Your Coffee Order" — customer name, coupon, donation, Stripe card payment. The word "checkout" is deliberately gone from the UI: customers read it as "order already placed" and bail. |
+| `/checkout` | "Place Your Coffee Order" — customer name, coupon, donation, Stripe card payment. The word "checkout" is deliberately gone from the UI: customers read it as "order already placed" and bail. Name requires **first + last name, last initial is enough** (`validateFullName` in `src/lib/profanity.ts`) — one letter is what tells two Sarahs apart when the barista calls the order. |
 | `/checkout/confirmation` | Order confirmation screen after successful payment |
 
 ### Staff
@@ -125,7 +125,7 @@ Until this migration runs, the app falls back to sensible defaults (nothing sold
 | Route | Description |
 |-------|-------------|
 | `/admin/login` | Admin login (Supabase email/password) |
-| `/admin` | Dashboard — today's stats, low stock alerts, popular items |
+| `/admin` | Dashboard — analytics filtered by time range and event; low stock alerts |
 | `/admin/menu` | Create/edit/delete categories and menu items; reorder with ▲/▼ |
 | `/admin/modifiers` | Manage modifier groups (Size, Milk, Syrups, etc.) and individual options; reorder with ▲/▼ |
 | `/admin/events` | Event pricing profiles — activate "Everything Free" mode or custom pricing |
@@ -268,6 +268,46 @@ Stored in `item_modifier_overrides`. A locked option in a single-select group fi
 The shared loader `src/lib/menu.ts` (`fetchItemModifierGroups`) applies all of this and is used by both the customer menu and the tablet POS.
 
 ---
+
+## Dashboard Analytics
+
+`/admin` is driven by two controls at the top, and every number under them comes from
+the same fetched set — nothing on the page can disagree with anything else.
+
+- **Time range** — Today / Yesterday / Last 7 days / Last 30 days / All time / Custom range
+- **Event** — All events / Regular service (no event) / any specific event
+- **Reset to today** — puts both controls back to the default
+
+It reports orders, revenue, drinks made, average order, donations, discounts, busiest
+hours, hot vs cold split, phone vs counter, top drinks, top add-ins, and a per-event
+comparison table (click a row to filter the whole page to that event). Cancelled orders
+are excluded everywhere.
+
+**Event tagging:** orders now save `event_id` — whatever event was active when the order
+was placed. Orders taken **before this change have `event_id = NULL`** and show up under
+"Regular service (no event)", so per-event history only goes back to when this shipped.
+
+## Hot / Cold on the Barista Board
+
+`/barista` cards lead with the cup to grab — a bold **HOT CUP** / **COLD CUP** chip at
+the top of the card and again on each drink. It's derived, not a column: `src/lib/temperature.ts`
+reads the drink's modifiers first (a "Temperature" group's Hot/Iced), then falls back to
+the drink's name ("Cold Brew" is never hot). When it genuinely can't tell, it shows no
+chip rather than a wrong one.
+
+Cards are also tinted and striped in their column's color — amber pending, navy making,
+green ready — so status reads from across the bar.
+
+## Ordering of Modifier Groups
+
+The ▲/▼ buttons at `/admin/modifiers` are the single source of truth for the order
+customers see when customizing a drink, and for the option order inside each group.
+Moving a group renumbers the whole list `0,1,2,…` rather than swapping two values —
+seeded rows all share `display_order = 0`, and swapping 0 with 0 is why the buttons
+used to appear to do nothing.
+
+`item_modifier_groups.display_order` still exists but is ignored: it was never set to
+anything meaningful, and sorting by it was silently overriding the admin's chosen order.
 
 ## Events / Free Mode
 

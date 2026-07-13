@@ -228,9 +228,9 @@ export interface NameValidation {
   error?: string;
 }
 
-const MAX_NAME_LENGTH = 30;
+export const MAX_NAME_LENGTH = 40;
 
-/** Validates a customer name for an order. */
+/** Validates a customer name for an order — content only, not its shape. */
 export function validateName(raw: string): NameValidation {
   const name = (raw ?? '').trim();
 
@@ -243,6 +243,27 @@ export function validateName(raw: string): NameValidation {
   }
   if (containsProfanity(name)) {
     return { ok: false, error: 'Please use a name we can call out in the lobby 🙂' };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * What an order actually requires: a first name AND a last name — but a last
+ * INITIAL is enough ("Sarah K", "Sarah K.", "Sarah Kowalczyk" all pass).
+ *
+ * Two Sarahs on a Sunday is the whole problem: with only a first name the
+ * barista calls out a name two people answer to. One letter fixes it, and
+ * demanding a full surname from a walk-up line just slows everyone down.
+ */
+export function validateFullName(raw: string): NameValidation {
+  const base = validateName(raw);
+  if (!base.ok) return base;
+
+  const parts = raw.trim().split(/\s+/).filter((p) => /[a-zA-Z]/.test(p));
+
+  if (parts.length < 2) {
+    return { ok: false, error: 'Add your last name or initial — e.g. Sarah K' };
   }
 
   return { ok: true };

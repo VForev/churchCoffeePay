@@ -17,7 +17,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import { ClosedNotice } from '@/components/ShopBanner';
-import { validateName } from '@/lib/profanity';
+import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
 import { cn } from '@/lib/utils';
 import type { Coupon, ShopSettings, OrderingHours } from '@/types';
 
@@ -37,6 +37,8 @@ function CheckoutForm() {
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
   const [hours, setHours] = useState<OrderingHours[]>([]);
   const [configLoaded, setConfigLoaded] = useState(false);
+  /** Tags the order with the event running when it was placed, for the dashboard's event reports. */
+  const [activeEventId, setActiveEventId] = useState<string | null>(null);
 
   const status = getShopStatus(settings, hours);
   const isFreeOrder = cart.total === 0;
@@ -45,17 +47,19 @@ function CheckoutForm() {
 
   useEffect(() => {
     async function load() {
-      const [config, { data: activeOrders }] = await Promise.all([
+      const [config, { data: activeOrders }, { data: activeEvent }] = await Promise.all([
         fetchShopConfig(),
         supabase
           .from('orders')
           .select('id')
           .in('status', ['pending', 'in_progress'])
           .is('archived_at', null),
+        supabase.from('events').select('id').eq('is_active', true).limit(1).maybeSingle(),
       ]);
 
       setSettings(config.settings);
       setHours(config.hours);
+      setActiveEventId(activeEvent?.id ?? null);
       setConfigLoaded(true);
 
       if (!activeOrders || activeOrders.length === 0) {
@@ -127,7 +131,7 @@ function CheckoutForm() {
     e.preventDefault();
 
     // This name goes up on the lobby TV, so it has to pass before we take money.
-    const nameCheck = validateName(cart.customer_name);
+    const nameCheck = validateFullName(cart.customer_name);
     if (!nameCheck.ok) {
       setNameError(nameCheck.error ?? 'Please enter a valid name');
       setError('');
@@ -199,6 +203,7 @@ function CheckoutForm() {
           stripe_payment_id: stripePaymentId,
           coupon_id: cart.coupon?.id || null,
           order_source: 'mobile',
+          event_id: activeEventId,
         })
         .select()
         .single();
@@ -322,23 +327,24 @@ function CheckoutForm() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <Card>
             <Input
-              label="Your Name"
-              placeholder="Name for your order"
+              label="First & Last Name"
+              placeholder="e.g. Sarah K"
               value={cart.customer_name}
-              maxLength={30}
+              maxLength={MAX_NAME_LENGTH}
               error={nameError}
               onChange={(e) => {
                 cartStore.setCustomerName(e.target.value);
                 if (nameError) setNameError('');
               }}
               onBlur={(e) => {
-                const check = validateName(e.target.value);
+                const check = validateFullName(e.target.value);
                 if (e.target.value.trim() && !check.ok) setNameError(check.error ?? '');
               }}
               required
             />
             <p className="mt-1.5 font-body text-xs text-text-light">
-              We&apos;ll call this out when your order is ready.
+              A last initial is enough — it&apos;s how we tell two Sarahs apart when we call
+              your order.
             </p>
           </Card>
 
