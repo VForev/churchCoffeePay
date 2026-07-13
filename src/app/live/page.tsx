@@ -130,21 +130,21 @@ export default function LiveOrdersPage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <div className="mx-auto max-w-2xl px-4 pt-5">
-        <ShopBanner settings={settings} status={status} />
+      <div className="mx-auto max-w-2xl px-4 pt-3">
+        <ShopBanner settings={settings} status={status} compact />
 
-        <div className="mt-4 flex items-center justify-between px-1">
-          <h1 className="font-accent text-sm font-bold uppercase tracking-wide text-text-light">
+        <div className="mt-2.5 flex items-center justify-between px-1">
+          <h2 className="font-accent text-xs font-bold uppercase tracking-wide text-text-light">
             Live Order Status
-          </h1>
-          <p className="font-accent text-sm text-text-light">
+          </h2>
+          <p className="font-accent text-xs text-text-light">
             {orders.length} active order{orders.length !== 1 ? 's' : ''} ·{' '}
             {new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
       </div>
 
-      <main className="mx-auto max-w-2xl space-y-3 px-4 pb-6 pt-4">
+      <main className="mx-auto max-w-2xl space-y-3 px-4 pb-6 pt-3">
         {orders.length === 0 && (
           <div className="py-16 text-center">
             <p className="mb-4 text-6xl">&#9749;</p>

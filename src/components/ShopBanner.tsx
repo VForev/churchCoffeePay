@@ -7,6 +7,8 @@ import type { ShopStatus } from '@/lib/shop';
 interface ShopBannerProps {
   settings: ShopSettings;
   status: ShopStatus;
+  /** Single-line bar instead of the tall hero — for the TV screen, where vertical space is orders. */
+  compact?: boolean;
   className?: string;
 }
 
@@ -14,7 +16,54 @@ interface ShopBannerProps {
  * The big "who we are / when we're open" header. This is the first thing a
  * customer sees, so it has to answer: what is this, and can I order right now?
  */
-export default function ShopBanner({ settings, status, className }: ShopBannerProps) {
+export default function ShopBanner({ settings, status, compact, className }: ShopBannerProps) {
+  if (compact) {
+    return (
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-2xl bg-gradient-to-r from-primary to-primary-light px-5 py-3 text-white shadow-md',
+          className,
+        )}
+      >
+        <h1 className="font-heading text-xl font-bold leading-none tracking-tight">
+          {settings.service_title}
+        </h1>
+
+        {settings.service_subtitle && (
+          <span className="font-body text-sm text-white/80">{settings.service_subtitle}</span>
+        )}
+
+        <div className="ml-auto flex items-center gap-3">
+          {status.isOpen ? (
+            <>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-success px-3 py-1 font-accent text-xs font-bold">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+                Open
+              </span>
+              {status.closesAt && (
+                <span className="font-accent text-sm text-white/90">
+                  until <strong className="font-bold">{status.closesAt}</strong>
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 font-accent text-xs font-bold ring-1 ring-white/25">
+                <span className="h-2 w-2 rounded-full bg-white/60" />
+                Closed
+              </span>
+              {status.nextOpensAt && (
+                <span className="font-accent text-sm text-white/90">
+                  opens <strong className="font-bold">{status.nextOpensAt}</strong>
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
