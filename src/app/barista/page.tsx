@@ -182,6 +182,20 @@ export default function BaristaPage() {
     fetchOrders();
   }
 
+  /**
+   * Clearing label_printed_at is the reprint: the print agent on the shop PC is
+   * watching for exactly that and prints the cups again. For a jam, a bad peel,
+   * or a dropped cup.
+   */
+  async function reprintLabels(orderId: string) {
+    const { error } = await supabase
+      .from('orders')
+      .update({ label_printed_at: null })
+      .eq('id', orderId);
+    if (error) alert(`Could not send to the printer: ${error.message}`);
+    fetchOrders();
+  }
+
   /** Completing removes the order from the board, so offer a brief window to take it back. */
   async function completeOrder(order: FullOrder) {
     await updateStatus(order.id, 'completed');
@@ -216,6 +230,7 @@ export default function BaristaPage() {
           order={order}
           color="warning"
           waitMinutes={calcWaitMinutes(orders, order)}
+          onReprint={() => reprintLabels(order.id)}
           actions={
             <Button size="lg" fullWidth onClick={() => updateStatus(order.id, 'in_progress')}>
               Start Making
@@ -232,6 +247,7 @@ export default function BaristaPage() {
           order={order}
           color="primary"
           waitMinutes={calcWaitMinutes(orders, order)}
+          onReprint={() => reprintLabels(order.id)}
           onBack={() => updateStatus(order.id, PREVIOUS_STATUS.in_progress!)}
           backLabel="Back to Pending"
           actions={
@@ -249,6 +265,7 @@ export default function BaristaPage() {
         order={order}
         color="success"
         waitMinutes={null}
+        onReprint={() => reprintLabels(order.id)}
         onBack={() => updateStatus(order.id, PREVIOUS_STATUS.ready!)}
         backLabel="Back to Making"
         actions={
@@ -435,6 +452,7 @@ function OrderCard({
   waitMinutes,
   onBack,
   backLabel,
+  onReprint,
 }: {
   order: FullOrder;
   actions: React.ReactNode;
@@ -443,6 +461,7 @@ function OrderCard({
   waitMinutes: number | null;
   onBack?: () => void;
   backLabel?: string;
+  onReprint?: () => void;
 }) {
   const timeAgo = getTimeAgo(order.created_at);
   const itemCount = orderItemCount(order);
@@ -560,14 +579,35 @@ function OrderCard({
         {/* Actions — big enough to hit with a wet hand */}
         <div className="space-y-2">
           {actions}
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="w-full cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface py-2.5 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
-            >
-              ← {backLabel}
-            </button>
-          )}
+          <div className="flex gap-2">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="flex-1 cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface py-2.5 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
+              >
+                ← {backLabel}
+              </button>
+            )}
+            {onReprint && (
+              <button
+                onClick={onReprint}
+                title={
+                  order.label_printed_at
+                    ? 'Print the cup labels again'
+                    : 'Labels have not printed yet — is the shop PC on?'
+                }
+                className={cn(
+                  'cursor-pointer touch-manipulation rounded-full border py-2.5 font-accent text-sm font-bold transition-colors hover:bg-gray-50',
+                  onBack ? 'shrink-0 px-4' : 'w-full',
+                  order.label_printed_at
+                    ? 'border-gray-300 bg-surface text-text'
+                    : 'border-warning bg-warning/10 text-warning',
+                )}
+              >
+                🖨 {order.label_printed_at ? 'Reprint' : 'Print labels'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

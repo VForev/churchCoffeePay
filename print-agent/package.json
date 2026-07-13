@@ -1,0 +1,23 @@
+{
+  "name": "lotg-print-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Prints a cup label for every order. Runs on the shop PC, not on Netlify.",
+  "scripts": {
+    "start": "tsx agent.ts",
+    "test-label": "tsx agent.ts --test"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.103.0",
+    "dotenv": "^16.4.5",
+    "pdf-to-printer": "^5.6.0",
+    "pdfkit": "^0.15.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/pdfkit": "^0.13.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5"
+  }
+}

@@ -14,6 +14,7 @@ const navItems = [
   { href: '/admin/coupons', label: 'Coupons', icon: '🎟' },
   { href: '/admin/inventory', label: 'Inventory', icon: '📦' },
   { href: '/admin/orders', label: 'Orders', icon: '📋' },
+  { href: '/admin/labels', label: 'Cup Labels', icon: '🏷' },
   { href: '/admin/settings', label: 'Settings', icon: '🕒' },
 ];
 

@@ -107,6 +107,11 @@ export interface Order {
   event_id: string | null;
   created_at: string;
   archived_at: string | null;
+  /**
+   * When the cup labels were printed. NULL means "not printed yet" — the print
+   * agent on the shop PC watches this, so setting it back to NULL reprints.
+   */
+  label_printed_at: string | null;
   order_items?: OrderItem[];
 }
 

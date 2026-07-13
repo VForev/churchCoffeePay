@@ -132,6 +132,7 @@ Until this migration runs, the app falls back to sensible defaults (nothing sold
 | `/admin/coupons` | Coupon codes — percentage, fixed amount, or free order discounts |
 | `/admin/inventory` | Track stock levels, set low-stock thresholds, log restocks |
 | `/admin/orders` | Full order history — expand rows, filter by status, search by name, archive or delete |
+| `/admin/labels` | Cup label layout — roll size, what's on the label, text sizes, live preview, test print |
 | `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, donation on/off, coupon box on/off |
 
 ---
@@ -286,6 +287,51 @@ are excluded everywhere.
 **Event tagging:** orders now save `event_id` — whatever event was active when the order
 was placed. Orders taken **before this change have `event_id = NULL`** and show up under
 "Regular service (no event)", so per-event history only goes back to when this shipped.
+
+## Cup Label Printing
+
+A label prints for **every cup**, automatically, when an order comes in. Full setup
+instructions are in **`print-agent/README.md`** — that's the file to hand to whoever
+sets up the shop PC.
+
+The website never talks to the printer. It can't: Safari on iPad has no Web Bluetooth,
+and the CLABEL 221B has no documented protocol. Instead, `print-agent/` is a small Node
+script that runs **on the shop PC** with the printer plugged in over USB. It subscribes
+to the same Supabase Realtime `orders` feed the barista board uses and prints through the
+normal Windows printer driver. If the PC is off or the printer jams, orders still flow —
+nothing about ordering depends on the printer.
+
+- **Migrations:** run `supabase-label-printing.sql` (adds `orders.label_printed_at`) and
+  `supabase-label-settings.sql` (adds the `label_settings` table behind `/admin/labels`).
+- **`label_printed_at` is the whole state machine.** NULL = not printed. The agent only
+  prints NULL rows and stamps them when done, so it can crash, restart, or be switched on
+  halfway through service and catch up without double-printing.
+- **Reprint** = set it back to NULL. That's what the 🖨 button on the barista card does.
+- **Hot/cold on the label** comes from the same `src/lib/temperature.ts` the barista board
+  uses — the agent imports it directly, so the cup band and the screen can never disagree.
+
+### Editing the layout — `/admin/labels`
+
+Roll size, what appears on the label, and text sizes are all edited in the browser and
+stored in `label_settings` (single row, `id = 1`). The agent subscribes to that table, so
+**saving in admin changes the next label that prints** — nobody has to touch the shop PC.
+The 🖨 **Send test label** button stamps `test_print_requested_at`, which the agent watches;
+that's the only way to confirm physical alignment, since a screen can't tell you the label
+is sitting straight in the printer.
+
+**The layout is defined exactly once, in `src/lib/labels.ts` (`labelMetrics`), in millimetres.**
+The admin preview converts those millimetres to pixels; the print agent converts the same
+millimetres to PDF points. Neither one decides a size on its own. This is the whole reason
+the preview can be trusted — if the two sides computed their own type sizes they would
+drift within a week and the preview would quietly start lying. **Change a size in
+`labelMetrics()`, never in the preview component or the PDF renderer.**
+
+The one thing the preview can't reproduce is PDFKit's shrink-to-fit on a long name, which
+it approximates with CSS. The roll is still the final word.
+
+One ordering hazard the agent has to handle: the web app inserts the order row **before**
+its `order_items`, so a realtime event can arrive when the order still has zero drinks on
+it. The agent polls briefly for the items rather than printing a blank label.
 
 ## Hot / Cold on the Barista Board
 
