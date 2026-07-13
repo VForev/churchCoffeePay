@@ -132,10 +132,14 @@ function TabletInner() {
     };
   }, [fetchMenu]);
 
-  // Donations may be switched off mid-shift.
+  // Donations and coupons may be switched off mid-shift.
   useEffect(() => {
     if (!settings.donations_enabled && donationAmount > 0) setDonationAmount(0);
   }, [settings.donations_enabled, donationAmount]);
+
+  useEffect(() => {
+    if (!settings.coupons_enabled && coupon) setCoupon(null);
+  }, [settings.coupons_enabled, coupon]);
 
   useEffect(() => {
     if (!selectedItem) return;
@@ -487,7 +491,8 @@ function TabletInner() {
                 </div>
               ))}
 
-              {/* Coupon */}
+              {/* Coupon — hidden when the admin turns coupons off */}
+              {settings.coupons_enabled && (
               <div className="pt-3 border-t border-gray-100">
                 {coupon ? (
                   <div className="flex items-center justify-between text-sm">
@@ -513,6 +518,7 @@ function TabletInner() {
                 )}
                 {couponError && <p className="text-xs text-danger mt-1">{couponError}</p>}
               </div>
+              )}
 
               {/* Donation — hidden when the admin turns donations off */}
               {settings.donations_enabled && (

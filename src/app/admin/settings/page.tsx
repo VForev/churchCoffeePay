@@ -56,6 +56,7 @@ export default function AdminSettingsPage() {
         donations_enabled: settings.donations_enabled,
         donation_label: settings.donation_label.trim() || 'Donation',
         donation_presets: settings.donation_presets.trim(),
+        coupons_enabled: settings.coupons_enabled,
         ordering_override: settings.ordering_override,
         closed_message: settings.closed_message.trim(),
       });
@@ -304,6 +305,34 @@ export default function AdminSettingsPage() {
             />
           </div>
         )}
+      </Card>
+
+      {/* Coupons */}
+      <Card className="mb-6">
+        <h2 className="mb-1 font-heading font-bold text-text-dark">Coupons</h2>
+        <p className="mb-4 font-body text-sm text-text-light">
+          Hide the coupon box when you&apos;re not running any codes — it only invites people to
+          hunt for one they don&apos;t have.
+        </p>
+
+        <label className="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-gray-100 p-3 transition-colors hover:border-gray-200">
+          <input
+            type="checkbox"
+            checked={settings.coupons_enabled}
+            onChange={(e) => setSettings({ ...settings, coupons_enabled: e.target.checked })}
+            className="h-5 w-5 accent-primary"
+          />
+          <div>
+            <span className="font-accent text-sm font-semibold text-text-dark">
+              Let customers enter a coupon code
+            </span>
+            <p className="font-body text-xs text-text-light">
+              {settings.coupons_enabled
+                ? 'The coupon box shows at checkout and on the tablet.'
+                : 'The coupon box is hidden everywhere. Existing codes still work if re-enabled.'}
+            </p>
+          </div>
+        </label>
       </Card>
 
       <div className="flex justify-end pb-6">

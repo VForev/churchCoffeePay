@@ -78,6 +78,13 @@ function CheckoutForm() {
     }
   }, [configLoaded, settings.donations_enabled, cart.donation_amount]);
 
+  // Same for a coupon applied before the admin turned coupons off.
+  useEffect(() => {
+    if (configLoaded && !settings.coupons_enabled && cart.coupon) {
+      cartStore.removeCoupon();
+    }
+  }, [configLoaded, settings.coupons_enabled, cart.coupon]);
+
   async function applyCoupon() {
     if (!couponCode.trim()) return;
     setCouponLoading(true);
@@ -339,6 +346,7 @@ function CheckoutForm() {
             </div>
           </Card>
 
+          {settings.coupons_enabled && (
           <Card>
             <h3 className="mb-3 font-heading font-bold text-text-dark">Coupon Code</h3>
             {cart.coupon ? (
@@ -381,6 +389,7 @@ function CheckoutForm() {
               </div>
             )}
           </Card>
+          )}
 
           {/* Donation — hidden entirely when the admin turns donations off */}
           {settings.donations_enabled && (

@@ -73,6 +73,8 @@ export interface ShopSettings {
   donation_label: string;
   /** Comma-separated dollar amounts, e.g. "1,2,5". */
   donation_presets: string;
+  /** When false, the coupon box is hidden from checkout and the tablet. */
+  coupons_enabled: boolean;
   ordering_override: OrderingOverride;
   closed_message: string;
 }

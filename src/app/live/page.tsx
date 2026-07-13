@@ -130,25 +130,21 @@ export default function LiveOrdersPage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <header className="sticky top-0 z-30 bg-primary text-white">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
-          <h1 className="font-heading text-lg font-bold">Live Order Status</h1>
-          <div className="text-right">
-            <p className="text-sm opacity-75">
-              {orders.length} active order{orders.length !== 1 ? 's' : ''}
-            </p>
-            <p className="mt-0.5 text-xs opacity-50">
-              {new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </p>
-          </div>
-        </div>
-      </header>
-
       <div className="mx-auto max-w-2xl px-4 pt-5">
         <ShopBanner settings={settings} status={status} />
+
+        <div className="mt-4 flex items-center justify-between px-1">
+          <h1 className="font-accent text-sm font-bold uppercase tracking-wide text-text-light">
+            Live Order Status
+          </h1>
+          <p className="font-accent text-sm text-text-light">
+            {orders.length} active order{orders.length !== 1 ? 's' : ''} ·{' '}
+            {new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </p>
+        </div>
       </div>
 
-      <main className="mx-auto max-w-2xl space-y-3 px-4 py-6">
+      <main className="mx-auto max-w-2xl space-y-3 px-4 pb-6 pt-4">
         {orders.length === 0 && (
           <div className="py-16 text-center">
             <p className="mb-4 text-6xl">&#9749;</p>

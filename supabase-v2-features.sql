@@ -31,6 +31,8 @@ create table if not exists shop_settings (
   donations_enabled boolean not null default true,
   donation_label text not null default 'Donation',
   donation_presets text not null default '1,2,5',
+  -- Coupons
+  coupons_enabled boolean not null default true,
   -- Ordering availability
   ordering_override text not null default 'auto' check (ordering_override in ('auto', 'open', 'closed')),
   closed_message text not null default 'Ordering is closed right now. Come see us during service!',
@@ -39,6 +41,10 @@ create table if not exists shop_settings (
 );
 
 insert into shop_settings (id) values (1) on conflict (id) do nothing;
+
+-- Added after the first version of this file, so back-fill it for anyone who
+-- already ran the migration (create table if not exists won't add new columns).
+alter table shop_settings add column if not exists coupons_enabled boolean not null default true;
 
 -- ============================================
 -- 3. WEEKLY ORDERING HOURS

@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS: ShopSettings = {
   donations_enabled: true,
   donation_label: 'Donation',
   donation_presets: '1,2,5',
+  coupons_enabled: true,
   ordering_override: 'auto',
   closed_message: 'Ordering is closed right now. Come see us during service!',
 };

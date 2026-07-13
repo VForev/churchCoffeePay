@@ -132,7 +132,7 @@ Until this migration runs, the app falls back to sensible defaults (nothing sold
 | `/admin/coupons` | Coupon codes — percentage, fixed amount, or free order discounts |
 | `/admin/inventory` | Track stock levels, set low-stock thresholds, log restocks |
 | `/admin/orders` | Full order history — expand rows, filter by status, search by name, archive or delete |
-| `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, donation on/off |
+| `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, donation on/off, coupon box on/off |
 
 ---
 
@@ -327,6 +327,14 @@ Every customer-facing "tip" is now a **donation**, and it can be switched off en
 - When **off**, the donation box disappears from both `/checkout` and `/tablet`. Any amount already entered is zeroed out.
 
 **Database note:** the amount is still stored in `orders.tip_amount` — the column was left alone so existing orders and reports keep working. Only the UI language changed. Client-side, `CartState` calls it `donation_amount` and maps to `tip_amount` on insert.
+
+---
+
+## Coupons On/Off
+
+`/admin/settings` → **Coupons**. Untick it and the coupon box disappears from both `/checkout` and `/tablet` — useful when you aren't running any codes, since an empty coupon field just makes people feel they're missing a deal.
+
+Turning it off doesn't delete anything. Codes at `/admin/coupons` stay exactly as they are and start working again the moment you re-enable the box. If a coupon was already applied to a cart when you flip it off, it's dropped from that cart.
 
 ---
 
