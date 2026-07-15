@@ -366,7 +366,8 @@ async function runDoctor() {
   console.log(
     paperSize
       ? `  Using paper size: "${paperSize}"`
-      : '  Using paper size: (none matched — set PRINTER_PAPER_SIZE in .env to one above)',
+      : "  Using paper size: the printer's own default (set in Printing Preferences).\n" +
+        '                    Set PRINTER_PAPER_SIZE in .env only if you need to override it.',
   );
   console.log('');
 

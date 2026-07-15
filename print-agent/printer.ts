@@ -97,20 +97,11 @@ export function resolveMedia(
   if (override) return override;
 
   if (IS_WINDOWS) {
-    const w = Math.round(widthMm);
-    const h = Math.round(heightMm);
-    const near = (a: number, b: number) => Math.abs(a - b) <= 1;
-    for (const name of sizes) {
-      const nums = (name.match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
-      for (let i = 0; i < nums.length; i++) {
-        for (let j = 0; j < nums.length; j++) {
-          if (i === j) continue;
-          if ((near(nums[i], w) && near(nums[j], h)) || (near(nums[i], h) && near(nums[j], w))) {
-            return name;
-          }
-        }
-      }
-    }
+    // Don't force a paper size on Windows. SumatraPDF (what pdf-to-printer drives)
+    // only honors a small subset of the driver's sizes via `paper=`, and forcing one
+    // lands the label in a corner. Leaving it unset makes the job use the size set in
+    // the driver's Printing Preferences — exactly what a normal PDF print uses, which
+    // is the size that prints correctly. Set PRINTER_PAPER_SIZE to override.
     return undefined;
   }
 
