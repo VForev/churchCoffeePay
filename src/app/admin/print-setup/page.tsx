@@ -50,7 +50,14 @@ export default function PrintSetupPage() {
         </div>
         <p className="mt-3 font-body text-xs text-text-light">
           Do this <strong>on the Windows computer</strong> that the printer is plugged into —
-          that&apos;s where everything below happens.
+          that&apos;s where everything below happens. You can also{' '}
+          <a
+            href="https://github.com/VForev/churchCoffeePay/raw/main/public/print-agent.zip"
+            className="font-semibold text-primary underline hover:text-primary-light"
+          >
+            download it from GitHub
+          </a>
+          .
         </p>
       </Card>
 

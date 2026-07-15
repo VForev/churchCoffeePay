@@ -45,5 +45,7 @@ next-env.d.ts
 print-agent/node_modules/
 print-agent/.env
 
-# generated download bundle for the print agent (rebuilt on predev/prebuild)
-public/print-agent.zip
+# NOTE: public/print-agent.zip is intentionally COMMITTED (not ignored) so it can
+# be downloaded straight from GitHub as well as from /admin/print-setup. It's
+# rebuilt deterministically on predev/prebuild, so a rebuild produces identical
+# bytes and never shows up as a spurious change.
