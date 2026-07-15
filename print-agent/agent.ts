@@ -25,9 +25,17 @@
  */
 
 import 'dotenv/config';
+import { createRequire } from 'node:module';
 import { createClient } from '@supabase/supabase-js';
-import { print, getPrinters } from 'pdf-to-printer';
 import { unlink } from 'node:fs/promises';
+
+// pdf-to-printer is a CommonJS module, and pulling named functions off it with
+// `import { getPrinters } from 'pdf-to-printer'` breaks on newer Node ("does not
+// provide an export named 'getPrinters'") — the ESM/CJS interop differs between
+// Node versions. createRequire loads it the plain CommonJS way, which returns the
+// real module and works identically on every Node version.
+const require = createRequire(import.meta.url);
+const { print, getPrinters } = require('pdf-to-printer') as typeof import('pdf-to-printer');
 import { drinkTemperature } from '../src/lib/temperature';
 import {
   DEFAULT_LABEL_SETTINGS,
