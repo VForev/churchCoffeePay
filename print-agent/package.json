@@ -6,7 +6,8 @@
   "description": "Prints a cup label for every order. Runs on the shop PC, not on Netlify.",
   "scripts": {
     "start": "tsx agent.ts",
-    "test-label": "tsx agent.ts --test"
+    "test-label": "tsx agent.ts --test",
+    "doctor": "tsx agent.ts --doctor"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",

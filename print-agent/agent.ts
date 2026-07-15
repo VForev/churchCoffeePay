@@ -26,6 +26,7 @@
 
 import 'dotenv/config';
 import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
 import { createClient } from '@supabase/supabase-js';
 import { unlink } from 'node:fs/promises';
 
@@ -44,7 +45,7 @@ import {
   type LabelData,
   type LabelSettings,
 } from '../src/lib/labels';
-import { renderLabelPdf } from './label';
+import { renderLabelPdf, renderDiagnosticPdf } from './label';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_KEY =
@@ -292,7 +293,63 @@ async function testLabel() {
   console.log('   Sent. If nothing came out, check the printer in Windows Settings → Printers.');
 }
 
+/** Opens a file in the OS default app, so the diagnostic PDF pops up on screen. */
+function openOnScreen(path: string) {
+  try {
+    if (process.platform === 'win32') {
+      spawn('cmd', ['/c', 'start', '', path], { detached: true, stdio: 'ignore' }).unref();
+    } else if (process.platform === 'darwin') {
+      spawn('open', [path], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      spawn('xdg-open', [path], { detached: true, stdio: 'ignore' }).unref();
+    }
+  } catch {
+    /* not fatal — the path is logged either way */
+  }
+}
+
+/**
+ * `npm run doctor` — prints a crude test page (black block + "TEST 123") and opens
+ * the same PDF on screen, to locate a blank-label problem. See renderDiagnosticPdf.
+ */
+async function runDoctor() {
+  await loadLabelSettings();
+  const printers = await getPrinters().catch(() => []);
+
+  console.log('── Print doctor ─────────────────────────────');
+  console.log(`  Using printer: ${PRINTER_NAME || '(Windows default)'}`);
+  console.log(`  Available:     ${printers.map((p) => p.name).join(', ') || 'NONE FOUND'}`);
+  console.log(`  Label size:    ${labelSettings.width_mm} × ${labelSettings.height_mm} mm`);
+  console.log('');
+
+  const file = await renderDiagnosticPdf(labelSettings);
+  console.log(`  Test PDF:      ${file}`);
+  openOnScreen(file); // pops up so you can see if the PDF itself has content
+
+  try {
+    await print(file, { printer: PRINTER_NAME || undefined, scale: 'fit' });
+    console.log('  Print job sent (scale = fit).');
+  } catch (err) {
+    console.error('  ⚠ PRINT FAILED:', err instanceof Error ? err.message : err);
+  }
+
+  console.log('');
+  console.log('  Now look at what came out of the PRINTER:');
+  console.log('    • Solid black block + "TEST 123"  → printing works. Tell me — the fix');
+  console.log('       is in the label content, and I can sort it quickly.');
+  console.log('    • Totally blank                   → the driver / paper size / printer is');
+  console.log('       the problem, not the label design.');
+  console.log('');
+  console.log('  And the PDF that just opened ON SCREEN — does IT show the block + text?');
+  console.log('  Tell me both answers.');
+}
+
 async function main() {
+  if (process.argv.includes('--doctor')) {
+    await runDoctor();
+    return;
+  }
+
   if (process.argv.includes('--test')) {
     await loadLabelSettings();
     await testLabel();

@@ -176,3 +176,51 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
 
   return file;
 }
+
+/**
+ * A deliberately crude test page: a full-page border, a solid black block, and big
+ * text — all sized to the current label. It exists to answer one question when a
+ * label comes out blank: does ANY ink land on the label at all?
+ *
+ *   - Solid black block prints  → the printer, driver and paper size are fine, so
+ *     a blank real label is a content/layout problem we fix in code.
+ *   - Nothing prints            → nothing we draw will ever show; the problem is
+ *     the driver / paper size / print path, upstream of anything this file does.
+ *
+ * It intentionally does NOT go through the normal label renderer, so a bug there
+ * can't be what makes it blank.
+ */
+export async function renderDiagnosticPdf(settings: LabelSettings): Promise<string> {
+  const m = labelMetrics(settings);
+  const pt = (mm: number) => mm * MM_TO_PT;
+  const width = pt(m.widthMm);
+  const height = pt(m.heightMm);
+
+  const doc = new PDFDocument({ size: [width, height], margin: 0 });
+  const file = join(tmpdir(), `lotg-doctor-${Date.now()}.pdf`);
+  const stream = createWriteStream(file);
+  doc.pipe(stream);
+
+  // Border hugging the whole label edge — shows the printable area and alignment.
+  doc.lineWidth(2).rect(1, 1, width - 2, height - 2).stroke('#000');
+
+  // A solid black block filling the top ~55% — the "is any ink landing?" test.
+  const pad = pt(2);
+  doc.rect(pad, pad, width - pad * 2, height * 0.55 - pad).fill('#000');
+
+  // Big text below it — the "does text render?" test.
+  doc
+    .fillColor('#000')
+    .font('Helvetica-Bold')
+    .fontSize(height * 0.2)
+    .text('TEST 123', 0, height * 0.66, { width, align: 'center', lineBreak: false });
+
+  doc.end();
+
+  await new Promise<void>((resolve, reject) => {
+    stream.on('finish', () => resolve());
+    stream.on('error', reject);
+  });
+
+  return file;
+}
