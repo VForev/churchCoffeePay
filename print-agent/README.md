@@ -78,6 +78,9 @@ it's running. No restart, and nobody has to come back to this PC.
 
 ## Running it on a service morning
 
+Easiest: **double-click `start-printer.command`** (Mac) or **`start-printer.bat`** (Windows)
+in this folder. Or from a terminal:
+
 ```bash
 npm start
 ```
@@ -86,21 +89,25 @@ Leave the window open. It prints:
 
 ```
 LOTG label printer
-  Printer:    (Windows default)
-  Label size: 50 × 30 mm
+  Printer:    (system default)
+  Label size: 40 × 30 mm
+  Paper size: "w113h85"
 
 No missed orders.
 Listening for orders. Leave this window open.
 🖨  Sarah K — 2 labels
 ```
 
-To start it without typing commands, double-click **`start-printer.bat`** (Windows) or
-**`start-printer.command`** (Mac) in this folder.
+Once you see **"Listening for orders,"** it's working — every order prints a label.
+
+**On a Mac laptop, keep it awake.** If the Mac sleeps, printing stops. The double-click
+launcher already runs it under `caffeinate` so it won't idle-sleep, but also keep it **on
+power with the lid open** during service.
 
 To make it start by itself when the computer boots:
+- **Mac:** System Settings → General → Login Items → add `start-printer.command`.
 - **Windows:** press <kbd>Win</kbd>+<kbd>R</kbd>, type `shell:startup`, and drop a shortcut
   to `start-printer.bat` in the folder that opens.
-- **Mac:** System Settings → General → Login Items → add `start-printer.command`.
 
 ---
 
