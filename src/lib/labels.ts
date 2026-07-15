@@ -27,6 +27,12 @@ export interface LabelSettings {
   /** Order code and time along the bottom. */
   show_footer: boolean;
   uppercase_name: boolean;
+  /**
+   * Turn the printed design 90°. The label size (width × height) still describes the
+   * physical sticker; this only rotates the *design* on it, for printers that feed the
+   * label the opposite way round — the fix for a label that prints sideways.
+   */
+  rotate_label: boolean;
   /** Type size multipliers, 0.6–1.6. The starting size before shrink-to-fit. */
   name_scale: number;
   drink_scale: number;
@@ -46,6 +52,7 @@ export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   show_note: true,
   show_footer: true,
   uppercase_name: false,
+  rotate_label: false,
   name_scale: 1,
   drink_scale: 1,
   modifier_scale: 1,
@@ -69,6 +76,7 @@ export function normalizeLabelSettings(row: Partial<LabelSettings> | null | unde
     width_mm: clamp(Number(merged.width_mm) || DEFAULT_LABEL_SETTINGS.width_mm, 20, 100),
     height_mm: clamp(Number(merged.height_mm) || DEFAULT_LABEL_SETTINGS.height_mm, 15, 100),
     margin_mm: clamp(Number(merged.margin_mm) ?? DEFAULT_LABEL_SETTINGS.margin_mm, 0, 8),
+    rotate_label: Boolean(merged.rotate_label),
     name_scale: clamp(Number(merged.name_scale) || 1, SCALE_MIN, SCALE_MAX),
     drink_scale: clamp(Number(merged.drink_scale) || 1, SCALE_MIN, SCALE_MAX),
     modifier_scale: clamp(Number(merged.modifier_scale) || 1, SCALE_MIN, SCALE_MAX),

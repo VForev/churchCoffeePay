@@ -30,13 +30,17 @@ export default function LabelPreview({
   settings: LabelSettings;
   data: LabelData;
 }) {
-  const m = labelMetrics(settings);
+  const rotate = settings.rotate_label;
+  // Match the PDF: when rotated, lay the design out to the swapped size, then spin it.
+  const m = labelMetrics(
+    rotate ? { ...settings, width_mm: settings.height_mm, height_mm: settings.width_mm } : settings,
+  );
   const showBand = settings.show_temp_band && data.temp !== null;
   const showCounter = settings.show_cup_counter && data.cupTotal > 1;
   const showMods = settings.show_modifiers && data.modifiers.length > 0;
   const showNote = settings.show_note && Boolean(data.note);
 
-  return (
+  const label = (
     <div
       className="relative shrink-0 overflow-hidden bg-white text-black shadow-md ring-1 ring-gray-300"
       style={{
@@ -118,6 +122,24 @@ export default function LabelPreview({
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+
+  if (!rotate) return label;
+
+  // Rotated: the physical sticker is width × height, but the design was laid out to the
+  // swapped size above, so spin it 90° and center it inside the physical footprint.
+  return (
+    <div
+      className="relative shrink-0"
+      style={{ width: px(settings.width_mm), height: px(settings.height_mm) }}
+    >
+      <div
+        className="absolute left-1/2 top-1/2"
+        style={{ transform: 'translate(-50%, -50%) rotate(90deg)' }}
+      >
+        {label}
       </div>
     </div>
   );

@@ -67,6 +67,7 @@ export default function AdminLabelsPage() {
       show_note: clean.show_note,
       show_footer: clean.show_footer,
       uppercase_name: clean.uppercase_name,
+      rotate_label: clean.rotate_label,
       name_scale: clean.name_scale,
       drink_scale: clean.drink_scale,
       modifier_scale: clean.modifier_scale,
@@ -150,6 +151,15 @@ export default function AdminLabelsPage() {
                 max={8}
                 step={0.5}
                 onChange={(margin_mm) => patch({ margin_mm })}
+              />
+            </div>
+
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <Toggle
+                label="Rotate the design 90°"
+                help="If labels print sideways, turn this on. Width and height still describe the sticker; only the design spins. Watch the preview."
+                checked={settings.rotate_label}
+                onChange={(rotate_label) => patch({ rotate_label })}
               />
             </div>
           </Card>

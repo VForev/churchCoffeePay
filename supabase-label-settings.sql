@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS label_settings (
   show_note BOOLEAN NOT NULL DEFAULT TRUE,
   show_footer BOOLEAN NOT NULL DEFAULT TRUE,
   uppercase_name BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Turn the design 90° for printers that feed the label the other way.
+  rotate_label BOOLEAN NOT NULL DEFAULT FALSE,
 
   -- Type size multipliers. Clamped to 0.6–1.6 in the app.
   name_scale NUMERIC NOT NULL DEFAULT 1,
@@ -33,6 +35,9 @@ CREATE TABLE IF NOT EXISTS label_settings (
 );
 
 INSERT INTO label_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Added after the first release — for tables created before rotate_label existed.
+ALTER TABLE label_settings ADD COLUMN IF NOT EXISTS rotate_label BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- The agent watches this table live, so a save in admin reaches the printer.
 -- Guarded because ALTER PUBLICATION ... ADD TABLE errors if it's already there,

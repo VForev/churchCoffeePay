@@ -53,8 +53,14 @@ function fitOneLine(
 }
 
 export async function renderLabelPdf(data: LabelData, settings: LabelSettings): Promise<string> {
-  const m = labelMetrics(settings);
   const pt = (mm: number) => mm * MM_TO_PT;
+  const rotate = settings.rotate_label;
+
+  // When rotated, the design is laid out to the SWAPPED size and then spun 90° onto
+  // the page — so a printer that feeds the label the other way reads the right way up.
+  const m = labelMetrics(
+    rotate ? { ...settings, width_mm: settings.height_mm, height_mm: settings.width_mm } : settings,
+  );
 
   const width = pt(m.widthMm);
   const height = pt(m.heightMm);
@@ -66,10 +72,17 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   const footerSize = pt(m.footerMm);
   const bandHeight = pt(m.bandMm);
 
-  const doc = new PDFDocument({ size: [width, height], margin: 0 });
+  // The page — and the media size sent to the printer — is always the physical label.
+  const pageW = pt(settings.width_mm);
+  const pageH = pt(settings.height_mm);
+
+  const doc = new PDFDocument({ size: [pageW, pageH], margin: 0 });
   const file = join(tmpdir(), `lotg-label-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`);
   const stream = createWriteStream(file);
   doc.pipe(stream);
+
+  // Rotate the whole design 90° into the page; drawing below stays in layout coords.
+  if (rotate) doc.transform(0, 1, -1, 0, pageW, 0);
 
   const contentWidth = width - margin * 2;
   let y = margin;
