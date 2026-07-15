@@ -15,6 +15,7 @@ const navItems = [
   { href: '/admin/inventory', label: 'Inventory', icon: '📦' },
   { href: '/admin/orders', label: 'Orders', icon: '📋' },
   { href: '/admin/labels', label: 'Cup Labels', icon: '🏷' },
+  { href: '/admin/print-setup', label: 'Printer Setup', icon: '🖨' },
   { href: '/admin/settings', label: 'Settings', icon: '🕒' },
 ];
 

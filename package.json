@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/build-agent-zip.mjs",
     "dev": "next dev --hostname 0.0.0.0",
+    "prebuild": "node scripts/build-agent-zip.mjs",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "serve": "next build && next start --hostname 0.0.0.0",
+    "build:agent-zip": "node scripts/build-agent-zip.mjs",
     "lint": "eslint",
     "test:profanity": "tsx src/lib/profanity.test.ts"
   },

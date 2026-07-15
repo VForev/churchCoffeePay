@@ -44,3 +44,6 @@ next-env.d.ts
 # print agent (runs on the shop PC, not on Netlify)
 print-agent/node_modules/
 print-agent/.env
+
+# generated download bundle for the print agent (rebuilt on predev/prebuild)
+public/print-agent.zip
