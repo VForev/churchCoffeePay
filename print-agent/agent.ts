@@ -36,7 +36,9 @@ import { unlink } from 'node:fs/promises';
 // Node versions. createRequire loads it the plain CommonJS way, which returns the
 // real module and works identically on every Node version.
 const require = createRequire(import.meta.url);
-const { print, getPrinters } = require('pdf-to-printer') as typeof import('pdf-to-printer');
+const { print, getPrinters, getDefaultPrinter } =
+  require('pdf-to-printer') as typeof import('pdf-to-printer');
+import type { Printer } from 'pdf-to-printer';
 import { drinkTemperature } from '../src/lib/temperature';
 import {
   DEFAULT_LABEL_SETTINGS,
@@ -54,8 +56,20 @@ const SUPABASE_KEY =
 /** Empty = Windows' default printer. Set it if the PC has more than one. */
 const PRINTER_NAME = process.env.PRINTER_NAME ?? '';
 
+/**
+ * The printer's paper/label size, by name. This is the fix for a label that feeds
+ * blank or the wrong size: the printer must be told the media is (say) 40 × 30 mm,
+ * exactly like picking the paper size in a print dialog. Leave it blank and the
+ * agent auto-matches one of the printer's own sizes to the label; set it to force a
+ * specific one (copy the exact name the agent lists on startup).
+ */
+const PRINTER_PAPER_SIZE = process.env.PRINTER_PAPER_SIZE ?? '';
+
 /** How far back to look for unprinted orders on startup. */
 const CATCHUP_HOURS = Number(process.env.CATCHUP_HOURS ?? 6);
+
+/** The sizes the target printer reports it can print, cached at startup. */
+let printerPaperSizes: string[] = [];
 
 /**
  * The layout, owned by /admin/labels and cached here.
@@ -165,19 +179,57 @@ function buildLabels(order: FetchedOrder): LabelData[] {
  */
 const KEEP_PDF = process.env.KEEP_PDF === '1';
 
+/** Loads and caches the target printer's supported paper sizes. */
+async function loadPrinterPaperSizes(): Promise<void> {
+  const printers = await getPrinters().catch(() => [] as Printer[]);
+  let target = PRINTER_NAME ? printers.find((p) => p.name === PRINTER_NAME) : undefined;
+  if (!target && !PRINTER_NAME) {
+    const def = await getDefaultPrinter().catch(() => null);
+    target = (def && printers.find((p) => p.name === def.name)) || def || printers[0];
+  }
+  printerPaperSizes = target?.paperSizes ?? [];
+}
+
 /**
- * `scale: 'fit'` makes the printer scale the label to whatever paper size its
- * driver is set to, so the design always lands on the label. The previous
- * 'noscale' assumed the driver's paper matched the PDF exactly — when it didn't,
- * the printer fed a blank label instead of complaining. 'fit' is forgiving of
- * that mismatch, which is the usual cause of "it feeds but nothing prints".
+ * Picks the printer paper size that matches the label. A blank or wrong-size label
+ * is almost always the print job not naming the media size (40 × 30 mm here); the
+ * driver then falls back to a default and the design lands off the label. Passing
+ * the size by name is the same thing as choosing it in a print dialog.
+ *
+ * Uses PRINTER_PAPER_SIZE verbatim if set; otherwise finds a size whose name
+ * contains both the width and height in mm (e.g. "40mm x 30mm", "W40 H30").
  */
+function resolvePaperSize(): string | undefined {
+  if (PRINTER_PAPER_SIZE) return PRINTER_PAPER_SIZE;
+
+  const w = Math.round(labelSettings.width_mm);
+  const h = Math.round(labelSettings.height_mm);
+  const near = (a: number, b: number) => Math.abs(a - b) <= 1;
+
+  for (const name of printerPaperSizes) {
+    const nums = (name.match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
+    for (let i = 0; i < nums.length; i++) {
+      for (let j = 0; j < nums.length; j++) {
+        if (i === j) continue;
+        if ((near(nums[i], w) && near(nums[j], h)) || (near(nums[i], h) && near(nums[j], w))) {
+          return name;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 async function printLabel(label: LabelData) {
   const file = await renderLabelPdf(label, labelSettings);
   if (KEEP_PDF) console.log(`   PDF kept for inspection: ${file}`);
   try {
     await print(file, {
       printer: PRINTER_NAME || undefined,
+      // Name the label size so the printer formats for it. Without this the driver
+      // uses its default paper and the label can feed out blank. 'fit' then keeps
+      // the design inside that size even if it's off by a hair.
+      paperSize: resolvePaperSize(),
       scale: 'fit',
     });
   } finally {
@@ -314,12 +366,28 @@ function openOnScreen(path: string) {
  */
 async function runDoctor() {
   await loadLabelSettings();
+  await loadPrinterPaperSizes();
   const printers = await getPrinters().catch(() => []);
+  const paperSize = resolvePaperSize();
 
   console.log('── Print doctor ─────────────────────────────');
   console.log(`  Using printer: ${PRINTER_NAME || '(Windows default)'}`);
   console.log(`  Available:     ${printers.map((p) => p.name).join(', ') || 'NONE FOUND'}`);
   console.log(`  Label size:    ${labelSettings.width_mm} × ${labelSettings.height_mm} mm`);
+  console.log('');
+  console.log('  Paper sizes this printer supports:');
+  if (printerPaperSizes.length === 0) {
+    console.log('    (none reported — the driver may not expose sizes)');
+  } else {
+    for (const size of printerPaperSizes) {
+      console.log(`    ${size === paperSize ? '➜' : ' '} ${size}`);
+    }
+  }
+  console.log(
+    paperSize
+      ? `  Using paper size: "${paperSize}"`
+      : '  Using paper size: (none matched — set PRINTER_PAPER_SIZE in .env to one above)',
+  );
   console.log('');
 
   const file = await renderDiagnosticPdf(labelSettings);
@@ -327,21 +395,16 @@ async function runDoctor() {
   openOnScreen(file); // pops up so you can see if the PDF itself has content
 
   try {
-    await print(file, { printer: PRINTER_NAME || undefined, scale: 'fit' });
-    console.log('  Print job sent (scale = fit).');
+    await print(file, { printer: PRINTER_NAME || undefined, paperSize, scale: 'fit' });
+    console.log('  Print job sent.');
   } catch (err) {
     console.error('  ⚠ PRINT FAILED:', err instanceof Error ? err.message : err);
   }
 
   console.log('');
-  console.log('  Now look at what came out of the PRINTER:');
-  console.log('    • Solid black block + "TEST 123"  → printing works. Tell me — the fix');
-  console.log('       is in the label content, and I can sort it quickly.');
-  console.log('    • Totally blank                   → the driver / paper size / printer is');
-  console.log('       the problem, not the label design.');
-  console.log('');
-  console.log('  And the PDF that just opened ON SCREEN — does IT show the block + text?');
-  console.log('  Tell me both answers.');
+  console.log('  If it is still blank: find the label size (e.g. "40mm x 30mm") in the');
+  console.log('  list above and copy it EXACTLY into PRINTER_PAPER_SIZE in your .env,');
+  console.log('  then run this again.');
 }
 
 async function main() {
@@ -358,10 +421,13 @@ async function main() {
 
   const printers = await getPrinters().catch(() => []);
   await loadLabelSettings();
+  await loadPrinterPaperSizes();
+  const paperSize = resolvePaperSize();
 
   console.log('LOTG label printer');
   console.log(`  Printer:    ${PRINTER_NAME || '(Windows default)'}`);
   console.log(`  Label size: ${labelSettings.width_mm} × ${labelSettings.height_mm} mm (set at /admin/labels)`);
+  console.log(`  Paper size: ${paperSize ? `"${paperSize}"` : '(none matched — run `npm run doctor` to list sizes)'}`);
   console.log(`  Available:  ${printers.map((p) => p.name).join(', ') || 'none found'}`);
   console.log('');
 

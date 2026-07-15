@@ -125,15 +125,20 @@ the drink's Temperature modifier first, then the drink's name. If it genuinely c
 **Nothing prints.** Is the window still open? Is the PC awake — check Windows sleep
 settings. Run `npm run test-label` to test the printer without needing an order.
 
-**The label feeds out blank — it comes out but nothing is printed on it.** This is almost
-always the printer driver's paper size not matching the label. Fix it in Windows:
+**The label feeds out blank — it comes out but nothing is printed on it.** The print job
+isn't telling the printer the label size, so the printer uses a default and the design
+lands off the label. The agent now sends the size automatically, but if your printer names
+its sizes oddly it may not auto-match. To fix it:
 
-1. **Settings → Bluetooth & devices → Printers & scanners → [your printer] → Printing
-   preferences.** Set the paper / label size to match your actual label (e.g. 50 × 30 mm),
-   the same size you entered at `/admin/labels`. Save.
-2. Set this printer as the **default** printer (right-click it → Set as default), or put its
-   exact name in `PRINTER_NAME` in `.env`.
-3. Run `npm run test-label` again.
+1. Run `npm run doctor`. It lists **every paper size your printer supports** and shows which
+   one it picked (marked `➜`).
+2. If nothing is picked, or the wrong one is, find the size that matches your label (e.g.
+   `40mm x 30mm`) in that list and copy it **exactly** into `PRINTER_PAPER_SIZE` in your
+   `.env`. Save.
+3. Run `npm run doctor` again — it should now print.
+
+Make sure the size at `/admin/labels` also matches your real label (e.g. 40 × 30 mm), so the
+design is drawn at the right shape.
 
 If it's *still* blank, find out whether it's the PDF or the printer: set `KEEP_PDF=1` in
 `.env`, run `npm run test-label`, and open the PDF path it prints. If the PDF shows the
