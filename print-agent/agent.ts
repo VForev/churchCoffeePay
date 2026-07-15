@@ -209,6 +209,8 @@ async function printLabel(label: LabelData) {
       file,
       printerName: PRINTER_NAME || undefined,
       media: resolvePaperSize(),
+      widthMm: labelSettings.width_mm,
+      heightMm: labelSettings.height_mm,
     });
   } finally {
     if (!KEEP_PDF) await unlink(file).catch(() => {});
@@ -373,7 +375,13 @@ async function runDoctor() {
   openOnScreen(file); // pops up so you can see if the PDF itself has content
 
   try {
-    await printPdf({ file, printerName: PRINTER_NAME || undefined, media: paperSize });
+    await printPdf({
+      file,
+      printerName: PRINTER_NAME || undefined,
+      media: paperSize,
+      widthMm: labelSettings.width_mm,
+      heightMm: labelSettings.height_mm,
+    });
     console.log('  Print job sent.');
   } catch (err) {
     console.error('  ⚠ PRINT FAILED:', err instanceof Error ? err.message : err);

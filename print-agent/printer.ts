@@ -133,11 +133,17 @@ export async function printPdf(opts: {
   file: string;
   printerName?: string;
   media?: string;
+  widthMm: number;
+  heightMm: number;
 }): Promise<void> {
   if (IS_WINDOWS) {
     await ptp().print(opts.file, {
       printer: opts.printerName || undefined,
       paperSize: opts.media || undefined,
+      // Force the orientation to match the label. Otherwise SumatraPDF (what the
+      // Windows print path uses) auto-rotates a wide label to portrait to "fit" the
+      // paper — i.e. it prints sideways. Naming the orientation stops that flip.
+      orientation: opts.widthMm >= opts.heightMm ? 'landscape' : 'portrait',
       scale: 'fit',
     });
     return;
