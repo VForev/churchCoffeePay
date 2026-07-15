@@ -26,9 +26,13 @@
 
 import 'dotenv/config';
 import { spawn } from 'node:child_process';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClientOptions } from '@supabase/supabase-js';
+import { WebSocket as NodeWebSocket } from 'ws';
 import { unlink } from 'node:fs/promises';
 import { drinkTemperature } from '../src/lib/temperature';
+
+/** ws's WebSocket, typed as the transport Supabase Realtime expects. */
+type RealtimeTransport = NonNullable<SupabaseClientOptions<'public'>['realtime']>['transport'];
 import {
   DEFAULT_LABEL_SETTINGS,
   normalizeLabelSettings,
@@ -116,6 +120,11 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false },
+  // Node 20 and below have no built-in WebSocket, which Supabase Realtime (the live
+  // order feed) needs — without this the agent crashes on start with "native WebSocket
+  // not found". Supplying one from `ws` makes it run on Node 20 as well as 22+, and it
+  // is simply ignored on newer Node that already has a native WebSocket.
+  realtime: { transport: NodeWebSocket as unknown as RealtimeTransport },
 });
 
 /** Orders currently being printed — guards the gap before label_printed_at is written. */
