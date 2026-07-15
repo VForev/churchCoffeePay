@@ -131,7 +131,12 @@ export async function printPdf(opts: {
     await ptp().print(opts.file, {
       printer: opts.printerName || undefined,
       paperSize: opts.media || undefined,
-      scale: 'fit',
+      // 'noscale' prints the PDF at its true size with no scaling and — crucially —
+      // no auto-rotation. SumatraPDF's 'fit' rotates a wide label to "fit" the paper,
+      // which is why the agent printed sideways while a normal Ctrl+P print (actual
+      // size) came out perfect. The PDF is already exactly the label size, so 1:1 is
+      // right. (The old blank prints were the print density, since fixed.)
+      scale: 'noscale',
     });
     return;
   }
