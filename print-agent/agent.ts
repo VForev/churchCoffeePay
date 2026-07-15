@@ -157,15 +157,30 @@ function buildLabels(order: FetchedOrder): LabelData[] {
   return labels;
 }
 
+/**
+ * Set KEEP_PDF=1 in .env to leave the generated PDF on disk and log its path.
+ * That's how you tell a blank label apart: open the PDF — if it has the label on
+ * it, the problem is the printer/driver; if the PDF itself is blank, it's here.
+ */
+const KEEP_PDF = process.env.KEEP_PDF === '1';
+
+/**
+ * `scale: 'fit'` makes the printer scale the label to whatever paper size its
+ * driver is set to, so the design always lands on the label. The previous
+ * 'noscale' assumed the driver's paper matched the PDF exactly — when it didn't,
+ * the printer fed a blank label instead of complaining. 'fit' is forgiving of
+ * that mismatch, which is the usual cause of "it feeds but nothing prints".
+ */
 async function printLabel(label: LabelData) {
   const file = await renderLabelPdf(label, labelSettings);
+  if (KEEP_PDF) console.log(`   PDF kept for inspection: ${file}`);
   try {
     await print(file, {
       printer: PRINTER_NAME || undefined,
-      scale: 'noscale', // The PDF is already exactly label-sized. Never let Windows "fit" it.
+      scale: 'fit',
     });
   } finally {
-    await unlink(file).catch(() => {});
+    if (!KEEP_PDF) await unlink(file).catch(() => {});
   }
 }
 

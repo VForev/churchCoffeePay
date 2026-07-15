@@ -125,6 +125,21 @@ the drink's Temperature modifier first, then the drink's name. If it genuinely c
 **Nothing prints.** Is the window still open? Is the PC awake — check Windows sleep
 settings. Run `npm run test-label` to test the printer without needing an order.
 
+**The label feeds out blank — it comes out but nothing is printed on it.** This is almost
+always the printer driver's paper size not matching the label. Fix it in Windows:
+
+1. **Settings → Bluetooth & devices → Printers & scanners → [your printer] → Printing
+   preferences.** Set the paper / label size to match your actual label (e.g. 50 × 30 mm),
+   the same size you entered at `/admin/labels`. Save.
+2. Set this printer as the **default** printer (right-click it → Set as default), or put its
+   exact name in `PRINTER_NAME` in `.env`.
+3. Run `npm run test-label` again.
+
+If it's *still* blank, find out whether it's the PDF or the printer: set `KEEP_PDF=1` in
+`.env`, run `npm run test-label`, and open the PDF path it prints. If the PDF shows the
+label, the printer/driver is the problem (paper size, above). If the PDF is blank, tell the
+developer — that's a software issue, not your setup.
+
 **Labels are the wrong size, or text runs off the edge.** Go to `/admin/labels`, measure
 the sticker again, and correct the width and height. Save, then send a test label.
 
