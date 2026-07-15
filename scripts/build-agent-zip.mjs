@@ -29,11 +29,13 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FILES = [
   'print-agent/agent.ts',
   'print-agent/label.ts',
+  'print-agent/printer.ts',
   'print-agent/package.json',
   'print-agent/tsconfig.json',
   'print-agent/.env.example',
   'print-agent/README.md',
   'print-agent/start-printer.bat',
+  'print-agent/start-printer.command',
   'src/lib/labels.ts',
   'src/lib/temperature.ts',
 ];

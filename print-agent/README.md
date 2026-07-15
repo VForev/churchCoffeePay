@@ -2,26 +2,30 @@
 
 Prints a label for every cup, automatically, the moment an order comes in.
 
-This runs on the **shop PC** with the label printer plugged into it — not on Netlify,
-not on the iPad. The website doesn't talk to the printer at all; this agent watches the
-orders database and prints. That's deliberate: if the printer jams or the PC is off,
-orders keep flowing and the barista board keeps working.
+This runs on the **shop computer** with the label printer plugged into it — **Windows or
+Mac**, either works. It's not on Netlify or the iPad. The website doesn't talk to the
+printer at all; this agent watches the orders database and prints. That's deliberate: if
+the printer jams or the computer is off, orders keep flowing and the barista board keeps
+working.
 
 ---
 
 ## One-time setup
 
-### 1. Get the printer working in Windows first
+### 1. Get the printer working by itself first
 
-Before touching any of this, make Windows itself print to the label printer:
+Before touching any of this, make the computer itself print to the label printer:
 
-1. Plug the printer into the PC by **USB** and install the CLABEL 221B Windows driver
-   (from `ga.ctaiot.com`).
-2. Open **Settings → Bluetooth & devices → Printers & scanners** and confirm it appears.
-3. Right-click it → **Printing preferences** → set the paper size to your label size.
-4. Print a test page from Notepad.
+- **Windows:** plug it in by USB, install the CLABEL 221B driver (from `ga.ctaiot.com`),
+  then print a test page from Notepad.
+- **Mac:** plug it in, add it under **System Settings → Printers & Scanners**, then print
+  anything to it. When you print, set the **paper size to your label size** — this printer
+  needs to be told the size or it feeds out blank.
 
-**If Notepad can't print to it, nothing below will work.** Fix this step first.
+**If the computer can't print to it on its own, nothing below will work.** Fix this first.
+
+The agent then sends that same paper size automatically, so you don't have to set it every
+time — but the printer/driver has to be installed and working first.
 
 ### 2. Run the database migrations
 
@@ -33,19 +37,20 @@ run these two files from the project root:
 
 ### 3. Install the agent
 
-Install [Node.js](https://nodejs.org) (LTS) on the shop PC, then in this folder:
+Install [Node.js](https://nodejs.org) (LTS) on the shop computer, then in this folder:
 
 ```bash
 npm install
-copy .env.example .env
+cp .env.example .env      # Windows: copy .env.example .env
 ```
 
 Open `.env` and fill in:
 
 - **`NEXT_PUBLIC_SUPABASE_URL`** and **`NEXT_PUBLIC_SUPABASE_ANON_KEY`** — copy them
   from the website's `.env.local`.
-- **`PRINTER_NAME`** — leave blank to use the Windows default printer. If the PC has more
-  than one printer, paste the exact name shown in Windows.
+- **`PRINTER_NAME`** — leave blank to use the computer's default printer. If there's more
+  than one printer, paste the exact name (Windows: from Printers & scanners; Mac: run
+  `lpstat -e` in Terminal, e.g. `Clabel__CT221B`).
 
 **The label size is not in this file.** It's set in the browser at **`/admin/labels`** —
 see below.
@@ -89,9 +94,13 @@ Listening for orders. Leave this window open.
 🖨  Sarah K — 2 labels
 ```
 
-To make it start by itself when the PC boots, create a shortcut to `start-printer.bat`
-(in this folder) and drop it in the Startup folder — press <kbd>Win</kbd>+<kbd>R</kbd>,
-type `shell:startup`, and paste the shortcut there.
+To start it without typing commands, double-click **`start-printer.bat`** (Windows) or
+**`start-printer.command`** (Mac) in this folder.
+
+To make it start by itself when the computer boots:
+- **Windows:** press <kbd>Win</kbd>+<kbd>R</kbd>, type `shell:startup`, and drop a shortcut
+  to `start-printer.bat` in the folder that opens.
+- **Mac:** System Settings → General → Login Items → add `start-printer.command`.
 
 ---
 
