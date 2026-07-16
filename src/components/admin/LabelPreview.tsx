@@ -93,15 +93,20 @@ export default function LabelPreview({
         {showMods && (
           <div
             className="overflow-hidden leading-snug"
-            style={{ fontSize: px(m.modifierMm), marginTop: px(m.gapMm) }}
+            style={{
+              fontSize: px(m.modifierMm),
+              marginTop: px(m.gapMm),
+              maxHeight: px(m.modifierMm * 4.4),
+            }}
           >
             {data.modifiers.join(', ')}
           </div>
         )}
 
-        {/* Note and footer are pinned to the bottom — same as the PDF, where their
-            space is reserved before the modifiers are allowed to fill anything. */}
-        <div className="mt-auto" style={{ paddingTop: px(m.gapMm) }}>
+        {/* Note and footer flow directly under the modifiers — same as the PDF. They
+            are NOT pinned to the bottom edge, because on a tall roll the printer's
+            usable area stops short of it and anything down there prints blank. */}
+        <div style={{ marginTop: px(m.gapMm) }}>
           {showNote && (
             <div
               className="overflow-hidden whitespace-nowrap border border-black font-bold"

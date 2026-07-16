@@ -63,7 +63,6 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   );
 
   const width = pt(m.widthMm);
-  const height = pt(m.heightMm);
   const margin = pt(m.marginMm);
   const gap = pt(m.gapMm);
   const nameSize = pt(m.nameMm);
@@ -137,36 +136,43 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
     .text(drink.text, margin, y, { width: contentWidth, lineBreak: false });
   y += drink.size * 1.3;
 
-  // The footer and the note box get their space reserved BEFORE the modifiers are
-  // drawn — a five-syrup order must never push the special instructions off the label.
+  // The note and footer flow straight down under the modifiers rather than being
+  // pinned to the bottom edge. On a tall roll (e.g. 50×80) the printer's usable area
+  // can stop short of the physical bottom — these CLABEL-style printers often fall
+  // back to a ~50mm-tall media — so anything pinned to the bottom prints blank. That
+  // was the "the notes never come out" bug: name/drink/modifiers land in the printed
+  // region up top while the note and footer sat in dead space below it. Keeping them
+  // right under the modifiers keeps them inside the area that actually prints.
   const hasNote = settings.show_note && Boolean(data.note);
-  const footerY = settings.show_footer ? height - margin - footerSize : height - margin;
   const noteHeight = modSize * 1.7;
-  const noteY = hasNote ? footerY - gap - noteHeight : footerY;
 
   if (settings.show_modifiers && data.modifiers.length > 0) {
+    // Capped so a long syrup list can't push the note and footer down the label.
     doc
+      .fillColor('#000')
       .font('Helvetica')
       .fontSize(modSize)
       .text(data.modifiers.join(', '), margin, y, {
         width: contentWidth,
-        height: Math.max(noteY - gap - y, modSize),
+        height: modSize * 4.4,
         ellipsis: true,
       });
+    y = doc.y + gap;
   }
 
   // A special request is the easiest thing on a busy morning to miss. Boxed.
   if (hasNote) {
-    doc.lineWidth(0.75).rect(margin, noteY, contentWidth, noteHeight).stroke('#000');
+    doc.lineWidth(0.75).rect(margin, y, contentWidth, noteHeight).stroke('#000');
     doc
       .fillColor('#000')
       .font('Helvetica-Bold')
       .fontSize(modSize)
-      .text(`! ${data.note}`, margin + 2, noteY + noteHeight * 0.28, {
+      .text(`! ${data.note}`, margin + 2, y + noteHeight * 0.28, {
         width: contentWidth - 4,
         lineBreak: false,
         ellipsis: true,
       });
+    y += noteHeight + gap;
   }
 
   if (settings.show_footer) {
@@ -174,7 +180,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
       .fillColor('#000')
       .font('Helvetica')
       .fontSize(footerSize)
-      .text(`#${data.orderCode}  ·  ${data.timeText}`, margin, footerY, {
+      .text(`#${data.orderCode}  ·  ${data.timeText}`, margin, y, {
         width: contentWidth,
         lineBreak: false,
       });
