@@ -56,11 +56,11 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   const pt = (mm: number) => mm * MM_TO_PT;
   const rotate = effectiveRotate(settings);
 
-  // When rotated, the design is laid out to the SWAPPED size and then spun 90° onto
-  // the page — so a printer that feeds the label the other way reads the right way up.
-  const m = labelMetrics(
-    rotate ? { ...settings, width_mm: settings.height_mm, height_mm: settings.width_mm } : settings,
-  );
+  // The design is ALWAYS laid out at the real label size — exactly the way the admin
+  // preview draws it, so the type sizes on screen and on the roll can't drift. Rotation
+  // is handled purely by turning the finished page for the printer (below), never by
+  // re-laying-out the design at a swapped size.
+  const m = labelMetrics(settings);
 
   const width = pt(m.widthMm);
   const height = pt(m.heightMm);
@@ -72,16 +72,21 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   const footerSize = pt(m.footerMm);
   const bandHeight = pt(m.bandMm);
 
-  // The page — and the media size sent to the printer — is always the physical label.
-  const pageW = pt(settings.width_mm);
-  const pageH = pt(settings.height_mm);
+  // This printer prints PORTRAIT pages upright. A tall label (e.g. 50×80) is already
+  // portrait, so its page goes out as-is and reads the right way up. A wide label
+  // (e.g. 40×30) would be auto-turned sideways by the printer, so when "flip" is on we
+  // lay the design onto a PORTRAIT page (height × width) and spin it 90° — it then comes
+  // off the roll upright, matching the preview. That is the whole job of the flip toggle.
+  const pageW = rotate ? height : width;
+  const pageH = rotate ? width : height;
 
   const doc = new PDFDocument({ size: [pageW, pageH], margin: 0 });
   const file = join(tmpdir(), `lotg-label-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`);
   const stream = createWriteStream(file);
   doc.pipe(stream);
 
-  // Rotate the whole design 90° into the page; drawing below stays in layout coords.
+  // Spin the design onto the portrait page; all drawing below stays in label coords
+  // (width across, height down), so nothing else has to know about the rotation.
   if (rotate) doc.transform(0, 1, -1, 0, pageW, 0);
 
   // Keep everything clear of the right edge the print head can't reach.

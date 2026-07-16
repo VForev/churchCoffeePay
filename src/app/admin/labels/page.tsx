@@ -156,8 +156,8 @@ export default function AdminLabelsPage() {
 
             <div className="mt-3 border-t border-gray-100 pt-3">
               <Toggle
-                label="Flip the print direction"
-                help="Wide labels (like 40×30) auto-rotate and tall labels (like 50×80) print upright — this is handled for you. Only turn this on if a label still comes out sideways; it flips whichever way the design is facing. Watch the preview."
+                label="Flip for a wide roll"
+                help="The preview always shows the label the right way up. If a test print comes out sideways, turn this on — it's needed for wide rolls (like 40×30) and off for tall rolls (like 50×80). Flip it until the print matches the preview."
                 checked={settings.rotate_label}
                 onChange={(rotate_label) => patch({ rotate_label })}
               />

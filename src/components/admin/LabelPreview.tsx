@@ -32,11 +32,13 @@ export default function LabelPreview({
   settings: LabelSettings;
   data: LabelData;
 }) {
+  // The preview always shows the finished, upright label — exactly what comes off the
+  // roll once the flip toggle is set right. Rotation is a printer-feed concern handled
+  // in the PDF, not something the held label shows, so the preview never spins. `rotate`
+  // only decides whether the note/footer fill to the bottom (wide rolls) or pack to the
+  // top (tall rolls, whose bottom edge the print head can't reach).
   const rotate = effectiveRotate(settings);
-  // Match the PDF: when rotated, lay the design out to the swapped size, then spin it.
-  const m = labelMetrics(
-    rotate ? { ...settings, width_mm: settings.height_mm, height_mm: settings.width_mm } : settings,
-  );
+  const m = labelMetrics(settings);
   const showBand = settings.show_temp_band && data.temp !== null;
   const showCounter = settings.show_cup_counter && data.cupTotal > 1;
   const showMods = settings.show_modifiers && data.modifiers.length > 0;
@@ -141,21 +143,5 @@ export default function LabelPreview({
     </div>
   );
 
-  if (!rotate) return label;
-
-  // Rotated: the physical sticker is width × height, but the design was laid out to the
-  // swapped size above, so spin it 90° and center it inside the physical footprint.
-  return (
-    <div
-      className="relative shrink-0"
-      style={{ width: px(settings.width_mm), height: px(settings.height_mm) }}
-    >
-      <div
-        className="absolute left-1/2 top-1/2"
-        style={{ transform: 'translate(-50%, -50%) rotate(90deg)' }}
-      >
-        {label}
-      </div>
-    </div>
-  );
+  return label;
 }
