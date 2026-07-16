@@ -43,6 +43,7 @@ export default function LabelPreview({
   const showCounter = settings.show_cup_counter && data.cupTotal > 1;
   const showMods = settings.show_modifiers && data.modifiers.length > 0;
   const showNote = settings.show_note && Boolean(data.note);
+  const align: 'left' | 'center' = settings.center_text ? 'center' : 'left';
 
   const label = (
     <div
@@ -89,16 +90,16 @@ export default function LabelPreview({
 
         <div
           className="overflow-hidden whitespace-nowrap font-bold leading-tight"
-          style={{ fontSize: px(m.nameMm), textOverflow: 'ellipsis' }}
+          style={{ fontSize: px(m.nameMm), textOverflow: 'ellipsis', textAlign: align }}
         >
           {settings.uppercase_name ? data.customerName.toUpperCase() : data.customerName}
         </div>
 
         <div
           className="overflow-hidden whitespace-nowrap font-bold leading-tight"
-          style={{ fontSize: px(m.drinkMm), textOverflow: 'ellipsis', marginTop: px(m.gapMm * 0.5) }}
+          style={{ fontSize: px(m.drinkMm), textOverflow: 'ellipsis', marginTop: px(m.gapMm * 0.5), textAlign: align }}
         >
-          {data.drinkName}
+          {settings.uppercase_drink ? data.drinkName.toUpperCase() : data.drinkName}
         </div>
 
         {showMods && (
@@ -108,6 +109,7 @@ export default function LabelPreview({
               fontSize: px(m.modifierMm),
               marginTop: px(m.gapMm),
               maxHeight: px(m.modifierMm * 4.4),
+              textAlign: align,
             }}
           >
             {data.modifiers.join(', ')}

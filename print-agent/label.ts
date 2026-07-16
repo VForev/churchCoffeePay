@@ -124,6 +124,8 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
     y += footerSize * 1.3;
   }
 
+  const align: 'left' | 'center' = settings.center_text ? 'center' : 'left';
+
   // The name — the whole reason the label exists.
   const nameText = settings.uppercase_name ? data.customerName.toUpperCase() : data.customerName;
   const name = fitOneLine(doc, nameText, 'Helvetica-Bold', contentWidth, nameSize, nameSize * 0.6);
@@ -131,17 +133,18 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
     .fillColor('#000')
     .font('Helvetica-Bold')
     .fontSize(name.size)
-    .text(name.text, margin, y, { width: contentWidth, lineBreak: false });
+    .text(name.text, margin, y, { width: contentWidth, align, lineBreak: false });
   y += name.size * 1.15;
 
   // A very long name shrinks a long way to fit, and can end up SMALLER than the drink
   // under it — which reads as though the drink is the important thing. The name always wins.
+  const drinkText = settings.uppercase_drink ? data.drinkName.toUpperCase() : data.drinkName;
   const drinkStart = Math.min(drinkSize, name.size * 0.8);
-  const drink = fitOneLine(doc, data.drinkName, 'Helvetica-Bold', contentWidth, drinkStart, drinkStart * 0.7);
+  const drink = fitOneLine(doc, drinkText, 'Helvetica-Bold', contentWidth, drinkStart, drinkStart * 0.7);
   doc
     .font('Helvetica-Bold')
     .fontSize(drink.size)
-    .text(drink.text, margin, y, { width: contentWidth, lineBreak: false });
+    .text(drink.text, margin, y, { width: contentWidth, align, lineBreak: false });
   y += drink.size * 1.3;
 
   // Where the note and footer go depends on which way the label is turned.
@@ -194,6 +197,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
         .text(data.modifiers.join(', '), margin, y, {
           width: contentWidth,
           height: Math.max(noteY - gap - y, modSize),
+          align,
           ellipsis: true,
         });
     }
@@ -210,6 +214,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
         .text(data.modifiers.join(', '), margin, y, {
           width: contentWidth,
           height: modSize * 4.4,
+          align,
           ellipsis: true,
         });
       y = doc.y + gap;

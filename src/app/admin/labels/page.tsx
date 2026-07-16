@@ -67,10 +67,13 @@ export default function AdminLabelsPage() {
       show_note: clean.show_note,
       show_footer: clean.show_footer,
       uppercase_name: clean.uppercase_name,
+      uppercase_drink: clean.uppercase_drink,
+      center_text: clean.center_text,
       rotate_label: clean.rotate_label,
       name_scale: clean.name_scale,
       drink_scale: clean.drink_scale,
       modifier_scale: clean.modifier_scale,
+      footer_scale: clean.footer_scale,
       updated_at: new Date().toISOString(),
     });
 
@@ -207,6 +210,18 @@ export default function AdminLabelsPage() {
                 checked={settings.uppercase_name}
                 onChange={(uppercase_name) => patch({ uppercase_name })}
               />
+              <Toggle
+                label="Drink in CAPITALS"
+                help="VANILLA LATTE instead of Vanilla Latte"
+                checked={settings.uppercase_drink}
+                onChange={(uppercase_drink) => patch({ uppercase_drink })}
+              />
+              <Toggle
+                label="Centre the text"
+                help="Centre the name, drink and modifiers instead of lining them up on the left"
+                checked={settings.center_text}
+                onChange={(center_text) => patch({ center_text })}
+              />
             </div>
           </Card>
 
@@ -232,6 +247,11 @@ export default function AdminLabelsPage() {
                 label="Modifiers"
                 value={settings.modifier_scale}
                 onChange={(modifier_scale) => patch({ modifier_scale })}
+              />
+              <Slider
+                label="Order code & time"
+                value={settings.footer_scale}
+                onChange={(footer_scale) => patch({ footer_scale })}
               />
             </div>
           </Card>
@@ -326,16 +346,45 @@ function NumberField({
   step?: number;
   onChange: (v: number) => void;
 }) {
+  // The field holds raw text while you type, so you can clear it completely and enter a
+  // new number — a plain value={number} snaps an empty box back to a digit mid-edit. The
+  // number is only committed (and clamped to the min/max) when the field loses focus.
+  const [text, setText] = useState(String(value));
+
+  // Re-sync when the value changes from elsewhere (initial load, "Reset to defaults"),
+  // but not from our own keystrokes echoing back — that would fight what you're typing.
+  useEffect(() => {
+    setText((cur) => (Number(cur) === value ? cur : String(value)));
+  }, [value]);
+
+  function commit() {
+    const n = Number(text);
+    if (text.trim() === '' || Number.isNaN(n)) {
+      setText(String(value)); // nothing usable typed — put the old number back
+      return;
+    }
+    const clamped = Math.min(Math.max(n, min), max);
+    setText(String(clamped));
+    onChange(clamped);
+  }
+
   return (
     <label className="block">
       <span className="mb-1 block font-body text-xs text-text-light">{label}</span>
       <input
         type="number"
-        value={value}
+        value={text}
         min={min}
         max={max}
         step={step}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          setText(e.target.value);
+          // Update the live preview as you type, but don't clamp yet — clamping mid-edit
+          // is what makes the box feel like it's fighting you.
+          const n = Number(e.target.value);
+          if (e.target.value.trim() !== '' && !Number.isNaN(n)) onChange(n);
+        }}
+        onBlur={commit}
         className="w-full rounded-xl border-2 border-gray-200 px-3 py-2 font-body text-text-dark focus:border-primary focus:outline-none"
       />
     </label>
