@@ -5,6 +5,10 @@ import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import LabelPreview from '@/components/admin/LabelPreview';
+import PreviewComposer, {
+  DEFAULT_PREVIEW_CONTENT,
+  type PreviewContent,
+} from '@/components/admin/PreviewComposer';
 import {
   DEFAULT_LABEL_SETTINGS,
   normalizeLabelSettings,
@@ -12,6 +16,7 @@ import {
   SAMPLE_LABELS,
   SCALE_MAX,
   SCALE_MIN,
+  type LabelData,
   type LabelSettings,
 } from '@/lib/labels';
 import { cn } from '@/lib/utils';
@@ -25,8 +30,13 @@ import { cn } from '@/lib/utils';
  */
 export default function AdminLabelsPage() {
   const [settings, setSettings] = useState<LabelSettings>(DEFAULT_LABEL_SETTINGS);
-  const [modifierGroups, setModifierGroups] = useState<string[]>([]);
+  // The shop's real groups with their options — drives the per-group controls AND the
+  // custom preview builder below.
+  const [groupOptions, setGroupOptions] = useState<{ name: string; options: string[] }[]>([]);
+  const modifierGroups = groupOptions.map((g) => g.name);
+  // sampleIndex -1 = the custom, build-your-own preview; 0..n = the canned samples.
   const [sampleIndex, setSampleIndex] = useState(0);
+  const [previewContent, setPreviewContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -47,16 +57,45 @@ export default function AdminLabelsPage() {
         setLoading(false);
       });
 
-    // The live list of modifier groups, so each one gets its own row of controls below.
-    // A group added at /admin/modifiers appears here automatically on next load.
+    // The live modifier groups with their options, so each group gets its own row of
+    // controls AND you can pick real options to preview. A group added at /admin/modifiers
+    // appears here automatically on next load.
     supabase
       .from('modifier_groups')
-      .select('name')
+      .select('name, display_order, modifiers ( name, display_order )')
       .order('display_order', { ascending: true })
       .then(({ data }) => {
-        if (data) setModifierGroups(data.map((g) => g.name as string));
+        if (!data) return;
+        setGroupOptions(
+          data.map((g) => ({
+            name: g.name as string,
+            options: ((g.modifiers as { name: string; display_order: number }[]) ?? [])
+              .slice()
+              .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+              .map((o) => o.name),
+          })),
+        );
       });
   }, []);
+
+  /** The LabelData the preview draws — either a canned sample or the custom builder. */
+  function buildPreviewData(): LabelData {
+    if (sampleIndex >= 0) return SAMPLE_LABELS[sampleIndex].data;
+    const modifiers = groupOptions
+      .map((g) => ({ group: g.name, options: previewContent.selected[g.name] ?? [] }))
+      .filter((line) => line.options.length > 0);
+    return {
+      temp: previewContent.temp,
+      customerName: previewContent.customerName || 'Name',
+      cupIndex: 1,
+      cupTotal: previewContent.multiCup ? 2 : 1,
+      drinkName: previewContent.drinkName || 'Drink',
+      modifiers,
+      note: previewContent.note.trim() || null,
+      orderCode: '7F3A',
+      timeText: '9:42 AM',
+    };
+  }
 
   /** Update one modifier group's per-label style, leaving the others untouched. */
   function patchGroupStyle(group: string, changes: Partial<{ show: boolean; scale: number }>) {
@@ -143,7 +182,7 @@ export default function AdminLabelsPage() {
     );
   }
 
-  const sample = SAMPLE_LABELS[sampleIndex];
+  const previewData = buildPreviewData();
 
   return (
     <div>
@@ -363,6 +402,22 @@ export default function AdminLabelsPage() {
             );
           })()}
 
+          <Card>
+            <h2 className="mb-1 font-heading font-bold text-text-dark">Custom preview</h2>
+            <p className="mb-4 font-body text-xs text-text-light">
+              Build a label from your real drinks and options to see exactly how it looks — the
+              preview switches to <strong>Custom</strong> as soon as you change something here.
+            </p>
+            <PreviewComposer
+              groups={groupOptions}
+              value={previewContent}
+              onChange={(next) => {
+                setPreviewContent(next);
+                setSampleIndex(-1);
+              }}
+            />
+          </Card>
+
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={save} disabled={saving}>
               {saving ? 'Saving...' : 'Save layout'}
@@ -421,11 +476,26 @@ export default function AdminLabelsPage() {
                   {s.name}
                 </button>
               ))}
+              <button
+                onClick={() => setSampleIndex(-1)}
+                className={cn(
+                  'cursor-pointer rounded-full px-3 py-1.5 font-accent text-xs font-semibold transition-colors',
+                  sampleIndex === -1 ? 'bg-primary text-white' : 'bg-bg text-text-light hover:bg-gray-100',
+                )}
+              >
+                Custom
+              </button>
             </div>
 
             <div className="flex justify-center rounded-xl bg-bg p-4">
-              <LabelPreview settings={normalizeLabelSettings(settings)} data={sample.data} />
+              <LabelPreview settings={normalizeLabelSettings(settings)} data={previewData} />
             </div>
+
+            {sampleIndex === -1 && (
+              <p className="mt-2 text-center font-body text-xs text-text-light">
+                Building a custom label below ↓
+              </p>
+            )}
 
             <p className="mt-3 text-center font-body text-xs text-text-light">
               {settings.width_mm} × {settings.height_mm} mm
