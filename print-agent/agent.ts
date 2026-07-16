@@ -237,10 +237,25 @@ async function loadPrinterPaperSizes(): Promise<void> {
 function resolvePaperSize(): string | undefined {
   if (PRINTER_PAPER_SIZE) return PRINTER_PAPER_SIZE;
 
-  // Match a driver size to the label's real dimensions (within 2mm). Handles the size
-  // being listed as W×H or, on some drivers, H×W.
   const near = (a: number, b: number) => Math.abs(a - b) <= 2;
   const { width_mm, height_mm } = labelSettings;
+
+  // FIRST prefer a form whose NAME states the size in the same order as the label,
+  // e.g. "50*80" for a 50×80 label. The CLABEL driver reports several forms with
+  // identical — and sometimes transposed — dimensions: both "50*80" and "80*50" come
+  // back to Windows as "80 × 50 mm". Dimension-matching alone then can't tell the
+  // portrait roll from the landscape one and grabs whichever is listed first (the
+  // landscape "80*50"), which chops the bottom 30mm off. The printed NAME is the only
+  // thing that still distinguishes them, so it wins when it clearly matches.
+  const nameNums = (name: string) => (name.match(/\d+/g) ?? []).map(Number);
+  const byName = printerPaperSizesDetailed.find((s) => {
+    const [w, h] = nameNums(s.name);
+    return near(w, width_mm) && near(h, height_mm);
+  });
+  if (byName) return byName.name;
+
+  // Otherwise match on the reported dimensions (within 2mm). Handles the size being
+  // listed as W×H or, on some drivers, H×W.
   const match = printerPaperSizesDetailed.find(
     (s) =>
       s.widthMm > 0 &&
