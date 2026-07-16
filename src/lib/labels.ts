@@ -103,7 +103,11 @@ export interface LabelMetrics {
 }
 
 export function labelMetrics(s: LabelSettings): LabelMetrics {
-  const scale = s.height_mm / 30;
+  // Text size tracks the SMALLER of the two dimensions' scale factors, so a tall
+  // label (say 50×80) gets readable type with room for everything, instead of type
+  // scaled off height alone — which ballooned to 2.7× and shoved content off. At the
+  // baseline 40×30 both factors are 1, so small labels are unchanged.
+  const scale = Math.min(s.height_mm / 30, s.width_mm / 40);
 
   return {
     widthMm: s.width_mm,
