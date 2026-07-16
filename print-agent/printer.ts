@@ -54,6 +54,52 @@ async function macDefaultPrinter(): Promise<string | undefined> {
   return stdout.match(/:\s*(\S+)/)?.[1];
 }
 
+/** A paper/label size the driver exposes, with its dimensions so it can be identified. */
+export interface PaperSize {
+  name: string;
+  widthMm: number;
+  heightMm: number;
+}
+
+/**
+ * The FULL set of paper sizes the printer driver supports, with dimensions. On Windows
+ * this asks the driver directly through System.Drawing.Printing (the same source the
+ * Control Panel uses), which lists every form including custom label sizes — pdf-to-printer
+ * only reports a subset. On macOS it falls back to the point-named CUPS list.
+ */
+export async function listPaperSizesDetailed(printerName?: string): Promise<PaperSize[]> {
+  if (IS_WINDOWS) {
+    const name = printerName || '';
+    // Dimensions come back in hundredths of an inch; 1 unit = 0.254 mm.
+    const script =
+      'Add-Type -AssemblyName System.Drawing; ' +
+      '$ps = New-Object System.Drawing.Printing.PrinterSettings; ' +
+      (name ? `$ps.PrinterName = '${name.replace(/'/g, "''")}'; ` : '') +
+      "$ps.PaperSizes | ForEach-Object { $_.PaperName + '~' + $_.Width + '~' + $_.Height }";
+    const { stdout } = await execFileP('powershell', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ]).catch(() => ({ stdout: '' }));
+
+    const sizes: PaperSize[] = [];
+    for (const line of stdout.split(/\r?\n/)) {
+      const [nm, w, h] = line.split('~');
+      if (!nm || !w || !h) continue;
+      sizes.push({
+        name: nm.trim(),
+        widthMm: Math.round(Number(w) * 0.254),
+        heightMm: Math.round(Number(h) * 0.254),
+      });
+    }
+    return sizes;
+  }
+
+  // macOS: reuse the CUPS names; dimensions aren't parsed there.
+  return (await listPaperSizes(printerName)).map((name) => ({ name, widthMm: 0, heightMm: 0 }));
+}
+
 /** The paper/label sizes a printer offers, in that platform's own naming. */
 export async function listPaperSizes(printerName?: string): Promise<string[]> {
   if (IS_WINDOWS) {

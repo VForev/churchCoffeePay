@@ -42,7 +42,7 @@ import {
   type LabelSettings,
 } from '../src/lib/labels';
 import { renderLabelPdf, renderDiagnosticPdf } from './label';
-import { printPdf, listPrinterNames, listPaperSizes, resolveMedia } from './printer';
+import { printPdf, listPrinterNames, listPaperSizes, listPaperSizesDetailed, resolveMedia } from './printer';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_KEY =
@@ -403,12 +403,19 @@ async function runDoctor() {
   console.log(`  Label size:    ${labelSettings.width_mm} × ${labelSettings.height_mm} mm`);
   console.log('');
   console.log('  Paper sizes this printer supports:');
-  if (printerPaperSizes.length === 0) {
-    console.log('    (none reported — the driver may not expose sizes)');
-  } else {
+  const detailed = await listPaperSizesDetailed(PRINTER_NAME || undefined);
+  if (detailed.length > 0) {
+    // The name is what you copy into PRINTER_PAPER_SIZE; the mm are just to identify it.
+    for (const size of detailed) {
+      const dims = size.widthMm && size.heightMm ? `  (${size.widthMm} × ${size.heightMm} mm)` : '';
+      console.log(`    ${size.name === paperSize ? '➜' : ' '} ${size.name}${dims}`);
+    }
+  } else if (printerPaperSizes.length > 0) {
     for (const size of printerPaperSizes) {
       console.log(`    ${size === paperSize ? '➜' : ' '} ${size}`);
     }
+  } else {
+    console.log('    (none reported — the driver may not expose sizes)');
   }
   console.log(
     paperSize
