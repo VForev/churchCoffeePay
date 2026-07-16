@@ -36,6 +36,20 @@ export default function AdminOrdersPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // "Delete ALL orders" — gated behind re-typing the admin login password.
+  const [wipeOpen, setWipeOpen] = useState(false);
+  const [wipePassword, setWipePassword] = useState('');
+  const [wipeLoading, setWipeLoading] = useState(false);
+  const [wipeError, setWipeError] = useState<string | null>(null);
+  const [wipeDone, setWipeDone] = useState<number | null>(null);
+
+  function openWipe() {
+    setWipePassword('');
+    setWipeError(null);
+    setWipeDone(null);
+    setWipeOpen(true);
+  }
+
   async function fetchOrders() {
     let query = supabase
       .from('orders')
@@ -122,6 +136,54 @@ export default function AdminOrdersPage() {
     fetchOrders();
   }
 
+  /**
+   * Deletes EVERY order (active and archived). Guarded by re-entering the admin login
+   * password: we verify it by re-authenticating the signed-in user before touching a row,
+   * so a stray click on the button can't wipe the table. order_items and their modifiers
+   * are removed automatically by the ON DELETE CASCADE on their foreign keys.
+   */
+  async function wipeAllOrders() {
+    setWipeError(null);
+    setWipeLoading(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const email = userData.user?.email;
+      if (!email) {
+        setWipeError('You are not signed in anymore. Log in again and retry.');
+        return;
+      }
+
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password: wipePassword,
+      });
+      if (authError) {
+        setWipeError('That password is not correct. Nothing was deleted.');
+        return;
+      }
+
+      const { error, count } = await supabase
+        .from('orders')
+        .delete({ count: 'exact' })
+        .not('id', 'is', null); // matches every row
+
+      if (error) {
+        setWipeError(
+          error.code === '23503'
+            ? 'Some orders are still referenced by other records. Run supabase-fix-delete-constraints.sql in the Supabase SQL editor, then try again.'
+            : `Could not delete orders: ${error.message}`,
+        );
+        return;
+      }
+
+      setWipeDone(count ?? 0);
+      setWipePassword('');
+      fetchOrders();
+    } finally {
+      setWipeLoading(false);
+    }
+  }
+
   const filtered = orders.filter((o) => {
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
     if (search && !o.customer_name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -143,16 +205,24 @@ export default function AdminOrdersPage() {
     <div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <h1 className="text-2xl font-heading font-bold text-text-dark">Order History</h1>
-        <button
-          onClick={() => setShowArchived(!showArchived)}
-          className={`text-sm font-accent px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
-            showArchived
-              ? 'bg-warning/10 border-warning/30 text-amber-700'
-              : 'bg-gray-50 border-gray-200 text-text-light hover:bg-gray-100'
-          }`}
-        >
-          {showArchived ? 'Showing Archived' : 'Show Archived'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className={`text-sm font-accent px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
+              showArchived
+                ? 'bg-warning/10 border-warning/30 text-amber-700'
+                : 'bg-gray-50 border-gray-200 text-text-light hover:bg-gray-100'
+            }`}
+          >
+            {showArchived ? 'Showing Archived' : 'Show Archived'}
+          </button>
+          <button
+            onClick={openWipe}
+            className="text-sm font-accent px-3 py-1.5 rounded-lg border border-danger/30 bg-danger/5 text-danger transition-colors cursor-pointer hover:bg-danger/10"
+          >
+            Delete all orders
+          </button>
+        </div>
       </div>
 
       {/* Filters row */}
@@ -386,6 +456,64 @@ export default function AdminOrdersPage() {
               </Button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Delete ALL orders — requires the admin login password */}
+      {wipeOpen && (
+        <Modal
+          isOpen
+          onClose={() => setWipeOpen(false)}
+          title="Delete ALL orders"
+          size="sm"
+        >
+          {wipeDone !== null ? (
+            <div className="space-y-4">
+              <p className="text-sm text-text">
+                Deleted {wipeDone} order{wipeDone === 1 ? '' : 's'}. This can&apos;t be undone.
+              </p>
+              <div className="flex justify-end">
+                <Button variant="secondary" onClick={() => setWipeOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-text">
+                This permanently deletes <strong>every order</strong> (active and archived) and
+                everything on them. It cannot be undone. Type your admin password to confirm.
+              </p>
+              <input
+                type="password"
+                autoFocus
+                placeholder="Admin password"
+                value={wipePassword}
+                onChange={(e) => setWipePassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && wipePassword && !wipeLoading) wipeAllOrders();
+                }}
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 bg-surface font-body text-sm"
+              />
+              {wipeError && (
+                <p className="text-sm text-danger bg-danger/5 border border-danger/20 rounded-lg px-3 py-2">
+                  {wipeError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setWipeOpen(false)} disabled={wipeLoading}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={wipeAllOrders}
+                  disabled={wipeLoading || wipePassword.length === 0}
+                >
+                  {wipeLoading ? 'Deleting...' : 'Delete all orders'}
+                </Button>
+              </div>
+            </div>
+          )}
         </Modal>
       )}
     </div>
