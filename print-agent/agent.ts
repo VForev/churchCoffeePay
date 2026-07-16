@@ -42,7 +42,7 @@ import {
   type LabelSettings,
 } from '../src/lib/labels';
 import { renderLabelPdf, renderDiagnosticPdf } from './label';
-import { printPdf, listPrinterNames, listPaperSizes, listPaperSizesDetailed, resolveMedia } from './printer';
+import { printPdf, listPrinterNames, listPaperSizes, listPaperSizesDetailed, resolveMedia, type PaperSize } from './printer';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_KEY =
@@ -65,6 +65,8 @@ const CATCHUP_HOURS = Number(process.env.CATCHUP_HOURS ?? 6);
 
 /** The sizes the target printer reports it can print, cached at startup. */
 let printerPaperSizes: string[] = [];
+/** The same, with dimensions (Windows), so the agent can match the label size itself. */
+let printerPaperSizesDetailed: PaperSize[] = [];
 
 /**
  * The layout, owned by /admin/labels and cached here.
@@ -222,22 +224,34 @@ const KEEP_PDF = process.env.KEEP_PDF === '1';
 /** Loads and caches the target printer's supported paper sizes. */
 async function loadPrinterPaperSizes(): Promise<void> {
   printerPaperSizes = await listPaperSizes(PRINTER_NAME || undefined);
+  printerPaperSizesDetailed = await listPaperSizesDetailed(PRINTER_NAME || undefined);
 }
 
 /**
- * The media size to print the label at. A blank or wrong-size label is almost
- * always the print job not naming the size, so the printer falls back to a default
- * (on the CLABEL that's a 50 × 50 square) and the design lands off the label.
- * resolveMedia() turns the label's mm size into whatever this platform's printer
- * calls it; PRINTER_PAPER_SIZE overrides it.
+ * The media size to print the label at. This is the fix for "only the top of the label
+ * prints": if the job doesn't name a size, the printer uses its own default (a short
+ * 50mm form on the CLABEL) and clips anything past it. So the agent finds the driver's
+ * OWN label size that matches the label's mm and prints to that — no more clipping, and
+ * no need to change anything in Windows. PRINTER_PAPER_SIZE overrides the match.
  */
 function resolvePaperSize(): string | undefined {
-  return resolveMedia(
-    printerPaperSizes,
-    labelSettings.width_mm,
-    labelSettings.height_mm,
-    PRINTER_PAPER_SIZE || undefined,
+  if (PRINTER_PAPER_SIZE) return PRINTER_PAPER_SIZE;
+
+  // Match a driver size to the label's real dimensions (within 2mm). Handles the size
+  // being listed as W×H or, on some drivers, H×W.
+  const near = (a: number, b: number) => Math.abs(a - b) <= 2;
+  const { width_mm, height_mm } = labelSettings;
+  const match = printerPaperSizesDetailed.find(
+    (s) =>
+      s.widthMm > 0 &&
+      ((near(s.widthMm, width_mm) && near(s.heightMm, height_mm)) ||
+        (near(s.widthMm, height_mm) && near(s.heightMm, width_mm))),
   );
+  if (match) return match.name;
+
+  // Fall back to the platform name matching (macOS points; Windows returns undefined,
+  // letting the driver default stand).
+  return resolveMedia(printerPaperSizes, width_mm, height_mm);
 }
 
 async function printLabel(label: LabelData) {
