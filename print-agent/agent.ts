@@ -38,6 +38,7 @@ import {
   normalizeLabelSettings,
   SAMPLE_LABELS,
   type LabelData,
+  type LabelModifierLine,
   type LabelSettings,
 } from '../src/lib/labels';
 import { renderLabelPdf, renderDiagnosticPdf } from './label';
@@ -94,9 +95,20 @@ const ORDER_QUERY = `
   order_items (
     id, quantity, special_instructions,
     menu_item:menu_items ( name ),
-    order_item_modifiers ( modifier:modifiers ( name ) )
+    order_item_modifiers (
+      modifier:modifiers (
+        name, display_order,
+        group:modifier_groups ( name, display_order )
+      )
+    )
   )
 `;
+
+interface FetchedModifier {
+  name: string;
+  display_order: number | null;
+  group: { name: string; display_order: number | null } | null;
+}
 
 interface FetchedOrder {
   id: string;
@@ -109,8 +121,35 @@ interface FetchedOrder {
     quantity: number;
     special_instructions: string | null;
     menu_item: { name: string } | null;
-    order_item_modifiers: { modifier: { name: string } | null }[];
+    order_item_modifiers: { modifier: FetchedModifier | null }[];
   }[];
+}
+
+/**
+ * Groups an order item's modifiers by their category so each prints on its own line,
+ * ordered by the group order set at /admin/modifiers (and options by their own order).
+ */
+function groupModifiers(rows: { modifier: FetchedModifier | null }[]): LabelModifierLine[] {
+  const groups = new Map<string, { order: number; options: { name: string; order: number }[] }>();
+
+  for (const row of rows) {
+    const name = row.modifier?.name;
+    if (!name) continue;
+    const groupName = row.modifier?.group?.name ?? '';
+    const groupOrder = row.modifier?.group?.display_order ?? 9999;
+    const optionOrder = row.modifier?.display_order ?? 0;
+
+    const entry = groups.get(groupName) ?? { order: groupOrder, options: [] };
+    entry.options.push({ name, order: optionOrder });
+    groups.set(groupName, entry);
+  }
+
+  return [...groups.entries()]
+    .sort((a, b) => a[1].order - b[1].order)
+    .map(([group, v]) => ({
+      group,
+      options: v.options.sort((a, b) => a.order - b.order).map((o) => o.name),
+    }));
 }
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
@@ -144,21 +183,20 @@ function buildLabels(order: FetchedOrder): LabelData[] {
   let cupIndex = 0;
 
   for (const item of order.order_items) {
-    const modifiers = item.order_item_modifiers
-      .map((m) => m.modifier?.name)
-      .filter((name): name is string => Boolean(name));
+    const modifierLines = groupModifiers(item.order_item_modifiers);
+    const flatModifiers = modifierLines.flatMap((line) => line.options);
 
     const drinkName = item.menu_item?.name ?? 'Drink';
 
     for (let i = 0; i < (item.quantity ?? 1); i++) {
       cupIndex++;
       labels.push({
-        temp: drinkTemperature(drinkName, modifiers),
+        temp: drinkTemperature(drinkName, flatModifiers),
         customerName: order.customer_name,
         cupIndex,
         cupTotal,
         drinkName,
-        modifiers,
+        modifiers: modifierLines,
         note: item.special_instructions?.trim() || null,
         // The full uuid is useless on a cup. The last 4 characters are enough to
         // match a label back to an order on the board.

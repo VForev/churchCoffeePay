@@ -43,9 +43,25 @@ export interface LabelSettings {
   modifier_scale: number;
   /** Size multiplier for the bottom order-code/time line and the cup counter. */
   footer_scale: number;
+  /**
+   * Per-modifier-group control, keyed by group name. Each group can be hidden from the
+   * label and given its own size multiplier on top of the global modifier size. Groups
+   * not listed here use the defaults (shown, ×1), so a brand-new group added at
+   * /admin/modifiers shows up on the label automatically.
+   */
+  modifier_group_styles: Record<string, ModifierGroupStyle>;
   /** Set to now() by the admin's "Send test label" button; the agent watches it. */
   test_print_requested_at: string | null;
 }
+
+/** How one modifier category is shown on the label. See modifier_group_styles. */
+export interface ModifierGroupStyle {
+  show: boolean;
+  /** Size multiplier, 0.6–1.6, applied on top of the global modifier size. */
+  scale: number;
+}
+
+export const DEFAULT_MODIFIER_GROUP_STYLE: ModifierGroupStyle = { show: true, scale: 1 };
 
 export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   id: 1,
@@ -65,6 +81,7 @@ export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   drink_scale: 1,
   modifier_scale: 1,
   footer_scale: 1,
+  modifier_group_styles: {},
   test_print_requested_at: null,
 };
 
@@ -101,6 +118,32 @@ export function normalizeLabelSettings(row: Partial<LabelSettings> | null | unde
     drink_scale: clamp(Number(merged.drink_scale) || 1, SCALE_MIN, SCALE_MAX),
     modifier_scale: clamp(Number(merged.modifier_scale) || 1, SCALE_MIN, SCALE_MAX),
     footer_scale: clamp(Number(merged.footer_scale) || 1, SCALE_MIN, SCALE_MAX),
+    modifier_group_styles: normalizeGroupStyles(merged.modifier_group_styles),
+  };
+}
+
+/** Sanitises the per-group style map: coerces types, clamps scale, drops junk. */
+function normalizeGroupStyles(v: unknown): Record<string, ModifierGroupStyle> {
+  if (!v || typeof v !== 'object') return {};
+  const out: Record<string, ModifierGroupStyle> = {};
+  for (const [group, raw] of Object.entries(v as Record<string, unknown>)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const s = raw as Partial<ModifierGroupStyle>;
+    out[group] = {
+      show: s.show !== false, // default shown
+      scale: clamp(Number(s.scale) || 1, SCALE_MIN, SCALE_MAX),
+    };
+  }
+  return out;
+}
+
+/** The style for one modifier group, falling back to the defaults for unlisted groups. */
+export function groupStyle(settings: LabelSettings, group: string): ModifierGroupStyle {
+  const s = settings.modifier_group_styles[group];
+  if (!s) return DEFAULT_MODIFIER_GROUP_STYLE;
+  return {
+    show: s.show !== false,
+    scale: clamp(Number(s.scale) || 1, SCALE_MIN, SCALE_MAX),
   };
 }
 
@@ -159,6 +202,15 @@ export function labelMetrics(s: LabelSettings): LabelMetrics {
   };
 }
 
+/**
+ * One category of modifiers on a label — e.g. { group: 'Syrups', options: ['Vanilla',
+ * 'Caramel'] }. Each prints on its own line, so a per-group size and show/hide can apply.
+ */
+export interface LabelModifierLine {
+  group: string;
+  options: string[];
+}
+
 /** What one cup's label says. Built by the agent from an order; faked by the admin preview. */
 export interface LabelData {
   temp: 'hot' | 'iced' | null;
@@ -166,7 +218,8 @@ export interface LabelData {
   cupIndex: number;
   cupTotal: number;
   drinkName: string;
-  modifiers: string[];
+  /** One entry per modifier category, in the order they should print. */
+  modifiers: LabelModifierLine[];
   note: string | null;
   orderCode: string;
   timeText: string;
@@ -187,7 +240,12 @@ export const SAMPLE_LABELS: { name: string; data: LabelData }[] = [
       cupIndex: 1,
       cupTotal: 2,
       drinkName: 'Vanilla Latte',
-      modifiers: ['Large', 'Oat Milk', 'Extra Shot', 'Vanilla Syrup'],
+      modifiers: [
+        { group: 'Size', options: ['Large'] },
+        { group: 'Milk', options: ['Oat Milk'] },
+        { group: 'Syrups', options: ['Vanilla', 'Caramel'] },
+        { group: 'Extras', options: ['Extra Shot'] },
+      ],
       note: 'Extra hot, light foam',
       orderCode: '7F3A',
       timeText: '9:42 AM',
@@ -201,7 +259,7 @@ export const SAMPLE_LABELS: { name: string; data: LabelData }[] = [
       cupIndex: 1,
       cupTotal: 1,
       drinkName: 'Americano',
-      modifiers: [],
+      modifiers: [], // no modifiers
       note: null,
       orderCode: 'B21C',
       timeText: '10:05 AM',
@@ -215,7 +273,11 @@ export const SAMPLE_LABELS: { name: string; data: LabelData }[] = [
       cupIndex: 2,
       cupTotal: 3,
       drinkName: 'Caramel Macchiato',
-      modifiers: ['Medium', 'Almond Milk', 'Sugar Free Caramel'],
+      modifiers: [
+        { group: 'Size', options: ['Medium'] },
+        { group: 'Milk', options: ['Almond Milk'] },
+        { group: 'Syrups', options: ['Sugar Free Caramel'] },
+      ],
       note: null,
       orderCode: 'C40D',
       timeText: '10:11 AM',

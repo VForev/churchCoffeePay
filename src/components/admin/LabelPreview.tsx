@@ -3,6 +3,7 @@
 import {
   labelMetrics,
   effectiveRotate,
+  groupStyle,
   TEMP_TEXT,
   EDGE_SAFE_MM,
   type LabelSettings,
@@ -39,9 +40,12 @@ export default function LabelPreview({
   // top (tall rolls, whose bottom edge the print head can't reach).
   const rotate = effectiveRotate(settings);
   const m = labelMetrics(settings);
+  const modLines = data.modifiers
+    .map((line) => ({ style: groupStyle(settings, line.group), text: line.options.join(', ') }))
+    .filter((l) => l.style.show && l.text.length > 0);
   const showBand = settings.show_temp_band && data.temp !== null;
   const showCounter = settings.show_cup_counter && data.cupTotal > 1;
-  const showMods = settings.show_modifiers && data.modifiers.length > 0;
+  const showMods = settings.show_modifiers && modLines.length > 0;
   const showNote = settings.show_note && Boolean(data.note);
   const align: 'left' | 'center' = settings.center_text ? 'center' : 'left';
 
@@ -103,16 +107,17 @@ export default function LabelPreview({
         </div>
 
         {showMods && (
-          <div
-            className="overflow-hidden leading-snug"
-            style={{
-              fontSize: px(m.modifierMm),
-              marginTop: px(m.gapMm),
-              maxHeight: px(m.modifierMm * 4.4),
-              textAlign: align,
-            }}
-          >
-            {data.modifiers.join(', ')}
+          // One line per modifier category, each at its own size — matching the PDF.
+          <div style={{ marginTop: px(m.gapMm) }}>
+            {modLines.map((l, i) => (
+              <div
+                key={i}
+                className="overflow-hidden whitespace-nowrap leading-snug"
+                style={{ fontSize: px(m.modifierMm * l.style.scale), textAlign: align, textOverflow: 'ellipsis' }}
+              >
+                {l.text}
+              </div>
+            ))}
           </div>
         )}
 

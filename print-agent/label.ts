@@ -15,7 +15,7 @@ import PDFDocument from 'pdfkit';
 import { createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { labelMetrics, effectiveRotate, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
+import { labelMetrics, effectiveRotate, groupStyle, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
 
 const MM_TO_PT = 2.834645669;
 
@@ -147,6 +147,37 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
     .text(drink.text, margin, y, { width: contentWidth, align, lineBreak: false });
   y += drink.size * 1.3;
 
+  // Modifiers: one line per category, each at its own size, and only the groups the admin
+  // left switched on. A hidden group is dropped; a group with no override shows at ×1, so
+  // a brand-new group added at /admin/modifiers appears here automatically. Order follows
+  // the group order set at /admin/modifiers.
+  const modLines = data.modifiers
+    .map((line) => ({ style: groupStyle(settings, line.group), text: line.options.join(', ') }))
+    .filter((l) => l.style.show && l.text.length > 0)
+    .map((l) => ({ text: l.text, size: modSize * l.style.scale }));
+  const hasMods = settings.show_modifiers && modLines.length > 0;
+
+  // Draws the visible modifier lines from startY down, each at its own size, stopping
+  // before maxY. Returns where it ended so the note/footer can flow below.
+  const drawModifierLines = (startY: number, maxY: number): number => {
+    let yy = startY;
+    for (const line of modLines) {
+      if (yy + line.size > maxY) break;
+      doc
+        .fillColor('#000')
+        .font('Helvetica')
+        .fontSize(line.size)
+        .text(line.text, margin, yy, {
+          width: contentWidth,
+          height: Math.max(maxY - yy, line.size),
+          align,
+          ellipsis: true,
+        });
+      yy = doc.y;
+    }
+    return yy;
+  };
+
   // Where the note and footer go depends on which way the label is turned.
   //
   //  - UPRIGHT (not rotated, e.g. a tall 50×80): the far bottom edge is out of the
@@ -203,41 +234,24 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
     // footer (keeping at least one modifier line if there are modifiers), so a long note
     // shrinks its own box rather than climbing over the drinks above it.
     const footerY = settings.show_footer ? height - margin - footerSize : height - margin;
-    const hasMods = settings.show_modifiers && data.modifiers.length > 0;
     const region = footerY - gap - y; // room below the drink, above the footer
     const minMods = hasMods ? modSize * 1.3 + gap : 0;
     const noteBox = hasNote ? Math.min(noteFullHeight, Math.max(region - minMods, 0)) : 0;
     const noteY = hasNote ? footerY - gap - noteBox : footerY;
 
-    if (hasMods) {
-      doc
-        .fillColor('#000')
-        .font('Helvetica')
-        .fontSize(modSize)
-        .text(data.modifiers.join(', '), margin, y, {
-          width: contentWidth,
-          height: Math.max((hasNote ? noteY - gap : footerY) - y, 0),
-          align,
-          ellipsis: true,
-        });
-    }
+    if (hasMods) drawModifierLines(y, hasNote ? noteY - gap : footerY);
     if (hasNote) drawNote(noteY, noteBox);
     if (settings.show_footer) drawFooter(footerY);
   } else {
     // Flow down under the modifiers, staying clear of the unreachable bottom edge.
-    if (settings.show_modifiers && data.modifiers.length > 0) {
-      // Capped so a long syrup list can't push the note and footer down the label.
-      doc
-        .fillColor('#000')
-        .font('Helvetica')
-        .fontSize(modSize)
-        .text(data.modifiers.join(', '), margin, y, {
-          width: contentWidth,
-          height: modSize * 4.4,
-          align,
-          ellipsis: true,
-        });
-      y = doc.y + gap;
+    if (hasMods) {
+      // Reserve room for the note and footer so a long modifier list can't shove them off.
+      const maxModY =
+        height -
+        margin -
+        (settings.show_footer ? footerSize + gap : 0) -
+        (hasNote ? noteFullHeight + gap : 0);
+      y = drawModifierLines(y, maxModY) + gap;
     }
     if (hasNote) {
       drawNote(y, noteFullHeight);

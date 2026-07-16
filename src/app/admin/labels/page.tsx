@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
  */
 export default function AdminLabelsPage() {
   const [settings, setSettings] = useState<LabelSettings>(DEFAULT_LABEL_SETTINGS);
+  const [modifierGroups, setModifierGroups] = useState<string[]>([]);
   const [sampleIndex, setSampleIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,7 +45,32 @@ export default function AdminLabelsPage() {
         setSettings(normalizeLabelSettings(data));
         setLoading(false);
       });
+
+    // The live list of modifier groups, so each one gets its own row of controls below.
+    // A group added at /admin/modifiers appears here automatically on next load.
+    supabase
+      .from('modifier_groups')
+      .select('name')
+      .order('display_order', { ascending: true })
+      .then(({ data }) => {
+        if (data) setModifierGroups(data.map((g) => g.name as string));
+      });
   }, []);
+
+  /** Update one modifier group's per-label style, leaving the others untouched. */
+  function patchGroupStyle(group: string, changes: Partial<{ show: boolean; scale: number }>) {
+    setSettings((prev) => {
+      const current = prev.modifier_group_styles[group] ?? { show: true, scale: 1 };
+      return {
+        ...prev,
+        modifier_group_styles: {
+          ...prev.modifier_group_styles,
+          [group]: { ...current, ...changes },
+        },
+      };
+    });
+    setSavedAt(null);
+  }
 
   function patch(changes: Partial<LabelSettings>) {
     setSettings((prev) => ({ ...prev, ...changes }));
@@ -74,6 +100,7 @@ export default function AdminLabelsPage() {
       drink_scale: clean.drink_scale,
       modifier_scale: clean.modifier_scale,
       footer_scale: clean.footer_scale,
+      modifier_group_styles: clean.modifier_group_styles,
       updated_at: new Date().toISOString(),
     });
 
@@ -249,12 +276,56 @@ export default function AdminLabelsPage() {
                 onChange={(modifier_scale) => patch({ modifier_scale })}
               />
               <Slider
+                label="Modifiers (all)"
+                value={settings.modifier_scale}
+                onChange={(modifier_scale) => patch({ modifier_scale })}
+              />
+              <Slider
                 label="Order code & time"
                 value={settings.footer_scale}
                 onChange={(footer_scale) => patch({ footer_scale })}
               />
             </div>
           </Card>
+
+          {modifierGroups.length > 0 && (
+            <Card>
+              <h2 className="mb-1 font-heading font-bold text-text-dark">Modifier categories</h2>
+              <p className="mb-4 font-body text-xs text-text-light">
+                Each category prints on its own line. Switch one off to keep it off the label,
+                or size it on its own — on top of the overall Modifiers size above. New
+                categories you add at <strong>/admin/modifiers</strong> appear here automatically.
+              </p>
+
+              <div className="space-y-4">
+                {modifierGroups.map((group) => {
+                  const style = settings.modifier_group_styles[group] ?? { show: true, scale: 1 };
+                  return (
+                    <div key={group} className="border-t border-gray-100 pt-3 first:border-t-0 first:pt-0">
+                      <label className="flex cursor-pointer items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={style.show}
+                          onChange={(e) => patchGroupStyle(group, { show: e.target.checked })}
+                          className="h-4 w-4 accent-primary"
+                        />
+                        <span className="font-body text-sm font-semibold text-text-dark">{group}</span>
+                      </label>
+                      {style.show && (
+                        <div className="mt-2 pl-7">
+                          <Slider
+                            label="Size"
+                            value={style.scale}
+                            onChange={(scale) => patchGroupStyle(group, { scale })}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
 
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={save} disabled={saving}>
