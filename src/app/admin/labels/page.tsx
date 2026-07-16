@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
  */
 export default function AdminLabelsPage() {
   const [settings, setSettings] = useState<LabelSettings>(DEFAULT_LABEL_SETTINGS);
+  const [modifierGroups, setModifierGroups] = useState<string[]>([]);
   const [sampleIndex, setSampleIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -43,6 +44,16 @@ export default function AdminLabelsPage() {
         if (loadError) setError('Run supabase-label-settings.sql to save changes here.');
         setSettings(normalizeLabelSettings(data));
         setLoading(false);
+      });
+
+    // The category names, for the "combine onto one line" control. Ordered the same way
+    // they print (the group order set at /admin/modifiers).
+    supabase
+      .from('modifier_groups')
+      .select('name')
+      .order('display_order', { ascending: true })
+      .then(({ data }) => {
+        if (data) setModifierGroups(data.map((g) => g.name as string));
       });
   }, []);
 
@@ -74,6 +85,7 @@ export default function AdminLabelsPage() {
       drink_scale: clean.drink_scale,
       modifier_scale: clean.modifier_scale,
       footer_scale: clean.footer_scale,
+      modifier_combine: clean.modifier_combine,
       updated_at: new Date().toISOString(),
     });
 
@@ -256,6 +268,22 @@ export default function AdminLabelsPage() {
             </div>
           </Card>
 
+          {modifierGroups.length > 0 && (
+            <Card>
+              <h2 className="mb-1 font-heading font-bold text-text-dark">Modifier lines</h2>
+              <p className="mb-4 font-body text-xs text-text-light">
+                Each category prints on its own line, in the order set at{' '}
+                <strong>/admin/modifiers</strong>. To print two or more categories together
+                on one line, give them the same line letter below.
+              </p>
+              <CombineLines
+                groups={modifierGroups}
+                combine={settings.modifier_combine}
+                onChange={(modifier_combine) => patch({ modifier_combine })}
+              />
+            </Card>
+          )}
+
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={save} disabled={saving}>
               {saving ? 'Saving...' : 'Save layout'}
@@ -388,6 +416,73 @@ function NumberField({
         className="w-full rounded-xl border-2 border-gray-200 px-3 py-2 font-body text-text-dark focus:border-primary focus:outline-none"
       />
     </label>
+  );
+}
+
+/**
+ * Assigns each modifier category to "its own line" or a shared line (A, B, C…). Any line
+ * letter used by two or more categories becomes a combine set — those categories print
+ * together. Line ORDER is unaffected; it still follows /admin/modifiers.
+ */
+function CombineLines({
+  groups,
+  combine,
+  onChange,
+}: {
+  groups: string[];
+  combine: string[][];
+  onChange: (combine: string[][]) => void;
+}) {
+  // Which shared line each group is on right now: combine set 0 → "A", set 1 → "B", …
+  const letterOf: Record<string, string> = {};
+  combine.forEach((set, i) => {
+    const letter = String.fromCharCode(65 + i);
+    set.forEach((g) => {
+      letterOf[g] = letter;
+    });
+  });
+
+  // Offer the letters already in use plus one fresh one, so you can start a new shared line.
+  const usedCount = combine.length;
+  const letters = Array.from({ length: usedCount + 1 }, (_, i) => String.fromCharCode(65 + i));
+
+  function change(group: string, letter: string) {
+    const next: Record<string, string> = { ...letterOf };
+    if (letter === '') delete next[group];
+    else next[group] = letter;
+
+    // Rebuild the combine sets from the assignments, keeping group order and dropping any
+    // "shared" line that ended up with only one category (that's just its own line).
+    const byLetter = new Map<string, string[]>();
+    for (const g of groups) {
+      const l = next[g];
+      if (!l) continue;
+      if (!byLetter.has(l)) byLetter.set(l, []);
+      byLetter.get(l)!.push(g);
+    }
+    onChange([...byLetter.values()].filter((arr) => arr.length >= 2));
+  }
+
+  return (
+    <div className="space-y-1">
+      {groups.map((group) => (
+        <div key={group} className="flex items-center justify-between gap-3 rounded-xl px-2 py-2">
+          <span className="min-w-0 truncate font-body text-sm text-text-dark">{group}</span>
+          <select
+            value={letterOf[group] ?? ''}
+            onChange={(e) => change(group, e.target.value)}
+            className="shrink-0 rounded-lg border-2 border-gray-200 px-2 py-1.5 font-body text-sm text-text-dark focus:border-primary focus:outline-none"
+          >
+            <option value="">Its own line</option>
+            {letters.map((l) => (
+              <option key={l} value={l}>
+                Share line {l}
+              </option>
+            ))}
+          </select>
+        </div>
+      ))}
+    </div>
   );
 }
 

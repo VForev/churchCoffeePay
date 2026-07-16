@@ -43,6 +43,13 @@ export interface LabelSettings {
   modifier_scale: number;
   /** Size multiplier for the bottom order-code/time line and the cup counter. */
   footer_scale: number;
+  /**
+   * Categories to print together on ONE line. Each inner array is a set of modifier-group
+   * names that merge onto a single line (e.g. [["Size","Milk"]] prints "Large, Oat Milk"
+   * together). Groups not listed keep their own line. Line ORDER still follows the group
+   * order at /admin/modifiers — this only controls which share a line.
+   */
+  modifier_combine: string[][];
   /** Set to now() by the admin's "Send test label" button; the agent watches it. */
   test_print_requested_at: string | null;
 }
@@ -65,6 +72,7 @@ export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   drink_scale: 1,
   modifier_scale: 1,
   footer_scale: 1,
+  modifier_combine: [],
   test_print_requested_at: null,
 };
 
@@ -101,7 +109,56 @@ export function normalizeLabelSettings(row: Partial<LabelSettings> | null | unde
     drink_scale: clamp(Number(merged.drink_scale) || 1, SCALE_MIN, SCALE_MAX),
     modifier_scale: clamp(Number(merged.modifier_scale) || 1, SCALE_MIN, SCALE_MAX),
     footer_scale: clamp(Number(merged.footer_scale) || 1, SCALE_MIN, SCALE_MAX),
+    modifier_combine: normalizeCombine(merged.modifier_combine),
   };
+}
+
+/** Keeps only well-formed combine sets: arrays of ≥2 group-name strings. */
+function normalizeCombine(v: unknown): string[][] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((set): set is unknown[] => Array.isArray(set))
+    .map((set) => set.filter((g): g is string => typeof g === 'string'))
+    .filter((set) => set.length >= 2);
+}
+
+/**
+ * Applies the "combine categories onto one line" setting to a cup's modifier lines.
+ * Groups named in the same combine set are merged into a single line, positioned where
+ * the first of them would have appeared (so the overall order still follows the group
+ * order from /admin/modifiers). Everything not listed keeps its own line.
+ */
+export function combineModifierLines(
+  lines: LabelModifierLine[],
+  combine: string[][],
+): LabelModifierLine[] {
+  if (!combine.length) return lines;
+
+  const setIndexOf = new Map<string, number>();
+  combine.forEach((set, i) => set.forEach((group) => setIndexOf.set(group, i)));
+
+  const result: LabelModifierLine[] = [];
+  const mergedInto = new Map<number, number>(); // combine-set index -> index in result
+
+  for (const line of lines) {
+    const si = setIndexOf.get(line.group);
+    if (si === undefined) {
+      result.push({ group: line.group, options: [...line.options] });
+      continue;
+    }
+    const existing = mergedInto.get(si);
+    if (existing === undefined) {
+      mergedInto.set(si, result.length);
+      result.push({ group: line.group, options: [...line.options] });
+    } else {
+      result[existing] = {
+        group: `${result[existing].group} / ${line.group}`,
+        options: [...result[existing].options, ...line.options],
+      };
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -159,6 +216,16 @@ export function labelMetrics(s: LabelSettings): LabelMetrics {
   };
 }
 
+/**
+ * One category of modifiers on a label — e.g. { group: 'Syrups', options: ['Vanilla',
+ * 'Caramel'] }. Each of these prints on its own line, so the syrups stay together but
+ * sit apart from the milk. Ordered by the group order set at /admin/modifiers.
+ */
+export interface LabelModifierLine {
+  group: string;
+  options: string[];
+}
+
 /** What one cup's label says. Built by the agent from an order; faked by the admin preview. */
 export interface LabelData {
   temp: 'hot' | 'iced' | null;
@@ -166,7 +233,8 @@ export interface LabelData {
   cupIndex: number;
   cupTotal: number;
   drinkName: string;
-  modifiers: string[];
+  /** One entry per modifier category, already in the order they should print. */
+  modifiers: LabelModifierLine[];
   note: string | null;
   orderCode: string;
   timeText: string;
@@ -187,8 +255,13 @@ export const SAMPLE_LABELS: { name: string; data: LabelData }[] = [
       cupIndex: 1,
       cupTotal: 2,
       drinkName: 'Vanilla Latte',
-      modifiers: ['Large', 'Oat Milk', 'Extra Shot', 'Vanilla Syrup'],
-      note: 'Extra hot, light foam',
+      modifiers: [
+        { group: 'Size', options: ['Large'] },
+        { group: 'Milk', options: ['Oat Milk'] },
+        { group: 'Syrups', options: ['Vanilla', 'Caramel'] },
+        { group: 'Extras', options: ['Extra Shot'] },
+      ],
+      note: 'Extra hot, light foam, no whip please',
       orderCode: '7F3A',
       timeText: '9:42 AM',
     },
@@ -203,6 +276,7 @@ export const SAMPLE_LABELS: { name: string; data: LabelData }[] = [
       drinkName: 'Americano',
       modifiers: [],
       note: null,
+      // (Americano intentionally has no modifiers.)
       orderCode: 'B21C',
       timeText: '10:05 AM',
     },
@@ -215,7 +289,11 @@ export const SAMPLE_LABELS: { name: string; data: LabelData }[] = [
       cupIndex: 2,
       cupTotal: 3,
       drinkName: 'Caramel Macchiato',
-      modifiers: ['Medium', 'Almond Milk', 'Sugar Free Caramel'],
+      modifiers: [
+        { group: 'Size', options: ['Medium'] },
+        { group: 'Milk', options: ['Almond Milk'] },
+        { group: 'Syrups', options: ['Sugar Free Caramel'] },
+      ],
       note: null,
       orderCode: 'C40D',
       timeText: '10:11 AM',
