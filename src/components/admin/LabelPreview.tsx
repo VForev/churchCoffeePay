@@ -3,7 +3,6 @@
 import {
   labelMetrics,
   effectiveRotate,
-  combineModifierLines,
   TEMP_TEXT,
   EDGE_SAFE_MM,
   type LabelSettings,
@@ -40,10 +39,9 @@ export default function LabelPreview({
   // top (tall rolls, whose bottom edge the print head can't reach).
   const rotate = effectiveRotate(settings);
   const m = labelMetrics(settings);
-  const modLines = combineModifierLines(data.modifiers, settings.modifier_combine);
   const showBand = settings.show_temp_band && data.temp !== null;
   const showCounter = settings.show_cup_counter && data.cupTotal > 1;
-  const showMods = settings.show_modifiers && modLines.length > 0;
+  const showMods = settings.show_modifiers && data.modifiers.length > 0;
   const showNote = settings.show_note && Boolean(data.note);
   const align: 'left' | 'center' = settings.center_text ? 'center' : 'left';
 
@@ -105,22 +103,16 @@ export default function LabelPreview({
         </div>
 
         {showMods && (
-          // One line per modifier category — syrups together, milk on its own line —
-          // matching the PDF, which breaks the categories with newlines.
           <div
             className="overflow-hidden leading-snug"
             style={{
               fontSize: px(m.modifierMm),
               marginTop: px(m.gapMm),
-              maxHeight: px(m.modifierMm * 8),
+              maxHeight: px(m.modifierMm * 4.4),
               textAlign: align,
             }}
           >
-            {modLines.map((line, i) => (
-              <div key={i} className="overflow-hidden whitespace-nowrap" style={{ textOverflow: 'ellipsis' }}>
-                {line.options.join(', ')}
-              </div>
-            ))}
+            {data.modifiers.join(', ')}
           </div>
         )}
 
@@ -130,14 +122,15 @@ export default function LabelPreview({
             whole label instead of leaving an unused strip down the side. */}
         <div className={rotate ? 'mt-auto' : ''} style={{ marginTop: rotate ? undefined : px(m.gapMm) }}>
           {showNote && (
-            // A plain bold, flagged line (up to 3 lines) — no box, matching the PDF.
+            // Wraps up to 3 lines and the box grows with it — matching the PDF, where a
+            // long note used to spill out of a fixed box onto the footer.
             <div
-              className="overflow-hidden font-bold"
+              className="overflow-hidden border border-black font-bold"
               style={{
                 fontSize: px(m.modifierMm),
                 lineHeight: 1.28,
+                padding: `${px(m.gapMm * 0.5)} ${px(m.gapMm)}`,
                 marginBottom: px(m.gapMm),
-                textAlign: align,
                 display: '-webkit-box',
                 WebkitLineClamp: 3,
                 WebkitBoxOrient: 'vertical',

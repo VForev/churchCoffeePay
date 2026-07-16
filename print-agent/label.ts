@@ -15,7 +15,7 @@ import PDFDocument from 'pdfkit';
 import { createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { labelMetrics, effectiveRotate, combineModifierLines, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
+import { labelMetrics, effectiveRotate, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
 
 const MM_TO_PT = 2.834645669;
 
@@ -156,50 +156,35 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   //  - ROTATED (a wide label printed horizontal): the design's bottom maps to a side
   //    of the label that IS fully printable, so pinning the note and footer to the
   //    bottom fills the whole label instead of leaving an unused strip down one side.
-  // Modifiers, one category per line — all the syrups on one line, the milk on its own,
-  // etc. "\n" between categories makes PDFKit break the line; options inside a category
-  // are joined with commas. Categories the admin chose to combine share a line; order
-  // follows the group order set at /admin/modifiers.
-  const modLines = combineModifierLines(data.modifiers, settings.modifier_combine);
-  const hasMods = settings.show_modifiers && modLines.length > 0;
-  const modText = modLines.map((line) => line.options.join(', ')).join('\n');
-
   const hasNote = settings.show_note && Boolean(data.note);
-  const rawNote = `! ${data.note ?? ''}`;
+  const noteText = `! ${data.note ?? ''}`;
+  const notePadX = 2;
 
-  // The note is its own bold flagged line(s) — NOT boxed. It's trimmed up front to a line
-  // budget (with an ellipsis) then drawn with plain wrapping, which always renders every
-  // line it's handed — no clipping a line off unpredictably. Where it ENDS is read back
-  // from doc.y after drawing rather than guessed, so the footer can never land on top.
+  // The note box GROWS to fit the note — it wraps onto as many as three lines and the
+  // box (and everything below it) moves down to make room. A fixed-height box was the
+  // bug: a long instruction wrapped past it and printed on top of the footer. Past three
+  // lines it clips with an ellipsis rather than eating the whole label.
   doc.font('Helvetica-Bold').fontSize(modSize);
-  const oneLineH = doc.heightOfString('Ag', { width: 100000 });
-  const lineAdvance = doc.currentLineHeight(true);
-  const noteLines = (text: string) =>
-    Math.max(1, Math.round(doc.heightOfString(text, { width: contentWidth }) / oneLineH));
+  const noteTextWidth = contentWidth - notePadX * 2;
+  const noteLineH = doc.currentLineHeight();
+  const notePadY = noteLineH * 0.28;
+  // What the note WANTS: its wrapped height (up to three lines). A branch may hand it a
+  // smaller box when the label is short, and the text is clipped to fit that box.
+  const noteFullHeight = hasNote
+    ? Math.min(doc.heightOfString(noteText, { width: noteTextWidth }), noteLineH * 3) + notePadY * 2
+    : 0;
 
-  /** Trim the note to at most `maxLines` lines at the label width, adding … if it was cut. */
-  const fitNote = (maxLines: number): string => {
-    let text = rawNote;
-    if (noteLines(text) > maxLines) {
-      const words = text.split(' ');
-      while (words.length > 1) {
-        words.pop();
-        const candidate = `${words.join(' ')}…`;
-        if (noteLines(candidate) <= maxLines) {
-          text = candidate;
-          break;
-        }
-      }
-    }
-    return text;
-  };
-
-  const drawNote = (noteY: number, text: string) => {
+  const drawNote = (noteY: number, boxHeight: number) => {
+    doc.lineWidth(0.75).rect(margin, noteY, contentWidth, boxHeight).stroke('#000');
     doc
       .fillColor('#000')
       .font('Helvetica-Bold')
       .fontSize(modSize)
-      .text(text, margin, noteY, { width: contentWidth });
+      .text(noteText, margin + notePadX, noteY + notePadY, {
+        width: noteTextWidth,
+        height: Math.max(boxHeight - notePadY * 2, 0),
+        ellipsis: true,
+      });
   };
 
   const drawFooter = (footerY: number) => {
@@ -214,51 +199,49 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   };
 
   if (rotate) {
-    // Fill to the bottom. The note is trimmed to whatever room is left between the drink
-    // and the footer (keeping at least one modifier line if there are modifiers), so a
-    // long note shrinks itself rather than climbing over the drinks above it.
+    // Fill to the bottom. The note can't grow past the space between the drink and the
+    // footer (keeping at least one modifier line if there are modifiers), so a long note
+    // shrinks its own box rather than climbing over the drinks above it.
     const footerY = settings.show_footer ? height - margin - footerSize : height - margin;
+    const hasMods = settings.show_modifiers && data.modifiers.length > 0;
     const region = footerY - gap - y; // room below the drink, above the footer
     const minMods = hasMods ? modSize * 1.3 + gap : 0;
-    const noteMaxLines = Math.min(3, Math.max(Math.floor((region - minMods) / lineAdvance), 1));
-    const noteTextFill = hasNote ? fitNote(noteMaxLines) : '';
-    const noteHeight = hasNote ? noteLines(noteTextFill) * lineAdvance : 0;
-    const noteY = hasNote ? footerY - gap - noteHeight : footerY;
+    const noteBox = hasNote ? Math.min(noteFullHeight, Math.max(region - minMods, 0)) : 0;
+    const noteY = hasNote ? footerY - gap - noteBox : footerY;
 
     if (hasMods) {
       doc
         .fillColor('#000')
         .font('Helvetica')
         .fontSize(modSize)
-        .text(modText, margin, y, {
+        .text(data.modifiers.join(', '), margin, y, {
           width: contentWidth,
           height: Math.max((hasNote ? noteY - gap : footerY) - y, 0),
           align,
           ellipsis: true,
         });
     }
-    if (hasNote) drawNote(noteY, noteTextFill);
+    if (hasNote) drawNote(noteY, noteBox);
     if (settings.show_footer) drawFooter(footerY);
   } else {
     // Flow down under the modifiers, staying clear of the unreachable bottom edge.
-    if (hasMods) {
-      // Capped (about 6 lines) so a huge order can't push the note and footer off.
+    if (settings.show_modifiers && data.modifiers.length > 0) {
+      // Capped so a long syrup list can't push the note and footer down the label.
       doc
         .fillColor('#000')
         .font('Helvetica')
         .fontSize(modSize)
-        .text(modText, margin, y, {
+        .text(data.modifiers.join(', '), margin, y, {
           width: contentWidth,
-          height: modSize * 6,
+          height: modSize * 4.4,
           align,
           ellipsis: true,
         });
       y = doc.y + gap;
     }
     if (hasNote) {
-      // Draw it, then take the real end position from doc.y so the footer sits below.
-      drawNote(y, fitNote(3));
-      y = doc.y + gap;
+      drawNote(y, noteFullHeight);
+      y += noteFullHeight + gap;
     }
     if (settings.show_footer) drawFooter(y);
   }
