@@ -15,7 +15,7 @@ import PDFDocument from 'pdfkit';
 import { createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { labelMetrics, TEMP_TEXT, type LabelSettings, type LabelData } from '../src/lib/labels';
+import { labelMetrics, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
 
 const MM_TO_PT = 2.834645669;
 
@@ -83,13 +83,15 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   // Rotate the whole design 90° into the page; drawing below stays in layout coords.
   if (rotate) doc.transform(0, 1, -1, 0, pageW, 0);
 
-  const contentWidth = width - margin * 2;
+  // Keep everything clear of the right edge the print head can't reach.
+  const edgeSafe = pt(EDGE_SAFE_MM);
+  const contentWidth = width - margin * 2 - edgeSafe;
   let y = margin;
 
   // Temperature band — reversed out of black, because it's the one thing the
   // barista needs before they've read a single word.
   if (settings.show_temp_band && data.temp) {
-    doc.rect(0, 0, width, bandHeight).fill('#000');
+    doc.rect(0, 0, width - edgeSafe, bandHeight).fill('#000');
     doc
       .fillColor('#fff')
       .font('Helvetica-Bold')

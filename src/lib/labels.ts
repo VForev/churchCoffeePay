@@ -62,6 +62,15 @@ export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
 export const SCALE_MIN = 0.6;
 export const SCALE_MAX = 1.6;
 
+/**
+ * The strip along the RIGHT edge that the label printer physically can't reach — its
+ * print head stops short of the paper edge, so ink drawn out there simply never lands
+ * (the "3mm on the right gets cut off" bug). The design is kept inside this inset on
+ * both the preview and the roll. It's a fixed property of the print head, not of the
+ * label, so it's a constant in millimetres rather than something that scales with size.
+ */
+export const EDGE_SAFE_MM = 3;
+
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
 
 /**

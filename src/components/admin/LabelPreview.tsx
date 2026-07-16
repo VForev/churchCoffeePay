@@ -3,6 +3,7 @@
 import {
   labelMetrics,
   TEMP_TEXT,
+  EDGE_SAFE_MM,
   type LabelSettings,
   type LabelData,
 } from '@/lib/labels';
@@ -52,8 +53,12 @@ export default function LabelPreview({
     >
       {showBand && (
         <div
-          className="flex w-full items-center justify-center bg-black font-bold text-white"
-          style={{ height: px(m.bandMm), fontSize: px(m.bandMm * 0.62) }}
+          className="flex items-center justify-center bg-black font-bold text-white"
+          style={{
+            width: px(m.widthMm - EDGE_SAFE_MM),
+            height: px(m.bandMm),
+            fontSize: px(m.bandMm * 0.62),
+          }}
         >
           {TEMP_TEXT[data.temp!]}
         </div>
@@ -64,6 +69,9 @@ export default function LabelPreview({
         style={{
           padding: px(m.marginMm),
           paddingTop: px(showBand ? m.gapMm : m.marginMm),
+          // Match the roll: the print head can't reach the right edge, so hold the
+          // content clear of it. Left/top/bottom keep the normal margin.
+          paddingRight: px(m.marginMm + EDGE_SAFE_MM),
           height: showBand ? `calc(100% - ${px(m.bandMm)})` : '100%',
         }}
       >
