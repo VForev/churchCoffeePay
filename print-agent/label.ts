@@ -63,6 +63,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   );
 
   const width = pt(m.widthMm);
+  const height = pt(m.heightMm);
   const margin = pt(m.marginMm);
   const gap = pt(m.gapMm);
   const nameSize = pt(m.nameMm);
@@ -138,54 +139,81 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
     .text(drink.text, margin, y, { width: contentWidth, lineBreak: false });
   y += drink.size * 1.3;
 
-  // The note and footer flow straight down under the modifiers rather than being
-  // pinned to the bottom edge. On a tall roll (e.g. 50×80) the printer's usable area
-  // can stop short of the physical bottom — these CLABEL-style printers often fall
-  // back to a ~50mm-tall media — so anything pinned to the bottom prints blank. That
-  // was the "the notes never come out" bug: name/drink/modifiers land in the printed
-  // region up top while the note and footer sat in dead space below it. Keeping them
-  // right under the modifiers keeps them inside the area that actually prints.
+  // Where the note and footer go depends on which way the label is turned.
+  //
+  //  - UPRIGHT (not rotated, e.g. a tall 50×80): the far bottom edge is out of the
+  //    print head's reach, so anything pinned there prints blank — the original "the
+  //    notes never come out" bug. So they flow straight down under the modifiers and
+  //    we accept blank space below them.
+  //  - ROTATED (a wide label printed horizontal): the design's bottom maps to a side
+  //    of the label that IS fully printable, so pinning the note and footer to the
+  //    bottom fills the whole label instead of leaving an unused strip down one side.
   const hasNote = settings.show_note && Boolean(data.note);
   const noteHeight = modSize * 1.7;
 
-  if (settings.show_modifiers && data.modifiers.length > 0) {
-    // Capped so a long syrup list can't push the note and footer down the label.
-    doc
-      .fillColor('#000')
-      .font('Helvetica')
-      .fontSize(modSize)
-      .text(data.modifiers.join(', '), margin, y, {
-        width: contentWidth,
-        height: modSize * 4.4,
-        ellipsis: true,
-      });
-    y = doc.y + gap;
-  }
-
-  // A special request is the easiest thing on a busy morning to miss. Boxed.
-  if (hasNote) {
-    doc.lineWidth(0.75).rect(margin, y, contentWidth, noteHeight).stroke('#000');
+  const drawNote = (noteY: number) => {
+    doc.lineWidth(0.75).rect(margin, noteY, contentWidth, noteHeight).stroke('#000');
     doc
       .fillColor('#000')
       .font('Helvetica-Bold')
       .fontSize(modSize)
-      .text(`! ${data.note}`, margin + 2, y + noteHeight * 0.28, {
+      .text(`! ${data.note}`, margin + 2, noteY + noteHeight * 0.28, {
         width: contentWidth - 4,
         lineBreak: false,
         ellipsis: true,
       });
-    y += noteHeight + gap;
-  }
+  };
 
-  if (settings.show_footer) {
+  const drawFooter = (footerY: number) => {
     doc
       .fillColor('#000')
       .font('Helvetica')
       .fontSize(footerSize)
-      .text(`#${data.orderCode}  ·  ${data.timeText}`, margin, y, {
+      .text(`#${data.orderCode}  ·  ${data.timeText}`, margin, footerY, {
         width: contentWidth,
         lineBreak: false,
       });
+  };
+
+  if (rotate) {
+    // Fill to the bottom. Reserve the note/footer's space first so the modifiers can't
+    // overrun it, then let the modifiers use everything above.
+    const footerY = settings.show_footer ? height - margin - footerSize : height - margin;
+    const noteY = hasNote ? footerY - gap - noteHeight : footerY;
+
+    if (settings.show_modifiers && data.modifiers.length > 0) {
+      doc
+        .fillColor('#000')
+        .font('Helvetica')
+        .fontSize(modSize)
+        .text(data.modifiers.join(', '), margin, y, {
+          width: contentWidth,
+          height: Math.max(noteY - gap - y, modSize),
+          ellipsis: true,
+        });
+    }
+    if (hasNote) drawNote(noteY);
+    if (settings.show_footer) drawFooter(footerY);
+  } else {
+    // Flow down under the modifiers, staying clear of the unreachable bottom edge.
+    if (settings.show_modifiers && data.modifiers.length > 0) {
+      // Capped so a long syrup list can't push the note and footer down the label.
+      doc
+        .fillColor('#000')
+        .font('Helvetica')
+        .fontSize(modSize)
+        .text(data.modifiers.join(', '), margin, y, {
+          width: contentWidth,
+          height: modSize * 4.4,
+          ellipsis: true,
+        });
+      y = doc.y + gap;
+    }
+    if (hasNote) {
+      drawNote(y);
+      y += noteHeight + gap;
+    }
+    if (settings.show_footer) drawFooter(y);
   }
 
   doc.end();

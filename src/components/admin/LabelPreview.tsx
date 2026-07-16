@@ -112,10 +112,11 @@ export default function LabelPreview({
           </div>
         )}
 
-        {/* Note and footer flow directly under the modifiers — same as the PDF. They
-            are NOT pinned to the bottom edge, because on a tall roll the printer's
-            usable area stops short of it and anything down there prints blank. */}
-        <div style={{ marginTop: px(m.gapMm) }}>
+        {/* Note and footer, matching the PDF's orientation-aware placement:
+            upright labels flow them under the modifiers (the bottom edge is out of the
+            print head's reach), while rotated labels pin them to the bottom to fill the
+            whole label instead of leaving an unused strip down the side. */}
+        <div className={rotate ? 'mt-auto' : ''} style={{ marginTop: rotate ? undefined : px(m.gapMm) }}>
           {showNote && (
             <div
               className="overflow-hidden whitespace-nowrap border border-black font-bold"
