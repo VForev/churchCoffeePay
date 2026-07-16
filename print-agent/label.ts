@@ -302,11 +302,20 @@ export async function renderDiagnosticPdf(settings: LabelSettings): Promise<stri
   doc.rect(pad, pad, width - pad * 2, height * 0.55 - pad).fill('#000');
 
   // Big text below it — the "does text render?" test.
+  // The bounded `height` is load-bearing: without it PDFKit treats the text box as
+  // open-ended, decides "TEST 123" might overflow the page bottom, and spills a SECOND
+  // blank 50×80 page — which then feeds an extra label and makes the on-screen PDF look
+  // twice as long. Clamping the box to the space left below the block keeps it one page.
   doc
     .fillColor('#000')
     .font('Helvetica-Bold')
     .fontSize(height * 0.2)
-    .text('TEST 123', 0, height * 0.66, { width, align: 'center', lineBreak: false });
+    .text('TEST 123', 0, height * 0.66, {
+      width,
+      height: height * 0.3,
+      align: 'center',
+      lineBreak: false,
+    });
 
   doc.end();
 
