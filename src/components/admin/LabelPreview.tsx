@@ -108,13 +108,15 @@ export default function LabelPreview({
         </div>
 
         {showMods && (
-          // One line per modifier category, each at its own size — matching the PDF.
+          // One block per modifier category, each at its own size — matching the PDF. A
+          // category with lots of options (e.g. every syrup) WRAPS onto more lines so all
+          // of them stay visible, rather than being cut off at one line.
           <div style={{ marginTop: px(m.gapMm) }}>
             {modLines.map((l, i) => (
               <div
                 key={i}
-                className="overflow-hidden whitespace-nowrap leading-snug"
-                style={{ fontSize: px(m.modifierMm * l.style.scale), textAlign: align, textOverflow: 'ellipsis' }}
+                className="leading-snug"
+                style={{ fontSize: px(m.modifierMm * l.style.scale), textAlign: align, overflowWrap: 'break-word' }}
               >
                 {l.text}
               </div>
