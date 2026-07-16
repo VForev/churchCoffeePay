@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
@@ -37,6 +37,9 @@ export default function AdminLabelsPage() {
   // sampleIndex -1 = the custom, build-your-own preview; 0..n = the canned samples.
   const [sampleIndex, setSampleIndex] = useState(0);
   const [previewContent, setPreviewContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
+  // Guards the save effect so it doesn't overwrite stored content with the defaults before
+  // the stored value has loaded in.
+  const previewHydrated = useRef(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -77,6 +80,33 @@ export default function AdminLabelsPage() {
         );
       });
   }, []);
+
+  // Remember the custom preview (and which sample is selected) across reloads, per browser,
+  // so it stays exactly as you left it until you change it again. It's a testing convenience,
+  // not label config, so it lives in localStorage rather than the database.
+  const PREVIEW_STORAGE_KEY = 'lotg-label-preview';
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PREVIEW_STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { content?: PreviewContent; sampleIndex?: number };
+        if (saved.content) setPreviewContent({ ...DEFAULT_PREVIEW_CONTENT, ...saved.content });
+        if (typeof saved.sampleIndex === 'number') setSampleIndex(saved.sampleIndex);
+      }
+    } catch {
+      /* ignore corrupt/blocked storage — just start from defaults */
+    }
+    previewHydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!previewHydrated.current) return;
+    try {
+      localStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify({ content: previewContent, sampleIndex }));
+    } catch {
+      /* ignore */
+    }
+  }, [previewContent, sampleIndex]);
 
   /** The LabelData the preview draws — either a canned sample or the custom builder. */
   function buildPreviewData(): LabelData {
