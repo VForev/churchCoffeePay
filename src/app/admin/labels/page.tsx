@@ -197,7 +197,11 @@ export default function AdminLabelsPage() {
     setError('');
     const { error: testError } = await supabase
       .from('label_settings')
-      .update({ test_print_requested_at: new Date().toISOString() })
+      .update({
+        test_print_requested_at: new Date().toISOString(),
+        // Send exactly what's in the preview right now, so the roll matches the screen.
+        test_label_data: buildPreviewData(),
+      })
       .eq('id', 1);
 
     if (testError) setError(testError.message);

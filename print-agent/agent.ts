@@ -77,6 +77,8 @@ let printerPaperSizes: string[] = [];
 let labelSettings: LabelSettings = DEFAULT_LABEL_SETTINGS;
 /** Remembers which test-print request we've already served, so a reconnect can't reprint it. */
 let lastTestPrintAt: string | null = null;
+/** The exact label the admin was previewing when they hit "Send test label" (null = none). */
+let testLabelData: LabelData | null = null;
 
 async function loadLabelSettings(): Promise<void> {
   const { data, error } = await supabase.from('label_settings').select('*').eq('id', 1).maybeSingle();
@@ -88,6 +90,7 @@ async function loadLabelSettings(): Promise<void> {
 
   labelSettings = normalizeLabelSettings(data);
   lastTestPrintAt = data?.test_print_requested_at ?? null;
+  testLabelData = (data?.test_label_data as LabelData | null) ?? null;
 }
 
 const ORDER_QUERY = `
@@ -349,17 +352,23 @@ async function catchUp() {
   }
 }
 
-/** The sample label — printed by `npm run test-label` and by the admin's test button. */
+/**
+ * The test label. Prints exactly what the admin was previewing when they hit the button
+ * (sent along in test_label_data), so the roll matches the screen. Falls back to a canned
+ * sample when there's no saved preview (e.g. `npm run test-label` before any real request).
+ */
 async function testLabel() {
-  const sample = SAMPLE_LABELS[0].data;
+  const data =
+    testLabelData ??
+    {
+      ...SAMPLE_LABELS[0].data,
+      orderCode: 'TEST',
+      timeText: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+    };
   console.log(
     `🖨  Test label at ${labelSettings.width_mm}×${labelSettings.height_mm}mm...`,
   );
-  await printLabel({
-    ...sample,
-    orderCode: 'TEST',
-    timeText: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-  });
+  await printLabel(data);
   console.log('   Sent. If nothing came out, check the printer in Windows Settings → Printers.');
 }
 
@@ -498,6 +507,8 @@ async function main() {
         const requested = row.test_print_requested_at ?? null;
         if (requested && requested !== lastTestPrintAt) {
           lastTestPrintAt = requested;
+          // Print exactly what was on screen — the button sends it in test_label_data.
+          testLabelData = (row as { test_label_data?: LabelData | null }).test_label_data ?? null;
           testLabel().catch((err) => console.error('  test label failed:', err));
         }
       },
