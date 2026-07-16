@@ -29,12 +29,22 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'free' | 'paid'>('all');
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ type: 'archive' | 'delete' | 'restore'; order: FullOrder } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Bulk selection: tick individual orders (or "select all" of what's filtered) and then
+  // archive or delete them in one go. Held as a Set of order ids so it survives filter
+  // changes — select all pending, switch to Free, add those too, then delete the lot.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkModal, setBulkModal] = useState<'delete' | 'archive' | 'restore' | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkDone, setBulkDone] = useState<number | null>(null);
 
   // "Delete ALL orders" — gated behind re-typing the admin login password.
   const [wipeOpen, setWipeOpen] = useState(false);
@@ -186,12 +196,88 @@ export default function AdminOrdersPage() {
 
   const filtered = orders.filter((o) => {
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
+    if (paymentFilter === 'free' && o.payment_status !== 'free' && o.total !== 0) return false;
+    if (paymentFilter === 'paid' && (o.payment_status === 'free' || o.total === 0)) return false;
     if (search && !o.customer_name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const totalRevenue = filtered.reduce((sum, o) => sum + o.total, 0);
   const totalDonations = filtered.reduce((sum, o) => sum + o.tip_amount, 0);
+
+  // ─── Bulk selection ───────────────────────────────────────────────────────────
+  const filteredIds = filtered.map((o) => o.id);
+  const selectedVisible = filteredIds.filter((id) => selected.has(id));
+  const allFilteredSelected = filteredIds.length > 0 && selectedVisible.length === filteredIds.length;
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllFiltered() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) filteredIds.forEach((id) => next.delete(id));
+      else filteredIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+  }
+
+  function openBulk(type: 'delete' | 'archive' | 'restore') {
+    setBulkError(null);
+    setBulkDone(null);
+    setBulkModal(type);
+  }
+
+  /**
+   * Runs the chosen action on every selected id in one request. Delete removes the rows
+   * (order_items cascade); archive/restore just flip archived_at. The FK-constraint hint
+   * matches the single-row delete so the fix is the same message.
+   */
+  async function runBulk() {
+    if (!bulkModal) return;
+    const ids = [...selected];
+    if (ids.length === 0) return;
+
+    setBulkError(null);
+    setBulkLoading(true);
+    try {
+      let error, count: number | null | undefined;
+      if (bulkModal === 'delete') {
+        ({ error, count } = await supabase.from('orders').delete({ count: 'exact' }).in('id', ids));
+      } else {
+        const archived_at = bulkModal === 'archive' ? new Date().toISOString() : null;
+        ({ error, count } = await supabase
+          .from('orders')
+          .update({ archived_at }, { count: 'exact' })
+          .in('id', ids));
+      }
+
+      if (error) {
+        setBulkError(
+          error.code === '23503'
+            ? 'Some of these orders are still referenced by other records. Run supabase-fix-delete-constraints.sql in the Supabase SQL editor, then try again.'
+            : `Could not ${bulkModal} the selected orders: ${error.message}`,
+        );
+        return;
+      }
+
+      setBulkDone(count ?? ids.length);
+      clearSelection();
+      fetchOrders();
+    } finally {
+      setBulkLoading(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -207,7 +293,7 @@ export default function AdminOrdersPage() {
         <h1 className="text-2xl font-heading font-bold text-text-dark">Order History</h1>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowArchived(!showArchived)}
+            onClick={() => { clearSelection(); setShowArchived(!showArchived); }}
             className={`text-sm font-accent px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
               showArchived
                 ? 'bg-warning/10 border-warning/30 text-amber-700'
@@ -251,13 +337,35 @@ export default function AdminOrdersPage() {
       </div>
 
       {/* Status filter pills */}
-      <div className="flex flex-wrap gap-2 mb-5">
+      <div className="flex flex-wrap gap-2 mb-3">
         {STATUS_FILTERS.map((f) => (
           <button
             key={f.value}
             onClick={() => setStatusFilter(f.value)}
             className={`px-3 py-1.5 rounded-full text-sm font-accent transition-colors cursor-pointer ${
               statusFilter === f.value
+                ? 'bg-primary text-white'
+                : 'bg-surface border border-gray-200 text-text-light hover:border-primary/30'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Payment type pills — lets you isolate (and bulk-delete) free orders */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <span className="text-xs text-text-light font-accent mr-1">Type:</span>
+        {([
+          { label: 'All', value: 'all' },
+          { label: 'Paid', value: 'paid' },
+          { label: 'Free', value: 'free' },
+        ] as const).map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setPaymentFilter(f.value)}
+            className={`px-3 py-1.5 rounded-full text-sm font-accent transition-colors cursor-pointer ${
+              paymentFilter === f.value
                 ? 'bg-primary text-white'
                 : 'bg-surface border border-gray-200 text-text-light hover:border-primary/30'
             }`}
@@ -283,18 +391,77 @@ export default function AdminOrdersPage() {
         </Card>
       </div>
 
+      {/* Selection / bulk-action bar */}
+      {filtered.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap mb-3 rounded-xl border border-gray-200 bg-surface px-4 py-2.5">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = selectedVisible.length > 0 && !allFilteredSelected;
+              }}
+              onChange={toggleSelectAllFiltered}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="text-sm font-accent text-text">
+              {selected.size > 0 ? `${selected.size} selected` : `Select all ${filtered.length}`}
+            </span>
+          </label>
+
+          {selected.size > 0 && (
+            <>
+              <button
+                onClick={clearSelection}
+                className="text-sm text-text-light hover:text-text cursor-pointer"
+              >
+                Clear
+              </button>
+              <div className="flex items-center gap-2 ml-auto">
+                {showArchived ? (
+                  <Button size="sm" variant="ghost" className="border border-gray-200" onClick={() => openBulk('restore')}>
+                    Restore {selected.size}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="border border-warning/30 text-amber-700 hover:bg-warning/5"
+                    onClick={() => openBulk('archive')}
+                  >
+                    Archive {selected.size}
+                  </Button>
+                )}
+                <Button size="sm" variant="danger" onClick={() => openBulk('delete')}>
+                  Delete {selected.size}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Orders List */}
       <div className="space-y-2">
         {filtered.map((order) => {
           const isExpanded = expandedId === order.id;
+          const isSelected = selected.has(order.id);
           return (
-            <Card key={order.id} className={showArchived ? 'opacity-75' : ''}>
-              {/* Main row — click to expand */}
-              <button
-                type="button"
-                className="w-full text-left cursor-pointer"
-                onClick={() => setExpandedId(isExpanded ? null : order.id)}
-              >
+            <Card key={order.id} className={`${showArchived ? 'opacity-75' : ''} ${isSelected ? 'ring-2 ring-primary/40' : ''}`}>
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleSelect(order.id)}
+                  aria-label={`Select order for ${order.customer_name}`}
+                  className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                />
+                {/* Main row — click to expand */}
+                <button
+                  type="button"
+                  className="flex-1 min-w-0 text-left cursor-pointer"
+                  onClick={() => setExpandedId(isExpanded ? null : order.id)}
+                >
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -318,7 +485,8 @@ export default function AdminOrdersPage() {
                     <span className="text-text-light text-sm">{isExpanded ? '▲' : '▼'}</span>
                   </div>
                 </div>
-              </button>
+                </button>
+              </div>
 
               {/* Expanded detail */}
               {isExpanded && (
@@ -456,6 +624,69 @@ export default function AdminOrdersPage() {
               </Button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Bulk action confirm (delete / archive / restore the selected orders) */}
+      {bulkModal && (
+        <Modal
+          isOpen
+          onClose={() => { if (!bulkLoading) setBulkModal(null); }}
+          title={
+            bulkModal === 'delete'
+              ? `Delete ${selected.size} order${selected.size === 1 ? '' : 's'}`
+              : bulkModal === 'archive'
+              ? `Archive ${selected.size} order${selected.size === 1 ? '' : 's'}`
+              : `Restore ${selected.size} order${selected.size === 1 ? '' : 's'}`
+          }
+          size="sm"
+        >
+          {bulkDone !== null ? (
+            <div className="space-y-4">
+              <p className="text-sm text-text">
+                {bulkModal === 'delete' ? 'Deleted' : bulkModal === 'archive' ? 'Archived' : 'Restored'}{' '}
+                {bulkDone} order{bulkDone === 1 ? '' : 's'}.
+              </p>
+              <div className="flex justify-end">
+                <Button variant="secondary" onClick={() => setBulkModal(null)}>Done</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-text">
+                {bulkModal === 'delete' ? (
+                  <>Permanently delete the <strong>{selected.size}</strong> selected order{selected.size === 1 ? '' : 's'} and everything on them? This cannot be undone.</>
+                ) : bulkModal === 'archive' ? (
+                  <>Archive the <strong>{selected.size}</strong> selected order{selected.size === 1 ? '' : 's'}? They&apos;ll be hidden from the default view but can be restored.</>
+                ) : (
+                  <>Restore the <strong>{selected.size}</strong> selected order{selected.size === 1 ? '' : 's'} to the active list?</>
+                )}
+              </p>
+              {bulkError && (
+                <p className="text-sm text-danger bg-danger/5 border border-danger/20 rounded-lg px-3 py-2">
+                  {bulkError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setBulkModal(null)} disabled={bulkLoading}>
+                  Cancel
+                </Button>
+                <Button
+                  variant={bulkModal === 'restore' ? 'success' : bulkModal === 'archive' ? 'secondary' : 'danger'}
+                  onClick={runBulk}
+                  disabled={bulkLoading}
+                >
+                  {bulkLoading
+                    ? 'Working...'
+                    : bulkModal === 'delete'
+                    ? `Delete ${selected.size}`
+                    : bulkModal === 'archive'
+                    ? `Archive ${selected.size}`
+                    : `Restore ${selected.size}`}
+                </Button>
+              </div>
+            </div>
+          )}
         </Modal>
       )}
 
