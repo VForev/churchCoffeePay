@@ -357,13 +357,20 @@ async function handleOrder(orderId: string) {
 async function catchUp() {
   const since = new Date(Date.now() - CATCHUP_HOURS * 3600_000).toISOString();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('orders')
     .select('id')
     .is('label_printed_at', null)
     .neq('status', 'cancelled')
     .gte('created_at', since)
     .order('created_at', { ascending: true });
+
+  // In manual mode, only catch up orders the barista actually asked to print — otherwise a
+  // restart would print every unprinted order at once, which is exactly what manual mode is
+  // meant to avoid. In auto mode, catch up everything unprinted (the original behaviour).
+  if (!labelSettings.auto_print) query = query.not('label_print_requested_at', 'is', null);
+
+  const { data, error } = await query;
 
   if (error) {
     console.error(`Could not check for missed orders: ${error.message}`);
@@ -498,6 +505,9 @@ async function main() {
   console.log(`  Label size: ${labelSettings.width_mm} × ${labelSettings.height_mm} mm (set at /admin/labels)`);
   console.log(`  Paper size: ${paperSize ? `"${paperSize}"` : '(none matched — run `npm run doctor` to list sizes)'}`);
   console.log(`  Available:  ${printers.join(', ') || 'none found'}`);
+  console.log(
+    `  Printing:   ${labelSettings.auto_print ? 'automatic — prints when an order comes in' : 'manual — barista prints from /barista'}`,
+  );
   console.log('');
 
   await catchUp();
@@ -507,15 +517,26 @@ async function main() {
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'orders' },
-      (payload) => handleOrder((payload.new as { id: string }).id),
+      (payload) => {
+        // Auto-print mode only: print the moment the order lands. In manual mode nothing
+        // prints until the barista asks (which arrives as an UPDATE below).
+        if (labelSettings.auto_print) handleOrder((payload.new as { id: string }).id);
+      },
     )
     .on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'orders' },
       (payload) => {
-        // Only a reprint request — the board clearing label_printed_at back to NULL.
-        const row = payload.new as { id: string; label_printed_at: string | null };
-        if (!row.label_printed_at) handleOrder(row.id);
+        // An explicit print/reprint request from the 🖨 button: label_print_requested_at is
+        // stamped and label_printed_at cleared. Keyed on the request (not just "printed_at is
+        // NULL") so an ordinary status change on an unprinted order — normal in manual mode —
+        // isn't mistaken for a print request.
+        const row = payload.new as {
+          id: string;
+          label_printed_at: string | null;
+          label_print_requested_at: string | null;
+        };
+        if (row.label_print_requested_at && !row.label_printed_at) handleOrder(row.id);
       },
     )
     .subscribe((status) => {
@@ -534,7 +555,8 @@ async function main() {
         const row = payload.new as Partial<LabelSettings>;
         labelSettings = normalizeLabelSettings(row);
         console.log(
-          `Layout updated: ${labelSettings.width_mm} × ${labelSettings.height_mm} mm`,
+          `Layout updated: ${labelSettings.width_mm} × ${labelSettings.height_mm} mm` +
+            ` · printing ${labelSettings.auto_print ? 'automatic' : 'manual'}`,
         );
 
         // The admin's "Send test label" button stamps this timestamp. Compare it

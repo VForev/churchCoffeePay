@@ -183,14 +183,15 @@ export default function BaristaPage() {
   }
 
   /**
-   * Clearing label_printed_at is the reprint: the print agent on the shop PC is
-   * watching for exactly that and prints the cups again. For a jam, a bad peel,
-   * or a dropped cup.
+   * Send an order to the printer by hand — the first print in manual mode, or a reprint
+   * after a jam, a bad peel, or a dropped cup. Stamping label_print_requested_at is the
+   * explicit "print now" signal the agent waits for; clearing label_printed_at lets it
+   * print (and re-stamp) and flips the button back to "Reprint" once it's done.
    */
   async function reprintLabels(orderId: string) {
     const { error } = await supabase
       .from('orders')
-      .update({ label_printed_at: null })
+      .update({ label_print_requested_at: new Date().toISOString(), label_printed_at: null })
       .eq('id', orderId);
     if (error) alert(`Could not send to the printer: ${error.message}`);
     fetchOrders();

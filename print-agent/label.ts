@@ -69,6 +69,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   const nameSize = pt(m.nameMm);
   const drinkSize = pt(m.drinkMm);
   const modSize = pt(m.modifierMm);
+  const noteSize = pt(m.noteMm);
   const footerSize = pt(m.footerMm);
   const bandHeight = pt(m.bandMm);
 
@@ -178,44 +179,40 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
     return yy;
   };
 
-  // Where the note and footer go depends on which way the label is turned.
-  //
-  //  - UPRIGHT (not rotated, e.g. a tall 50×80): the far bottom edge is out of the
-  //    print head's reach, so anything pinned there prints blank — the original "the
-  //    notes never come out" bug. So they flow straight down under the modifiers and
-  //    we accept blank space below them.
-  //  - ROTATED (a wide label printed horizontal): the design's bottom maps to a side
-  //    of the label that IS fully printable, so pinning the note and footer to the
-  //    bottom fills the whole label instead of leaving an unused strip down one side.
+  // Layout below the drink: modifiers, then the note, then the order code / time pinned
+  // to the very bottom. The note fills the space between the modifiers and the footer —
+  // as many lines as the paper holds — so a long instruction isn't clipped at a fixed
+  // height, while a short one only takes the room it needs. Same for upright (tall 50×80)
+  // and rotated (wide) labels; rotation is a page-feed concern already handled above, so
+  // the design coordinates here are identical either way.
   const hasNote = settings.show_note && Boolean(data.note);
   const noteText = `! ${data.note ?? ''}`;
   const notePadX = 2;
 
-  // The note box GROWS to fit the note — it wraps onto as many as three lines and the
-  // box (and everything below it) moves down to make room. A fixed-height box was the
-  // bug: a long instruction wrapped past it and printed on top of the footer. Past three
-  // lines it clips with an ellipsis rather than eating the whole label.
-  doc.font('Helvetica-Bold').fontSize(modSize);
+  doc.font('Helvetica-Bold').fontSize(noteSize);
   const noteTextWidth = contentWidth - notePadX * 2;
   const noteLineH = doc.currentLineHeight();
   const notePadY = noteLineH * 0.28;
-  // What the note WANTS: its wrapped height (up to three lines). A branch may hand it a
-  // smaller box when the label is short, and the text is clipped to fit that box.
-  const noteFullHeight = hasNote
-    ? Math.min(doc.heightOfString(noteText, { width: noteTextWidth }), noteLineH * 3) + notePadY * 2
-    : 0;
 
-  const drawNote = (noteY: number, boxHeight: number) => {
-    doc.lineWidth(0.75).rect(margin, noteY, contentWidth, boxHeight).stroke('#000');
+  // Draws the note: the TEXT first, filling up to maxHeight, then a border hugging however
+  // many lines actually landed. Text-first is deliberate — pre-measuring a box and then
+  // clipping the text to it drops the last line, because an earlier text draw (the modifier
+  // lines) leaves PDFKit's line-wrap state slightly off and the exact-fit box comes up a
+  // line short. Giving the text the full available height and fitting the border to the
+  // result sidesteps that entirely; the text only clips (…) if it truly exceeds maxHeight.
+  const drawNote = (noteY: number, maxHeight: number) => {
+    const innerH = Math.max(maxHeight - notePadY * 2, 0);
     doc
       .fillColor('#000')
       .font('Helvetica-Bold')
-      .fontSize(modSize)
+      .fontSize(noteSize)
       .text(noteText, margin + notePadX, noteY + notePadY, {
         width: noteTextWidth,
-        height: Math.max(boxHeight - notePadY * 2, 0),
+        height: innerH,
         ellipsis: true,
       });
+    const boxHeight = Math.min(doc.y + notePadY - noteY, maxHeight);
+    doc.lineWidth(0.75).rect(margin, noteY, contentWidth, Math.max(boxHeight, notePadY * 2)).stroke('#000');
   };
 
   const drawFooter = (footerY: number) => {
@@ -229,35 +226,23 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
       });
   };
 
-  if (rotate) {
-    // Fill to the bottom. The note can't grow past the space between the drink and the
-    // footer (keeping at least one modifier line if there are modifiers), so a long note
-    // shrinks its own box rather than climbing over the drinks above it.
+  {
     const footerY = settings.show_footer ? height - margin - footerSize : height - margin;
-    const region = footerY - gap - y; // room below the drink, above the footer
-    const minMods = hasMods ? modSize * 1.3 + gap : 0;
-    const noteBox = hasNote ? Math.min(noteFullHeight, Math.max(region - minMods, 0)) : 0;
-    const noteY = hasNote ? footerY - gap - noteBox : footerY;
 
-    if (hasMods) drawModifierLines(y, hasNote ? noteY - gap : footerY);
-    if (hasNote) drawNote(noteY, noteBox);
-    if (settings.show_footer) drawFooter(footerY);
-  } else {
-    // Flow down under the modifiers, staying clear of the unreachable bottom edge.
     if (hasMods) {
-      // Reserve room for the note and footer so a long modifier list can't shove them off.
-      const maxModY =
-        height -
-        margin -
-        (settings.show_footer ? footerSize + gap : 0) -
-        (hasNote ? noteFullHeight + gap : 0);
-      y = drawModifierLines(y, maxModY) + gap;
+      // Leave the footer's line plus at least one note line (if there's a note), so a long
+      // modifier list can't crowd them off the bottom.
+      const reserveForNote = hasNote ? noteLineH + notePadY * 2 + gap : 0;
+      y = drawModifierLines(y, footerY - gap - reserveForNote) + gap;
     }
+
     if (hasNote) {
-      drawNote(y, noteFullHeight);
-      y += noteFullHeight + gap;
+      // The note fills from here down to just above the footer; the border hugs the text.
+      const available = Math.max(footerY - gap - y, 0);
+      drawNote(y, available);
     }
-    if (settings.show_footer) drawFooter(y);
+
+    if (settings.show_footer) drawFooter(footerY);
   }
 
   doc.end();

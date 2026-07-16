@@ -2,7 +2,6 @@
 
 import {
   labelMetrics,
-  effectiveRotate,
   groupStyle,
   orderModifierLines,
   TEMP_TEXT,
@@ -36,10 +35,7 @@ export default function LabelPreview({
 }) {
   // The preview always shows the finished, upright label — exactly what comes off the
   // roll once the flip toggle is set right. Rotation is a printer-feed concern handled
-  // in the PDF, not something the held label shows, so the preview never spins. `rotate`
-  // only decides whether the note/footer fill to the bottom (wide rolls) or pack to the
-  // top (tall rolls, whose bottom edge the print head can't reach).
-  const rotate = effectiveRotate(settings);
+  // in the PDF, not something the held label shows, so the preview never spins.
   const m = labelMetrics(settings);
   const modLines = orderModifierLines(data.modifiers, settings.modifier_group_order)
     .map((line) => ({ style: groupStyle(settings, line.group), text: line.options.join(', ') }))
@@ -124,36 +120,32 @@ export default function LabelPreview({
           </div>
         )}
 
-        {/* Note and footer, matching the PDF's orientation-aware placement:
-            upright labels flow them under the modifiers (the bottom edge is out of the
-            print head's reach), while rotated labels pin them to the bottom to fill the
-            whole label instead of leaving an unused strip down the side. */}
-        <div className={rotate ? 'mt-auto' : ''} style={{ marginTop: rotate ? undefined : px(m.gapMm) }}>
-          {showNote && (
-            // Wraps up to 3 lines and the box grows with it — matching the PDF, where a
-            // long note used to spill out of a fixed box onto the footer.
-            <div
-              className="overflow-hidden border border-black font-bold"
-              style={{
-                fontSize: px(m.modifierMm),
-                lineHeight: 1.28,
-                padding: `${px(m.gapMm * 0.5)} ${px(m.gapMm)}`,
-                marginBottom: px(m.gapMm),
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-              }}
-            >
-              ! {data.note}
-            </div>
-          )}
+        {/* The note sits under the modifiers and grows with its text; the order code / time
+            is pinned to the bottom of the label. Matches the PDF, which fills the note down
+            toward the footer and hugs the border to the text. The line clamp here is just a
+            screen approximation — the roll is the final word. */}
+        {showNote && (
+          <div
+            className="overflow-hidden border border-black font-bold"
+            style={{
+              fontSize: px(m.noteMm),
+              lineHeight: 1.28,
+              padding: `${px(m.gapMm * 0.5)} ${px(m.gapMm)}`,
+              marginTop: px(m.gapMm),
+              display: '-webkit-box',
+              WebkitLineClamp: 6,
+              WebkitBoxOrient: 'vertical',
+            }}
+          >
+            ! {data.note}
+          </div>
+        )}
 
-          {settings.show_footer && (
-            <div className="leading-none" style={{ fontSize: px(m.footerMm) }}>
-              #{data.orderCode} · {data.timeText}
-            </div>
-          )}
-        </div>
+        {settings.show_footer && (
+          <div className="mt-auto leading-none" style={{ fontSize: px(m.footerMm), paddingTop: px(m.gapMm) }}>
+            #{data.orderCode} · {data.timeText}
+          </div>
+        )}
       </div>
     </div>
   );

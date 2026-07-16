@@ -41,6 +41,9 @@ export interface LabelSettings {
   name_scale: number;
   drink_scale: number;
   modifier_scale: number;
+  /** Size multiplier for the boxed special-instructions note, on its own so it can be
+   * shrunk (or grown) without touching the modifier size. */
+  note_scale: number;
   /** Size multiplier for the bottom order-code/time line and the cup counter. */
   footer_scale: number;
   /**
@@ -58,6 +61,13 @@ export interface LabelSettings {
   modifier_group_order: string[];
   /** Set to now() by the admin's "Send test label" button; the agent watches it. */
   test_print_requested_at: string | null;
+  /**
+   * When true (default), the agent prints a label the moment an order comes in. When false,
+   * nothing prints automatically — the barista prints each order by hand with the 🖨 button
+   * on /barista. Either way the 🖨 button always works; this only decides whether the FIRST
+   * print happens on its own.
+   */
+  auto_print: boolean;
 }
 
 /** How one modifier category is shown on the label. See modifier_group_styles. */
@@ -86,10 +96,12 @@ export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   name_scale: 1,
   drink_scale: 1,
   modifier_scale: 1,
+  note_scale: 1,
   footer_scale: 1,
   modifier_group_styles: {},
   modifier_group_order: [],
   test_print_requested_at: null,
+  auto_print: true,
 };
 
 export const SCALE_MIN = 0.6;
@@ -121,9 +133,13 @@ export function normalizeLabelSettings(row: Partial<LabelSettings> | null | unde
     rotate_label: Boolean(merged.rotate_label),
     uppercase_drink: Boolean(merged.uppercase_drink),
     center_text: Boolean(merged.center_text),
+    // Defaults ON: a missing column (before the migration) means print-on-order, the
+    // behaviour that shipped first, rather than silently printing nothing.
+    auto_print: merged.auto_print !== false,
     name_scale: clamp(Number(merged.name_scale) || 1, SCALE_MIN, SCALE_MAX),
     drink_scale: clamp(Number(merged.drink_scale) || 1, SCALE_MIN, SCALE_MAX),
     modifier_scale: clamp(Number(merged.modifier_scale) || 1, SCALE_MIN, SCALE_MAX),
+    note_scale: clamp(Number(merged.note_scale) || 1, SCALE_MIN, SCALE_MAX),
     footer_scale: clamp(Number(merged.footer_scale) || 1, SCALE_MIN, SCALE_MAX),
     modifier_group_styles: normalizeGroupStyles(merged.modifier_group_styles),
     modifier_group_order: Array.isArray(merged.modifier_group_order)
@@ -203,6 +219,7 @@ export interface LabelMetrics {
   nameMm: number;
   drinkMm: number;
   modifierMm: number;
+  noteMm: number;
   footerMm: number;
   gapMm: number;
 }
@@ -222,6 +239,9 @@ export function labelMetrics(s: LabelSettings): LabelMetrics {
     nameMm: 4.75 * scale * s.name_scale,
     drinkMm: 3.35 * scale * s.drink_scale,
     modifierMm: 2.45 * scale * s.modifier_scale,
+    // The note shares the modifier's baseline size but has its own multiplier, so it can
+    // be sized independently of the modifier lines.
+    noteMm: 2.45 * scale * s.note_scale,
     footerMm: 1.95 * scale * s.footer_scale,
     gapMm: 0.55 * scale,
   };

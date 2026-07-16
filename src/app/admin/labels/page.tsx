@@ -178,9 +178,11 @@ export default function AdminLabelsPage() {
       name_scale: clean.name_scale,
       drink_scale: clean.drink_scale,
       modifier_scale: clean.modifier_scale,
+      note_scale: clean.note_scale,
       footer_scale: clean.footer_scale,
       modifier_group_styles: clean.modifier_group_styles,
       modifier_group_order: clean.modifier_group_order,
+      auto_print: clean.auto_print,
       updated_at: new Date().toISOString(),
     });
 
@@ -279,6 +281,19 @@ export default function AdminLabelsPage() {
           </Card>
 
           <Card>
+            <h2 className="mb-1 font-heading font-bold text-text-dark">When to print</h2>
+            <p className="mb-4 font-body text-xs text-text-light">
+              Whether labels print on their own, or the barista prints each order by hand.
+            </p>
+            <Toggle
+              label="Print automatically when an order comes in"
+              help="On: a label prints for every cup the moment an order is placed. Off: nothing prints on its own — the barista taps 🖨 on the order in /barista to print it. The 🖨 button works either way."
+              checked={settings.auto_print}
+              onChange={(auto_print) => patch({ auto_print })}
+            />
+          </Card>
+
+          <Card>
             <h2 className="mb-1 font-heading font-bold text-text-dark">What&apos;s on the label</h2>
             <p className="mb-4 font-body text-xs text-text-light">
               Turn something off and everything else gets its space back.
@@ -360,9 +375,9 @@ export default function AdminLabelsPage() {
                 onChange={(modifier_scale) => patch({ modifier_scale })}
               />
               <Slider
-                label="Modifiers (all)"
-                value={settings.modifier_scale}
-                onChange={(modifier_scale) => patch({ modifier_scale })}
+                label="Special instructions (note)"
+                value={settings.note_scale}
+                onChange={(note_scale) => patch({ note_scale })}
               />
               <Slider
                 label="Order code & time"
