@@ -4,6 +4,7 @@ import {
   labelMetrics,
   effectiveRotate,
   groupStyle,
+  orderModifierLines,
   TEMP_TEXT,
   EDGE_SAFE_MM,
   type LabelSettings,
@@ -40,7 +41,7 @@ export default function LabelPreview({
   // top (tall rolls, whose bottom edge the print head can't reach).
   const rotate = effectiveRotate(settings);
   const m = labelMetrics(settings);
-  const modLines = data.modifiers
+  const modLines = orderModifierLines(data.modifiers, settings.modifier_group_order)
     .map((line) => ({ style: groupStyle(settings, line.group), text: line.options.join(', ') }))
     .filter((l) => l.style.show && l.text.length > 0);
   const showBand = settings.show_temp_band && data.temp !== null;

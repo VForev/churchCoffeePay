@@ -8,6 +8,7 @@ import LabelPreview from '@/components/admin/LabelPreview';
 import {
   DEFAULT_LABEL_SETTINGS,
   normalizeLabelSettings,
+  orderGroupNames,
   SAMPLE_LABELS,
   SCALE_MAX,
   SCALE_MIN,
@@ -72,6 +73,15 @@ export default function AdminLabelsPage() {
     setSavedAt(null);
   }
 
+  /** Move a category up or down in the printed order, writing the full order back. */
+  function moveGroup(orderedNames: string[], index: number, dir: -1 | 1) {
+    const target = index + dir;
+    if (target < 0 || target >= orderedNames.length) return;
+    const next = [...orderedNames];
+    [next[index], next[target]] = [next[target], next[index]];
+    patch({ modifier_group_order: next });
+  }
+
   function patch(changes: Partial<LabelSettings>) {
     setSettings((prev) => ({ ...prev, ...changes }));
     setSavedAt(null);
@@ -101,6 +111,7 @@ export default function AdminLabelsPage() {
       modifier_scale: clean.modifier_scale,
       footer_scale: clean.footer_scale,
       modifier_group_styles: clean.modifier_group_styles,
+      modifier_group_order: clean.modifier_group_order,
       updated_at: new Date().toISOString(),
     });
 
@@ -288,44 +299,69 @@ export default function AdminLabelsPage() {
             </div>
           </Card>
 
-          {modifierGroups.length > 0 && (
-            <Card>
-              <h2 className="mb-1 font-heading font-bold text-text-dark">Modifier categories</h2>
-              <p className="mb-4 font-body text-xs text-text-light">
-                Each category prints on its own line. Switch one off to keep it off the label,
-                or size it on its own — on top of the overall Modifiers size above. New
-                categories you add at <strong>/admin/modifiers</strong> appear here automatically.
-              </p>
+          {modifierGroups.length > 0 && (() => {
+            // Show the categories in the order they'll print, and let ▲/▼ change it.
+            const orderedNames = orderGroupNames(modifierGroups, settings.modifier_group_order);
+            return (
+              <Card>
+                <h2 className="mb-1 font-heading font-bold text-text-dark">Modifier categories</h2>
+                <p className="mb-4 font-body text-xs text-text-light">
+                  These print top to bottom in the order shown — use ▲/▼ to reorder. Switch one
+                  off to keep it off the label, or size it on its own (on top of the overall
+                  Modifiers size above). New categories added at <strong>/admin/modifiers</strong>{' '}
+                  appear here automatically.
+                </p>
 
-              <div className="space-y-4">
-                {modifierGroups.map((group) => {
-                  const style = settings.modifier_group_styles[group] ?? { show: true, scale: 1 };
-                  return (
-                    <div key={group} className="border-t border-gray-100 pt-3 first:border-t-0 first:pt-0">
-                      <label className="flex cursor-pointer items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={style.show}
-                          onChange={(e) => patchGroupStyle(group, { show: e.target.checked })}
-                          className="h-4 w-4 accent-primary"
-                        />
-                        <span className="font-body text-sm font-semibold text-text-dark">{group}</span>
-                      </label>
-                      {style.show && (
-                        <div className="mt-2 pl-7">
-                          <Slider
-                            label="Size"
-                            value={style.scale}
-                            onChange={(scale) => patchGroupStyle(group, { scale })}
-                          />
+                <div className="space-y-4">
+                  {orderedNames.map((group, i) => {
+                    const style = settings.modifier_group_styles[group] ?? { show: true, scale: 1 };
+                    return (
+                      <div key={group} className="border-t border-gray-100 pt-3 first:border-t-0 first:pt-0">
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col">
+                            <button
+                              onClick={() => moveGroup(orderedNames, i, -1)}
+                              disabled={i === 0}
+                              aria-label={`Move ${group} up`}
+                              className="cursor-pointer px-1 leading-none text-text-light hover:text-primary disabled:cursor-default disabled:opacity-30"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              onClick={() => moveGroup(orderedNames, i, 1)}
+                              disabled={i === orderedNames.length - 1}
+                              aria-label={`Move ${group} down`}
+                              className="cursor-pointer px-1 leading-none text-text-light hover:text-primary disabled:cursor-default disabled:opacity-30"
+                            >
+                              ▼
+                            </button>
+                          </div>
+                          <label className="flex flex-1 cursor-pointer items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={style.show}
+                              onChange={(e) => patchGroupStyle(group, { show: e.target.checked })}
+                              className="h-4 w-4 accent-primary"
+                            />
+                            <span className="font-body text-sm font-semibold text-text-dark">{group}</span>
+                          </label>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-          )}
+                        {style.show && (
+                          <div className="mt-2 pl-9">
+                            <Slider
+                              label="Size"
+                              value={style.scale}
+                              onChange={(scale) => patchGroupStyle(group, { scale })}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })()}
 
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={save} disabled={saving}>
@@ -361,8 +397,9 @@ export default function AdminLabelsPage() {
           </p>
         </div>
 
-        {/* ── Preview ── */}
-        <div className="lg:w-80">
+        {/* ── Preview ── (sticks to the top on wide screens so it stays in view while
+            you scroll the controls; self-start keeps it content-height so it can move) */}
+        <div className="lg:sticky lg:top-6 lg:z-10 lg:w-80 lg:self-start">
           <Card>
             <h2 className="mb-1 font-heading font-bold text-text-dark">Preview</h2>
             <p className="mb-3 font-body text-xs text-text-light">

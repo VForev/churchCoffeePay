@@ -15,7 +15,7 @@ import PDFDocument from 'pdfkit';
 import { createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { labelMetrics, effectiveRotate, groupStyle, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
+import { labelMetrics, effectiveRotate, groupStyle, orderModifierLines, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
 
 const MM_TO_PT = 2.834645669;
 
@@ -151,7 +151,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   // left switched on. A hidden group is dropped; a group with no override shows at ×1, so
   // a brand-new group added at /admin/modifiers appears here automatically. Order follows
   // the group order set at /admin/modifiers.
-  const modLines = data.modifiers
+  const modLines = orderModifierLines(data.modifiers, settings.modifier_group_order)
     .map((line) => ({ style: groupStyle(settings, line.group), text: line.options.join(', ') }))
     .filter((l) => l.style.show && l.text.length > 0)
     .map((l) => ({ text: l.text, size: modSize * l.style.scale }));

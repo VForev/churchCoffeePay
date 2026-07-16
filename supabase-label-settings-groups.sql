@@ -10,3 +10,9 @@
 
 ALTER TABLE label_settings
   ADD COLUMN IF NOT EXISTS modifier_group_styles JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- The order categories print in on the label, as a JSON array of group names, e.g.
+-- ["Syrups","Milk","Size"]. Groups not listed fall in after these, in /admin/modifiers
+-- order. Edited with the ▲/▼ buttons on /admin/labels.
+ALTER TABLE label_settings
+  ADD COLUMN IF NOT EXISTS modifier_group_order JSONB NOT NULL DEFAULT '[]'::jsonb;

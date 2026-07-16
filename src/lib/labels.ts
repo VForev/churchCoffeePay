@@ -50,6 +50,12 @@ export interface LabelSettings {
    * /admin/modifiers shows up on the label automatically.
    */
   modifier_group_styles: Record<string, ModifierGroupStyle>;
+  /**
+   * The order modifier categories print on the label, by group name. Groups listed here
+   * come first in this order; any not listed (e.g. a brand-new group) fall in after them
+   * in their /admin/modifiers order. Edited with the ▲/▼ buttons on /admin/labels.
+   */
+  modifier_group_order: string[];
   /** Set to now() by the admin's "Send test label" button; the agent watches it. */
   test_print_requested_at: string | null;
 }
@@ -82,6 +88,7 @@ export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   modifier_scale: 1,
   footer_scale: 1,
   modifier_group_styles: {},
+  modifier_group_order: [],
   test_print_requested_at: null,
 };
 
@@ -119,7 +126,25 @@ export function normalizeLabelSettings(row: Partial<LabelSettings> | null | unde
     modifier_scale: clamp(Number(merged.modifier_scale) || 1, SCALE_MIN, SCALE_MAX),
     footer_scale: clamp(Number(merged.footer_scale) || 1, SCALE_MIN, SCALE_MAX),
     modifier_group_styles: normalizeGroupStyles(merged.modifier_group_styles),
+    modifier_group_order: Array.isArray(merged.modifier_group_order)
+      ? merged.modifier_group_order.filter((g): g is string => typeof g === 'string')
+      : [],
   };
+}
+
+/** Sorts group names into the label's chosen order; unlisted names keep their original order. */
+export function orderGroupNames(groups: string[], order: string[]): string[] {
+  const rank = new Map(order.map((g, i) => [g, i]));
+  return [...groups].sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity));
+}
+
+/** Same, for a cup's modifier lines — the order the categories print in. */
+export function orderModifierLines(
+  lines: LabelModifierLine[],
+  order: string[],
+): LabelModifierLine[] {
+  const rank = new Map(order.map((g, i) => [g, i]));
+  return [...lines].sort((a, b) => (rank.get(a.group) ?? Infinity) - (rank.get(b.group) ?? Infinity));
 }
 
 /** Sanitises the per-group style map: coerces types, clamps scale, drops junk. */
