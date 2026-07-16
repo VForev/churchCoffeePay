@@ -122,13 +122,18 @@ export default function LabelPreview({
             whole label instead of leaving an unused strip down the side. */}
         <div className={rotate ? 'mt-auto' : ''} style={{ marginTop: rotate ? undefined : px(m.gapMm) }}>
           {showNote && (
+            // Wraps up to 3 lines and the box grows with it — matching the PDF, where a
+            // long note used to spill out of a fixed box onto the footer.
             <div
-              className="overflow-hidden whitespace-nowrap border border-black font-bold"
+              className="overflow-hidden border border-black font-bold"
               style={{
                 fontSize: px(m.modifierMm),
+                lineHeight: 1.28,
                 padding: `${px(m.gapMm * 0.5)} ${px(m.gapMm)}`,
                 marginBottom: px(m.gapMm),
-                textOverflow: 'ellipsis',
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
               }}
             >
               ! {data.note}
