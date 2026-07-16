@@ -93,6 +93,24 @@ export function normalizeLabelSettings(row: Partial<LabelSettings> | null | unde
 }
 
 /**
+ * Whether to spin the printed design 90° for this label.
+ *
+ * These printers feed a TALL (portrait) label straight through — a 50×80 prints upright
+ * with no rotation, which is why that roll has always worked. A WIDE (landscape) label
+ * like 40×30 or 50×30 feeds the other way round, so an un-rotated design comes out
+ * sideways. So any label whose width is greater than its height is auto-rotated to read
+ * the right way up.
+ *
+ * The manual `rotate_label` toggle in /admin/labels still works: it FLIPS whatever the
+ * automatic choice was, as an escape hatch for a printer that feeds the opposite way to
+ * the one this rule was written for. Off (the default) means "trust the automatic guess".
+ */
+export function effectiveRotate(s: LabelSettings): boolean {
+  const autoRotate = s.width_mm > s.height_mm;
+  return autoRotate !== s.rotate_label;
+}
+
+/**
  * Every measurement on the label, in millimetres.
  *
  * All of it scales off the label height, so a taller roll gets bigger type rather

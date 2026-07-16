@@ -2,6 +2,7 @@
 
 import {
   labelMetrics,
+  effectiveRotate,
   TEMP_TEXT,
   EDGE_SAFE_MM,
   type LabelSettings,
@@ -31,7 +32,7 @@ export default function LabelPreview({
   settings: LabelSettings;
   data: LabelData;
 }) {
-  const rotate = settings.rotate_label;
+  const rotate = effectiveRotate(settings);
   // Match the PDF: when rotated, lay the design out to the swapped size, then spin it.
   const m = labelMetrics(
     rotate ? { ...settings, width_mm: settings.height_mm, height_mm: settings.width_mm } : settings,

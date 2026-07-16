@@ -15,7 +15,7 @@ import PDFDocument from 'pdfkit';
 import { createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { labelMetrics, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
+import { labelMetrics, effectiveRotate, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
 
 const MM_TO_PT = 2.834645669;
 
@@ -54,7 +54,7 @@ function fitOneLine(
 
 export async function renderLabelPdf(data: LabelData, settings: LabelSettings): Promise<string> {
   const pt = (mm: number) => mm * MM_TO_PT;
-  const rotate = settings.rotate_label;
+  const rotate = effectiveRotate(settings);
 
   // When rotated, the design is laid out to the SWAPPED size and then spun 90° onto
   // the page — so a printer that feeds the label the other way reads the right way up.

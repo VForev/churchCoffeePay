@@ -156,8 +156,8 @@ export default function AdminLabelsPage() {
 
             <div className="mt-3 border-t border-gray-100 pt-3">
               <Toggle
-                label="Rotate the design 90°"
-                help="If labels print sideways, turn this on. Width and height still describe the sticker; only the design spins. Watch the preview."
+                label="Flip the print direction"
+                help="Wide labels (like 40×30) auto-rotate and tall labels (like 50×80) print upright — this is handled for you. Only turn this on if a label still comes out sideways; it flips whichever way the design is facing. Watch the preview."
                 checked={settings.rotate_label}
                 onChange={(rotate_label) => patch({ rotate_label })}
               />
