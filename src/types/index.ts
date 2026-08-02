@@ -93,6 +93,10 @@ export interface AccessCode {
   is_active: boolean;
   /** When set, the code only unlocks this one category (e.g. Tea). NULL = whole menu. */
   allowed_category_id: string | null;
+  /** When true, the code also shows a free-text "write your own order" box. */
+  allow_custom_order: boolean;
+  /** Fine print shown beside the write-in box, e.g. "if we can't make it, we won't, sorry." */
+  custom_order_note: string | null;
   created_at: string;
 }
 

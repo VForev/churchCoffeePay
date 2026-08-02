@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
+import Input, { TextArea } from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
@@ -47,6 +47,10 @@ export default function AdminAccessCodesPage() {
       label: (editCode.label ?? '').trim(),
       is_active: editCode.is_active ?? true,
       allowed_category_id: editCode.allowed_category_id || null,
+      allow_custom_order: editCode.allow_custom_order ?? false,
+      custom_order_note: editCode.allow_custom_order
+        ? (editCode.custom_order_note ?? '').trim() || null
+        : null,
     };
 
     const { error: saveError } = editCode.id
@@ -121,6 +125,7 @@ export default function AdminAccessCodesPage() {
                   ) : (
                     <span>whole menu</span>
                   )}
+                  {code.allow_custom_order && <span className="text-primary"> · ✍️ write-in</span>}
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
@@ -198,6 +203,41 @@ export default function AdminAccessCodesPage() {
                 nothing else.
               </p>
             </div>
+
+            <div className="rounded-xl border-2 border-gray-100 p-3">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={editCode.allow_custom_order ?? false}
+                  onChange={(e) =>
+                    setEditCode({ ...editCode, allow_custom_order: e.target.checked })
+                  }
+                  className="h-5 w-5 accent-primary"
+                />
+                <div>
+                  <span className="font-accent text-sm font-semibold text-text-dark">
+                    Allow write-in custom orders
+                  </span>
+                  <p className="font-body text-xs text-text-light">
+                    Shows a free-text box so they can ask for something off-menu.
+                  </p>
+                </div>
+              </label>
+              {editCode.allow_custom_order && (
+                <div className="mt-3">
+                  <TextArea
+                    label="Fine print shown by the box"
+                    rows={2}
+                    value={editCode.custom_order_note ?? ''}
+                    onChange={(e) =>
+                      setEditCode({ ...editCode, custom_order_note: e.target.value })
+                    }
+                    placeholder="We'll do our best — if we can't make it, we won't. Sorry!"
+                  />
+                </div>
+              )}
+            </div>
+
             <label className="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-gray-100 p-3">
               <input
                 type="checkbox"

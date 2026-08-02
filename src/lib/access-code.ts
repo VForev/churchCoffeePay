@@ -18,6 +18,12 @@ import type { AccessCode } from '@/types';
  * so a code disabled mid-service can't ride a stale unlock through checkout.
  */
 
+/**
+ * Fixed id of the hidden "Custom Order" menu item (see supabase-access-codes.sql).
+ * A write-in order attaches to it, with the typed request as its special instructions.
+ */
+export const CUSTOM_ORDER_ITEM_ID = 'c0570000-0000-4000-8000-000000000002';
+
 export interface AccessUnlock {
   code: string;
   /** e.g. "Brothers Meeting" — shown back to the customer so they know it worked. */
@@ -26,6 +32,10 @@ export interface AccessUnlock {
   allowedCategoryId: string | null;
   /** e.g. "Tea" — for telling the customer what they're limited to. */
   allowedCategoryName: string | null;
+  /** When true, a free-text "write your own order" box is offered. */
+  allowCustomOrder: boolean;
+  /** Fine print shown beside the write-in box. */
+  customOrderNote: string | null;
 }
 
 let activeUnlock: AccessUnlock | null = null;
@@ -37,14 +47,19 @@ export async function verifyAccessCode(raw: string): Promise<AccessUnlock | null
 
   const { data } = await supabase
     .from('access_codes')
-    .select('code, label, is_active, allowed_category_id, category:categories(name)')
+    .select(
+      'code, label, is_active, allowed_category_id, allow_custom_order, custom_order_note, category:categories(name)',
+    )
     .eq('code', code)
     .eq('is_active', true)
     .maybeSingle();
 
   if (!data) return null;
 
-  const row = data as Pick<AccessCode, 'code' | 'label' | 'allowed_category_id'> & {
+  const row = data as Pick<
+    AccessCode,
+    'code' | 'label' | 'allowed_category_id' | 'allow_custom_order' | 'custom_order_note'
+  > & {
     category: { name: string } | { name: string }[] | null;
   };
   // PostgREST can hand back the embedded row as an object or a single-element array.
@@ -55,6 +70,8 @@ export async function verifyAccessCode(raw: string): Promise<AccessUnlock | null
     label: row.label,
     allowedCategoryId: row.allowed_category_id,
     allowedCategoryName: category?.name ?? null,
+    allowCustomOrder: row.allow_custom_order ?? false,
+    customOrderNote: row.custom_order_note ?? null,
   };
 }
 

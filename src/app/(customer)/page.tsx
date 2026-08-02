@@ -16,6 +16,7 @@ import MenuCard from '@/components/menu/MenuCard';
 import ModifierSelector from '@/components/menu/ModifierSelector';
 import CartDrawer from '@/components/cart/CartDrawer';
 import ShopBanner, { ClosedNotice } from '@/components/ShopBanner';
+import CustomOrderBox from '@/components/CustomOrderBox';
 import type {
   Category,
   MenuItem,
@@ -225,6 +226,12 @@ export default function MenuPage() {
                 ? `You can order ${unlock.allowedCategoryName} — the rest of the menu stays closed.`
                 : 'The shop is closed to everyone else — go ahead and order.'}
             </p>
+          </div>
+        )}
+
+        {unlock?.allowCustomOrder && (
+          <div className="mt-3">
+            <CustomOrderBox unlock={unlock} queueWait={queueWait} />
           </div>
         )}
       </div>

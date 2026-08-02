@@ -22,6 +22,31 @@ create index if not exists idx_access_codes_code on access_codes(code);
 alter table access_codes
   add column if not exists allowed_category_id uuid references categories(id) on delete set null;
 
+-- Optional write-in orders: when on, a code shows a free-text "write your own order"
+-- box (for a brothers' meeting who want something off-menu). custom_order_note is the
+-- fine print shown next to it — e.g. "if we can't make it, we won't, sorry."
+alter table access_codes
+  add column if not exists allow_custom_order boolean not null default false;
+alter table access_codes
+  add column if not exists custom_order_note text;
+
+-- A write-in order still needs a menu item to hang on (order_items.menu_item_id is NOT
+-- NULL), and it should never appear on the normal menu. So we keep one hidden category
+-- and one hidden "Custom Order" item, at fixed ids the app references directly. The
+-- typed request rides along as the order item's special_instructions, so it shows on the
+-- barista board's Note box and on the printed label with no extra code.
+insert into categories (id, name, display_order, is_active)
+values ('c0570000-0000-4000-8000-000000000001', 'Custom (hidden)', 999, false)
+on conflict (id) do nothing;
+
+insert into menu_items (id, category_id, name, base_price, is_available, is_free, display_order)
+values (
+  'c0570000-0000-4000-8000-000000000002',
+  'c0570000-0000-4000-8000-000000000001',
+  'Custom Order', 0, false, true, 999
+)
+on conflict (id) do nothing;
+
 alter table access_codes enable row level security;
 
 -- Matches the rest of the schema's permissive, anon-key posture (walk-up coffee stand).
