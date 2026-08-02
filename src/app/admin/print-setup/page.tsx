@@ -26,8 +26,9 @@ export default function PrintSetupPage() {
       <div className="mb-6">
         <h1 className="font-heading text-2xl font-bold text-text-dark">Set Up the Cup Printer</h1>
         <p className="mt-1 font-body text-sm text-text-light">
-          A one-time setup on the shop computer — about 15 minutes. Do these in order.
-          After this, labels print by themselves whenever an order comes in.
+          A one-time setup on the shop computer — about 10 minutes. Do these in order.
+          After this, starting the printer is just a double-click, and labels print by
+          themselves whenever an order comes in.
         </p>
       </div>
 
@@ -111,28 +112,14 @@ export default function PrintSetupPage() {
         </p>
       </Step>
 
-      <Step n={4} title="Open a command window in that folder">
+      <Step n={4} title="Double-click Start-Printer — and paste your details once">
         <p>
           Open the <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">print-agent</code>{' '}
-          folder. Click the address bar at the top of the window, type{' '}
-          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">cmd</code>, and press Enter.
-          A black command window opens. Type this and press Enter:
-        </p>
-        <CodeBlock>npm install</CodeBlock>
-        <p className="mt-2 text-text-light">
-          It downloads what the software needs and takes a minute. Do this once.
-        </p>
-      </Step>
-
-      <Step n={5} title="Add your connection details">
-        <p>
-          In the <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">print-agent</code>{' '}
-          folder, find the file called{' '}
-          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">.env.example</code>, make a
-          copy of it, and rename the copy to exactly{' '}
-          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">.env</code> (no
-          &ldquo;.example&rdquo;). Open it in Notepad and replace everything with this — it&apos;s
-          already filled in for your shop:
+          folder and double-click{' '}
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">start-printer.bat</code>.
+          The first time, it sets itself up (about a minute), then pops open a settings file in
+          Notepad. Replace everything in it with this — it&apos;s already filled in for your shop —
+          then <strong>save and close</strong> Notepad:
         </p>
         <CopyBox text={ENV_TEXT} />
         <p className="mt-2 text-text-light">
@@ -140,32 +127,41 @@ export default function PrintSetupPage() {
           Windows Settings → Printers) after{' '}
           <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">PRINTER_NAME=</code>.
         </p>
-      </Step>
-
-      <Step n={6} title="Set your label size and test it">
-        <p>
-          Go to <InternalLink href="/admin/labels">Cup Labels</InternalLink> in this admin panel.
-          Measure your label sticker (not the backing paper), type in its width and height, and
-          check the preview. Press <strong>Save layout</strong>, then{' '}
-          <strong>Send test label</strong> — a real label should come out of the printer. If it
-          runs off the edges, adjust the size and test again.
+        <p className="mt-2 text-text-light">
+          If it says Node.js isn&apos;t installed and sends you to a website, that means Step 2
+          got skipped — install it, then double-click{' '}
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">start-printer.bat</code>{' '}
+          again.
         </p>
       </Step>
 
-      <Step n={7} title="Start it for service" last>
-        <p>Back in the black command window, type this and press Enter:</p>
-        <CodeBlock>npm start</CodeBlock>
-        <p className="mt-2">
-          You&apos;ll see <em>&ldquo;Listening for orders.&rdquo;</em> Leave the window open —
-          every order that comes in now prints its cup labels automatically. To make sure it
-          works, place a real order on your phone and watch a label print.
+      <Step n={5} title="Double-click it again to start printing">
+        <p>
+          Double-click{' '}
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">start-printer.bat</code> once
+          more. This time it starts up and shows{' '}
+          <em>&ldquo;Listening for orders.&rdquo;</em> Leave that window open — every order that
+          comes in now prints its cup labels automatically. From now on, this single double-click
+          is all it takes each service morning.
         </p>
         <p className="mt-3 rounded-xl bg-bg px-4 py-3 text-text-light">
-          <strong className="text-text-dark">Want it to start by itself?</strong> The folder has a{' '}
+          <strong className="text-text-dark">Want it to start by itself when the PC turns on?</strong>{' '}
+          Press <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">Win + R</code>,
+          type <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">shell:startup</code>,
+          and drop a shortcut to{' '}
           <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">start-printer.bat</code>{' '}
-          file and a one-line instruction (in its{' '}
-          <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">README.md</code>) for
-          launching it automatically when the PC turns on, so nobody has to remember.
+          into the folder that opens. Then nobody has to remember.
+        </p>
+      </Step>
+
+      <Step n={6} title="Set your label size and test it" last>
+        <p>
+          With the printer window running, go to{' '}
+          <InternalLink href="/admin/labels">Cup Labels</InternalLink> in this admin panel. Measure
+          your label sticker (not the backing paper), type in its width and height, and check the
+          preview. Press <strong>Save layout</strong>, then <strong>Send test label</strong> — a
+          real label should come out of the printer. If it runs off the edges, adjust the size and
+          test again. Finally, place a real order on your phone and watch a label print.
         </p>
       </Step>
 
@@ -221,14 +217,6 @@ function Step({
         <div className="space-y-1 font-body text-sm leading-relaxed text-text">{children}</div>
       </div>
     </div>
-  );
-}
-
-function CodeBlock({ children }: { children: string }) {
-  return (
-    <pre className="mt-2 overflow-x-auto rounded-xl bg-text-dark px-4 py-3 font-accent text-sm text-white">
-      {children}
-    </pre>
   );
 }
 

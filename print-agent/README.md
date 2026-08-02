@@ -37,12 +37,13 @@ run these two files from the project root:
 
 ### 3. Install the agent
 
-Install [Node.js](https://nodejs.org) (LTS) on the shop computer, then in this folder:
+Install [Node.js](https://nodejs.org) (LTS) on the shop computer. That's the only thing
+you install by hand.
 
-```bash
-npm install
-cp .env.example .env      # Windows: copy .env.example .env
-```
+Then just **double-click `start-printer.bat`** (Windows) or **`start-printer.command`**
+(Mac). The first run installs the agent's dependencies for you, creates the `.env` from
+the example, and opens it so you can fill it in — no command line needed. (If you'd rather
+do it manually: `npm install`, then `cp .env.example .env`.)
 
 Open `.env` and fill in:
 
@@ -78,8 +79,8 @@ it's running. No restart, and nobody has to come back to this PC.
 
 ## Running it on a service morning
 
-Easiest: **double-click `start-printer.command`** (Mac) or **`start-printer.bat`** (Windows)
-in this folder. Or from a terminal:
+**Double-click `start-printer.bat`** (Windows) or **`start-printer.command`** (Mac) in this
+folder. That's the whole job — the same double-click every week. Or from a terminal:
 
 ```bash
 npm start
