@@ -28,6 +28,9 @@ import type {
 } from '@/types';
 import { useRouter } from 'next/navigation';
 
+/** Sentinel id for the synthetic "Custom Order" tab (not a real DB category). */
+const CUSTOM_TAB_ID = 'custom-order-tab';
+
 export default function MenuPage() {
   const router = useRouter();
   const cart = useCart();
@@ -140,6 +143,12 @@ export default function MenuPage() {
   const filteredItems = menuItems.filter((item) => item.category_id === activeCategory);
   const isEventFree = activeEvent?.is_all_free || false;
 
+  // A write-in code adds a "Custom Order" tab at the very end — never the default,
+  // so it's not the first thing anyone sees.
+  const tabCategories = unlock?.allowCustomOrder
+    ? [...categories, { id: CUSTOM_TAB_ID, name: 'Custom Order', display_order: 9999, is_active: true }]
+    : categories;
+
   function handleAddToCart(modifiers: Modifier[], instructions: string) {
     if (!selectedItem) return;
     cartStore.addItem(selectedItem, modifiers, instructions, isEventFree);
@@ -228,20 +237,18 @@ export default function MenuPage() {
             </p>
           </div>
         )}
-
-        {unlock?.allowCustomOrder && (
-          <div className="mt-3">
-            <CustomOrderBox unlock={unlock} queueWait={queueWait} />
-          </div>
-        )}
       </div>
 
       <div className="mx-auto max-w-5xl px-4 pt-5">
-        <CategoryTabs categories={categories} activeId={activeCategory} onSelect={setActiveCategory} />
+        <CategoryTabs categories={tabCategories} activeId={activeCategory} onSelect={setActiveCategory} />
       </div>
 
       <main className="mx-auto max-w-5xl px-4 py-6">
-        {filteredItems.length === 0 ? (
+        {activeCategory === CUSTOM_TAB_ID && unlock?.allowCustomOrder ? (
+          <div className="mx-auto max-w-xl">
+            <CustomOrderBox unlock={unlock} queueWait={queueWait} />
+          </div>
+        ) : filteredItems.length === 0 ? (
           <div className="py-12 text-center">
             <p className="text-text-light">No items in this category</p>
           </div>
