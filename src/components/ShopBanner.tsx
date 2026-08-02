@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { ShopSettings } from '@/types';
 import type { ShopStatus } from '@/lib/shop';
+import { verifyAccessCode, storeUnlock, type AccessUnlock } from '@/lib/access-code';
 
 interface ShopBannerProps {
   settings: ShopSettings;
@@ -125,12 +127,21 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
 /**
  * Full-width notice shown when ordering is closed, explaining what to do instead.
  */
-export function ClosedNotice({ settings, status }: { settings: ShopSettings; status: ShopStatus }) {
+export function ClosedNotice({
+  settings,
+  status,
+  onUnlock,
+}: {
+  settings: ShopSettings;
+  status: ShopStatus;
+  /** When provided, shows an access-code box so an approved group can unlock ordering. */
+  onUnlock?: (unlock: AccessUnlock) => void;
+}) {
   return (
     <div className="rounded-2xl border-2 border-warning/40 bg-warning/10 px-5 py-4">
       <div className="flex items-start gap-3">
         <span className="text-2xl leading-none">☕</span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="font-heading text-lg font-bold text-amber-900">
             We&apos;re not taking orders right now
           </h2>
@@ -143,8 +154,68 @@ export function ClosedNotice({ settings, status }: { settings: ShopSettings; sta
           <p className="mt-2 font-body text-xs text-amber-800/80">
             You can still browse the menu below.
           </p>
+          {onUnlock && <AccessCodeBox onUnlock={onUnlock} />}
         </div>
       </div>
     </div>
+  );
+}
+
+/** "Have an access code?" — an approved group unlocks ordering while the shop is closed. */
+function AccessCodeBox({ onUnlock }: { onUnlock: (unlock: AccessUnlock) => void }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!code.trim()) return;
+    setChecking(true);
+    setError('');
+    const unlock = await verifyAccessCode(code);
+    setChecking(false);
+    if (!unlock) {
+      setError('That code isn’t valid. Double-check it with whoever gave it to you.');
+      return;
+    }
+    storeUnlock(unlock);
+    onUnlock(unlock);
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-3 cursor-pointer font-accent text-sm font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950"
+      >
+        Have an access code?
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-3 flex flex-wrap items-start gap-2">
+      <div className="min-w-0 flex-1">
+        <input
+          autoFocus
+          value={code}
+          onChange={(e) => {
+            setCode(e.target.value.toUpperCase());
+            if (error) setError('');
+          }}
+          placeholder="Enter access code"
+          className="w-full rounded-xl border-2 border-amber-300 bg-white px-4 py-2.5 font-mono text-sm text-amber-950 placeholder:font-body placeholder:text-amber-800/50 focus:border-amber-500 focus:outline-none"
+        />
+        {error && <p className="mt-1.5 font-body text-xs text-danger">{error}</p>}
+      </div>
+      <button
+        type="submit"
+        disabled={checking || !code.trim()}
+        className="cursor-pointer rounded-xl bg-amber-900 px-5 py-2.5 font-accent text-sm font-bold text-white transition-colors hover:bg-amber-950 disabled:opacity-50"
+      >
+        {checking ? 'Checking…' : 'Unlock'}
+      </button>
+    </form>
   );
 }

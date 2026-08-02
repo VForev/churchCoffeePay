@@ -13,6 +13,12 @@ import {
   parseDonationPresets,
   DEFAULT_SETTINGS,
 } from '@/lib/shop';
+import {
+  readUnlock,
+  verifyAccessCode,
+  clearUnlock,
+  type AccessUnlock,
+} from '@/lib/access-code';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
@@ -41,6 +47,8 @@ function CheckoutForm() {
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
 
   const status = getShopStatus(settings, hours);
+  // Carried over from the menu page — an approved group ordering while the shop is closed.
+  const [unlock, setUnlock] = useState<AccessUnlock | null>(null);
   const isFreeOrder = cart.total === 0;
   const cartItemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
   const donationPresets = parseDonationPresets(settings.donation_presets);
@@ -75,6 +83,16 @@ function CheckoutForm() {
       setQueueWait(items?.reduce((sum, i) => sum + i.quantity, 0) ?? 0);
     }
     load();
+  }, []);
+
+  // Restore the menu page's access-code unlock, re-verifying it against the DB.
+  useEffect(() => {
+    const stored = readUnlock();
+    if (!stored) return;
+    verifyAccessCode(stored.code).then((valid) => {
+      if (valid) setUnlock(valid);
+      else clearUnlock();
+    });
   }, []);
 
   // Donations may have been switched off after something was already added.
@@ -140,12 +158,20 @@ function CheckoutForm() {
     setNameError('');
 
     // Re-check against the live schedule — the shop may have closed while this page sat open.
+    // If closed, an access code can still let this order through, but only after we
+    // re-verify it against the DB so a code disabled mid-service can't slip past.
     const freshConfig = await fetchShopConfig();
     if (!getShopStatus(freshConfig.settings, freshConfig.hours).isOpen) {
-      setSettings(freshConfig.settings);
-      setHours(freshConfig.hours);
-      setError('Ordering just closed — your order was not placed.');
-      return;
+      const stored = readUnlock();
+      const stillValid = stored ? await verifyAccessCode(stored.code) : null;
+      if (!stillValid) {
+        clearUnlock();
+        setUnlock(null);
+        setSettings(freshConfig.settings);
+        setHours(freshConfig.hours);
+        setError('Ordering just closed — your order was not placed.');
+        return;
+      }
     }
 
     setProcessing(true);
@@ -301,7 +327,7 @@ function CheckoutForm() {
     }
   }
 
-  const orderingClosed = configLoaded && !status.isOpen;
+  const orderingClosed = configLoaded && !status.isOpen && !unlock;
 
   return (
     <div className="min-h-screen bg-bg">
@@ -320,7 +346,15 @@ function CheckoutForm() {
       <main className="mx-auto max-w-xl px-4 py-6">
         {orderingClosed && (
           <div className="mb-6">
-            <ClosedNotice settings={settings} status={status} />
+            <ClosedNotice settings={settings} status={status} onUnlock={setUnlock} />
+          </div>
+        )}
+
+        {configLoaded && !status.isOpen && unlock && (
+          <div className="mb-6 rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
+            <p className="font-heading font-bold text-success">
+              Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓
+            </p>
           </div>
         )}
 

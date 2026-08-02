@@ -81,6 +81,19 @@ export interface ShopSettings {
 
 export type OrderingOverride = 'auto' | 'open' | 'closed';
 
+/**
+ * A code that lets a specific group order while the shop is otherwise closed
+ * (e.g. a brothers' meeting during youth service). Managed at /admin/access-codes.
+ */
+export interface AccessCode {
+  id: string;
+  code: string;
+  /** Who it's for, e.g. "Brothers Meeting" — admin-facing only. */
+  label: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface OrderingHours {
   /** 0 = Sunday ... 6 = Saturday, matching JavaScript's Date.getDay(). */
   day_of_week: number;

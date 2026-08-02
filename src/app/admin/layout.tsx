@@ -12,6 +12,7 @@ const navItems = [
   { href: '/admin/modifiers', label: 'Modifiers', icon: '⚙' },
   { href: '/admin/events', label: 'Events', icon: '📅' },
   { href: '/admin/coupons', label: 'Coupons', icon: '🎟' },
+  { href: '/admin/access-codes', label: 'Access Codes', icon: '🔑' },
   { href: '/admin/inventory', label: 'Inventory', icon: '📦' },
   { href: '/admin/orders', label: 'Orders', icon: '📋' },
   { href: '/admin/labels', label: 'Cup Labels', icon: '🏷' },

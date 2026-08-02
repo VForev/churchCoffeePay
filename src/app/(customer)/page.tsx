@@ -5,6 +5,12 @@ import { supabase } from '@/lib/supabase';
 import { cartStore } from '@/lib/cart-store';
 import { useCart } from '@/lib/hooks';
 import { fetchShopConfig, getShopStatus, DEFAULT_SETTINGS } from '@/lib/shop';
+import {
+  readUnlock,
+  verifyAccessCode,
+  clearUnlock,
+  type AccessUnlock,
+} from '@/lib/access-code';
 import { fetchItemModifierGroups } from '@/lib/menu';
 import CategoryTabs from '@/components/menu/CategoryTabs';
 import MenuCard from '@/components/menu/MenuCard';
@@ -41,6 +47,20 @@ export default function MenuPage() {
   const [now, setNow] = useState(() => new Date());
 
   const status = getShopStatus(settings, hours, now);
+
+  // An approved group can unlock ordering while the shop is closed with an access code.
+  const [unlock, setUnlock] = useState<AccessUnlock | null>(null);
+  const canOrder = status.isOpen || !!unlock;
+
+  // Restore an unlock from this tab, re-verifying it in case the code was disabled since.
+  useEffect(() => {
+    const stored = readUnlock();
+    if (!stored) return;
+    verifyAccessCode(stored.code).then((valid) => {
+      if (valid) setUnlock(valid);
+      else clearUnlock();
+    });
+  }, []);
 
   const fetchQueueWait = useCallback(async () => {
     const { data: activeOrders } = await supabase
@@ -151,7 +171,7 @@ export default function MenuPage() {
             <h2 className="truncate font-heading text-lg font-bold text-primary">
               {settings.service_title}
             </h2>
-            {queueWait !== null && status.isOpen && (
+            {queueWait !== null && canOrder && (
               <p
                 className={`font-accent text-xs ${queueWait === 0 ? 'text-success' : 'text-text-light'}`}
               >
@@ -195,9 +215,20 @@ export default function MenuPage() {
           </div>
         )}
 
-        {!status.isOpen && (
+        {!status.isOpen && !unlock && (
           <div className="mt-3">
-            <ClosedNotice settings={settings} status={status} />
+            <ClosedNotice settings={settings} status={status} onUnlock={setUnlock} />
+          </div>
+        )}
+
+        {!status.isOpen && unlock && (
+          <div className="mt-3 rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
+            <p className="font-heading font-bold text-success">
+              Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓
+            </p>
+            <p className="mt-1 font-body text-sm text-text-light">
+              The shop is closed to everyone else — go ahead and order.
+            </p>
           </div>
         )}
       </div>
@@ -218,7 +249,7 @@ export default function MenuPage() {
                 key={item.id}
                 item={item}
                 eventFree={isEventFree}
-                orderingClosed={!status.isOpen}
+                orderingClosed={!canOrder}
                 onClick={() => setSelectedItem(item)}
               />
             ))}
@@ -227,7 +258,7 @@ export default function MenuPage() {
       </main>
 
       {/* Mobile cart button */}
-      {cart.itemCount > 0 && !cartOpen && status.isOpen && (
+      {cart.itemCount > 0 && !cartOpen && canOrder && (
         <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-100 bg-surface/90 p-4 backdrop-blur-sm sm:hidden">
           <button
             onClick={() => setCartOpen(true)}
@@ -253,7 +284,7 @@ export default function MenuPage() {
       <CartDrawer
         isOpen={cartOpen}
         onClose={() => setCartOpen(false)}
-        orderingOpen={status.isOpen}
+        orderingOpen={canOrder}
         onCheckout={() => {
           setCartOpen(false);
           router.push('/checkout');

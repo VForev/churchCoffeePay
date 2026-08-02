@@ -49,7 +49,7 @@ function calcWaitMinutes(allOrders: FullOrder[], targetOrder: FullOrder): number
   return itemsAhead + orderItemCount(targetOrder);
 }
 
-type Tab = 'orders' | 'stock';
+type Tab = 'orders' | 'stock' | 'history';
 type ColumnKey = 'pending' | 'in_progress' | 'ready';
 type ColumnColor = 'warning' | 'primary' | 'success';
 
@@ -316,6 +316,7 @@ export default function BaristaPage() {
             [
               ['orders', 'Orders'],
               ['stock', "Sold Out / 86"],
+              ['history', 'History'],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -334,6 +335,8 @@ export default function BaristaPage() {
 
       {tab === 'stock' ? (
         <StockPanel />
+      ) : tab === 'history' ? (
+        <HistoryPanel />
       ) : (
         <main className="mx-auto max-w-7xl p-4">
           {orders.length === 0 ? (
@@ -795,6 +798,179 @@ function StockRow({
         {soldOut ? 'Sold Out — tap to restock' : 'Available'}
       </span>
     </button>
+  );
+}
+
+// ─── History panel ────────────────────────────────────────────────────────────
+// Finished orders, for looking one up after the fact or reprinting a lost label.
+// Kept separate from the live board query so the kanban stays lean and realtime.
+
+const HISTORY_SELECT = `
+  *,
+  order_items (
+    *,
+    menu_item:menu_items (name),
+    order_item_modifiers (
+      *,
+      modifier:modifiers (*)
+    )
+  )
+`;
+
+function formatOrderTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function HistoryPanel() {
+  const [query, setQuery] = useState('');
+  const [orders, setOrders] = useState<FullOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const fetchHistory = useCallback(async (search: string) => {
+    setLoading(true);
+    let q = supabase
+      .from('orders')
+      .select(HISTORY_SELECT)
+      .in('status', ['completed', 'cancelled'])
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (search.trim()) q = q.ilike('customer_name', `%${search.trim()}%`);
+
+    const { data } = await q;
+    setOrders((data as unknown as FullOrder[]) ?? []);
+    setLoading(false);
+  }, []);
+
+  // Debounce so we're not firing a query on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => fetchHistory(query), 250);
+    return () => clearTimeout(t);
+  }, [query, fetchHistory]);
+
+  async function reprint(orderId: string) {
+    const { error } = await supabase
+      .from('orders')
+      .update({ label_print_requested_at: new Date().toISOString(), label_printed_at: null })
+      .eq('id', orderId);
+    if (error) alert(`Could not send to the printer: ${error.message}`);
+    else fetchHistory(query);
+  }
+
+  return (
+    <main className="mx-auto max-w-3xl p-4">
+      <div className="mb-4">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search past orders by name…"
+          className="w-full rounded-2xl border border-gray-200 bg-surface px-5 py-3 font-body text-text-dark shadow-sm focus:border-primary focus:outline-none"
+        />
+        <p className="mt-2 px-1 font-body text-xs text-text-light">
+          Completed and cancelled orders — newest first. Tap one to see the drinks or reprint its
+          labels.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="py-16 text-center">
+          <p className="mb-2 text-5xl">🗂️</p>
+          <p className="font-body text-text-light">
+            {query.trim() ? `No past orders for “${query.trim()}”` : 'No completed orders yet'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {orders.map((order) => {
+            const expanded = expandedId === order.id;
+            const itemCount = orderItemCount(order);
+            return (
+              <div
+                key={order.id}
+                className="overflow-hidden rounded-2xl border border-gray-100 bg-surface shadow-sm"
+              >
+                <button
+                  onClick={() => setExpandedId(expanded ? null : order.id)}
+                  className="flex w-full cursor-pointer items-center justify-between gap-3 p-4 text-left"
+                >
+                  <div className="min-w-0">
+                    <h3 className="truncate font-heading text-lg font-bold text-text-dark">
+                      {order.customer_name}
+                    </h3>
+                    <p className="mt-0.5 font-accent text-xs text-text-light">
+                      {formatOrderTime(order.created_at)} · {itemCount} item
+                      {itemCount !== 1 ? 's' : ''} · ${order.total.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <OrderStatusBadge status={order.status} />
+                    <span className="text-text-light">{expanded ? '▲' : '▼'}</span>
+                  </div>
+                </button>
+
+                {expanded && (
+                  <div className="border-t border-gray-100 p-4">
+                    <div className="mb-3 space-y-2">
+                      {order.order_items?.map((item) => (
+                        <div key={item.id} className="rounded-xl bg-bg p-3">
+                          <div className="flex items-start gap-2.5">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-text-dark font-accent text-sm font-bold text-white">
+                              {item.quantity}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-heading font-bold text-text-dark">
+                                {item.menu_item?.name}
+                              </p>
+                              {item.order_item_modifiers?.length > 0 && (
+                                <ul className="mt-1 space-y-0.5">
+                                  {item.order_item_modifiers.map((m) => (
+                                    <li
+                                      key={m.id}
+                                      className="flex items-center gap-1.5 font-body text-sm text-text"
+                                    >
+                                      <span className="text-primary">•</span>
+                                      {m.modifier?.name}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {item.special_instructions && (
+                                <p className="mt-1 font-body text-sm italic text-warm">
+                                  Note: {item.special_instructions}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <PaymentBadge status={order.payment_status} />
+                      <button
+                        onClick={() => reprint(order.id)}
+                        className="cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface px-4 py-2 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
+                      >
+                        🖨 Reprint labels
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </main>
   );
 }
 
