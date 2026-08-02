@@ -27,8 +27,8 @@ export default function PrintSetupPage() {
         <h1 className="font-heading text-2xl font-bold text-text-dark">Set Up the Cup Printer</h1>
         <p className="mt-1 font-body text-sm text-text-light">
           A one-time setup on the shop computer — about 10 minutes. Do these in order.
-          After this, starting the printer is just a double-click, and labels print by
-          themselves whenever an order comes in.
+          After this, one double-click starts the printer (and pulls the latest version
+          automatically), and labels print by themselves whenever an order comes in.
         </p>
       </div>
 
@@ -36,29 +36,25 @@ export default function PrintSetupPage() {
       <Card className="mb-6 border-primary/20 bg-primary/5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="font-heading text-lg font-bold text-text-dark">Printer software</h2>
+            <h2 className="font-heading text-lg font-bold text-text-dark">The one-click launcher</h2>
             <p className="mt-0.5 font-body text-sm text-text-light">
-              The small program that runs on the shop PC and sends labels to the printer.
+              One small file. Each time you double-click it, it downloads the latest printer
+              software, installs anything missing, and starts printing.
             </p>
           </div>
           <a
-            href="/print-agent.zip"
+            href="/LOTG-Printer.bat"
             download
             className="shrink-0 cursor-pointer rounded-xl bg-primary px-6 py-3 font-accent font-bold text-white transition-colors hover:bg-primary-light"
           >
-            ↓ Download printer software
+            ↓ Download the launcher
           </a>
         </div>
         <p className="mt-3 font-body text-xs text-text-light">
-          Do this <strong>on the Windows computer</strong> that the printer is plugged into —
-          that&apos;s where everything below happens. You can also{' '}
-          <a
-            href="https://github.com/VForev/churchCoffeePay/raw/main/public/print-agent.zip"
-            className="font-semibold text-primary underline hover:text-primary-light"
-          >
-            download it from GitHub
-          </a>
-          .
+          Download this <strong>on the Windows computer</strong> the printer is plugged into.
+          When you first open it, Windows may say <em>&ldquo;Windows protected your PC&rdquo;</em>{' '}
+          — click <strong>More info → Run anyway</strong>. That warning appears for any downloaded
+          launcher; this one only runs the printer software.
         </p>
       </Card>
 
@@ -88,68 +84,74 @@ export default function PrintSetupPage() {
         </p>
       </Step>
 
-      <Step n={2} title="Install Node.js on the shop PC">
+      <Step n={2} title="Put the launcher in its own folder">
         <p>
-          Download the <strong>LTS</strong> version from{' '}
-          <ExternalLink href="https://nodejs.org">nodejs.org</ExternalLink> and install it —
-          click through the default options. This is what runs the printer software. You only
-          do this once per computer.
+          Make a new, empty folder somewhere easy to find — for example{' '}
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">C:\LOTG-Printer</code> — and
+          move the downloaded{' '}
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">LOTG-Printer.bat</code> into
+          it. When it runs, it downloads the rest of the software right next to itself, so give it a
+          home of its own.
         </p>
       </Step>
 
-      <Step n={3} title="Unzip the download">
+      <Step n={3} title="Double-click the launcher">
         <p>
-          Find <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">print-agent.zip</code>{' '}
-          in your Downloads, right-click it, and choose{' '}
-          <strong>Extract All</strong>. Remember where it lands — you&apos;ll open the{' '}
-          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">print-agent</code> folder
-          inside it next.
+          Double-click{' '}
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">LOTG-Printer.bat</code>. The
+          first time, it does the whole setup for you:
         </p>
+        <ul className="ml-5 mt-2 list-disc space-y-1 font-body text-sm text-text">
+          <li>downloads the latest printer software,</li>
+          <li>
+            installs Node.js if it isn&apos;t already there (you may see a Windows permission prompt
+            — say yes),
+          </li>
+          <li>then opens a settings file for you to fill in (next step).</li>
+        </ul>
         <p className="mt-2 text-text-light">
-          Keep the two folders that come out (<code className="text-text-dark">print-agent</code>{' '}
-          and <code className="text-text-dark">src</code>) together — the printer software reads
-          from both.
+          If it installs Node.js, it&apos;ll ask you to close the window and double-click the
+          launcher once more — that&apos;s normal, just do it.
         </p>
       </Step>
 
-      <Step n={4} title="Double-click Start-Printer — and paste your details once">
+      <Step n={4} title="Fill in the settings file (the one thing it can't make for you)">
         <p>
-          Open the <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">print-agent</code>{' '}
-          folder and double-click{' '}
-          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">start-printer.bat</code>.
-          The first time, it sets itself up (about a minute), then pops open a settings file in
-          Notepad. Replace everything in it with this — it&apos;s already filled in for your shop —
-          then <strong>save and close</strong> Notepad:
+          When Notepad opens the{' '}
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">.env</code> file, replace
+          everything in it with the box below — it&apos;s already filled in for your shop — then{' '}
+          <strong>Save</strong> and close Notepad. This is the one file the launcher can&apos;t
+          create for you, because it holds your connection details.
         </p>
         <CopyBox text={ENV_TEXT} />
         <p className="mt-2 text-text-light">
-          If the printer isn&apos;t your computer&apos;s default printer, put its exact name (from
-          Windows Settings → Printers) after{' '}
-          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">PRINTER_NAME=</code>.
+          The launcher already put this file in the right place for you (the{' '}
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">print-agent</code> folder next
+          to the launcher). You only need to fill it in and save.
         </p>
         <p className="mt-2 text-text-light">
-          If it says Node.js isn&apos;t installed and sends you to a website, that means Step 2
-          got skipped — install it, then double-click{' '}
-          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">start-printer.bat</code>{' '}
-          again.
+          Leave{' '}
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">PRINTER_NAME</code> blank to
+          use the computer&apos;s default printer, or put the printer&apos;s exact name (Windows
+          Settings → Printers) after it.
         </p>
       </Step>
 
       <Step n={5} title="Double-click it again to start printing">
         <p>
           Double-click{' '}
-          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">start-printer.bat</code> once
-          more. This time it starts up and shows{' '}
-          <em>&ldquo;Listening for orders.&rdquo;</em> Leave that window open — every order that
-          comes in now prints its cup labels automatically. From now on, this single double-click
-          is all it takes each service morning.
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">LOTG-Printer.bat</code> once
+          more. This time it shows <em>&ldquo;Listening for orders.&rdquo;</em> Leave that window
+          open — every order that comes in now prints its cup labels automatically. From now on,
+          this single double-click is the whole routine, and it quietly grabs the latest version
+          each time.
         </p>
         <p className="mt-3 rounded-xl bg-bg px-4 py-3 text-text-light">
           <strong className="text-text-dark">Want it to start by itself when the PC turns on?</strong>{' '}
           Press <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">Win + R</code>,
           type <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">shell:startup</code>,
           and drop a shortcut to{' '}
-          <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">start-printer.bat</code>{' '}
+          <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">LOTG-Printer.bat</code>{' '}
           into the folder that opens. Then nobody has to remember.
         </p>
       </Step>
@@ -169,10 +171,10 @@ export default function PrintSetupPage() {
         <h2 className="mb-2 font-heading font-bold text-text-dark">If something goes wrong</h2>
         <ul className="space-y-2 font-body text-sm text-text">
           <li>
-            <strong>Nothing prints.</strong> Is the command window still open and showing
-            &ldquo;Listening for orders&rdquo;? Is the PC awake? Try{' '}
-            <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">npm run test-label</code>{' '}
-            in that window to print a test without needing an order.
+            <strong>Nothing prints.</strong> Is the launcher window still open and showing
+            &ldquo;Listening for orders&rdquo;? Is the PC awake? To test without waiting for an
+            order, use <strong>Send test label</strong> on the{' '}
+            <InternalLink href="/admin/labels">Cup Labels</InternalLink> page.
           </li>
           <li>
             <strong>The label is the wrong size.</strong> Fix it on the{' '}
@@ -185,6 +187,30 @@ export default function PrintSetupPage() {
             off.
           </li>
         </ul>
+      </Card>
+
+      <Card className="mt-6">
+        <h2 className="mb-2 font-heading font-bold text-text-dark">Prefer to set it up by hand?</h2>
+        <p className="font-body text-sm text-text">
+          You can skip the launcher and run the software yourself:{' '}
+          <a
+            href="/print-agent.zip"
+            download
+            className="font-semibold text-primary underline hover:text-primary-light"
+          >
+            download the zip
+          </a>{' '}
+          (or{' '}
+          <a
+            href="https://github.com/VForev/churchCoffeePay/raw/main/public/print-agent.zip"
+            className="font-semibold text-primary underline hover:text-primary-light"
+          >
+            from GitHub
+          </a>
+          ), unzip it, and follow the steps in its{' '}
+          <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">README.md</code>. The{' '}
+          launcher above just automates exactly those steps.
+        </p>
       </Card>
     </div>
   );
