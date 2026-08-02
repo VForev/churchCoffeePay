@@ -6,9 +6,8 @@ import { cartStore } from '@/lib/cart-store';
 import { useCart } from '@/lib/hooks';
 import { fetchShopConfig, getShopStatus, DEFAULT_SETTINGS } from '@/lib/shop';
 import {
-  readUnlock,
-  verifyAccessCode,
-  clearUnlock,
+  getActiveUnlock,
+  unlockAllowsCategory,
   type AccessUnlock,
 } from '@/lib/access-code';
 import { fetchItemModifierGroups } from '@/lib/menu';
@@ -49,18 +48,13 @@ export default function MenuPage() {
   const status = getShopStatus(settings, hours, now);
 
   // An approved group can unlock ordering while the shop is closed with an access code.
-  const [unlock, setUnlock] = useState<AccessUnlock | null>(null);
+  // Held in memory (see access-code.ts): it survives menu → checkout within one order,
+  // but a page restart/refresh wipes it so we always ask for the code again.
+  const [unlock, setUnlock] = useState<AccessUnlock | null>(() => getActiveUnlock());
   const canOrder = status.isOpen || !!unlock;
-
-  // Restore an unlock from this tab, re-verifying it in case the code was disabled since.
-  useEffect(() => {
-    const stored = readUnlock();
-    if (!stored) return;
-    verifyAccessCode(stored.code).then((valid) => {
-      if (valid) setUnlock(valid);
-      else clearUnlock();
-    });
-  }, []);
+  // A code may be limited to one category (e.g. teas), so ordering is decided per item.
+  const canOrderItem = (item: MenuItem) =>
+    status.isOpen || unlockAllowsCategory(unlock, item.category_id);
 
   const fetchQueueWait = useCallback(async () => {
     const { data: activeOrders } = await supabase
@@ -227,7 +221,9 @@ export default function MenuPage() {
               Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓
             </p>
             <p className="mt-1 font-body text-sm text-text-light">
-              The shop is closed to everyone else — go ahead and order.
+              {unlock.allowedCategoryName
+                ? `You can order ${unlock.allowedCategoryName} — the rest of the menu stays closed.`
+                : 'The shop is closed to everyone else — go ahead and order.'}
             </p>
           </div>
         )}
@@ -249,7 +245,7 @@ export default function MenuPage() {
                 key={item.id}
                 item={item}
                 eventFree={isEventFree}
-                orderingClosed={!canOrder}
+                orderingClosed={!canOrderItem(item)}
                 onClick={() => setSelectedItem(item)}
               />
             ))}

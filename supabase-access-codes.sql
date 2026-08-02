@@ -16,6 +16,12 @@ create table if not exists access_codes (
 
 create index if not exists idx_access_codes_code on access_codes(code);
 
+-- Optional menu restriction: when set, this code only unlocks items in that one
+-- category (e.g. a brothers' meeting that may order teas but nothing else). NULL
+-- means the whole menu. Run as an ALTER so an already-created table gets upgraded.
+alter table access_codes
+  add column if not exists allowed_category_id uuid references categories(id) on delete set null;
+
 alter table access_codes enable row level security;
 
 -- Matches the rest of the schema's permissive, anon-key posture (walk-up coffee stand).

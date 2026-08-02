@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { ShopSettings } from '@/types';
 import type { ShopStatus } from '@/lib/shop';
-import { verifyAccessCode, storeUnlock, type AccessUnlock } from '@/lib/access-code';
+import { verifyAccessCode, setActiveUnlock, type AccessUnlock } from '@/lib/access-code';
 
 interface ShopBannerProps {
   settings: ShopSettings;
@@ -179,7 +179,7 @@ function AccessCodeBox({ onUnlock }: { onUnlock: (unlock: AccessUnlock) => void 
       setError('That code isn’t valid. Double-check it with whoever gave it to you.');
       return;
     }
-    storeUnlock(unlock);
+    setActiveUnlock(unlock);
     onUnlock(unlock);
   }
 

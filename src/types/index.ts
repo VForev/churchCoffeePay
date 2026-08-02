@@ -91,6 +91,8 @@ export interface AccessCode {
   /** Who it's for, e.g. "Brothers Meeting" — admin-facing only. */
   label: string;
   is_active: boolean;
+  /** When set, the code only unlocks this one category (e.g. Tea). NULL = whole menu. */
+  allowed_category_id: string | null;
   created_at: string;
 }
 

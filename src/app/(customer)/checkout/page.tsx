@@ -14,9 +14,11 @@ import {
   DEFAULT_SETTINGS,
 } from '@/lib/shop';
 import {
-  readUnlock,
+  getActiveUnlock,
+  setActiveUnlock,
   verifyAccessCode,
-  clearUnlock,
+  clearActiveUnlock,
+  unlockAllowsCategory,
   type AccessUnlock,
 } from '@/lib/access-code';
 import Button from '@/components/ui/Button';
@@ -47,8 +49,9 @@ function CheckoutForm() {
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
 
   const status = getShopStatus(settings, hours);
-  // Carried over from the menu page — an approved group ordering while the shop is closed.
-  const [unlock, setUnlock] = useState<AccessUnlock | null>(null);
+  // Carried over from the menu page in memory — survives the menu → checkout hop, but a
+  // page restart wipes it (see access-code.ts), which is what re-asks for the code.
+  const [unlock, setUnlock] = useState<AccessUnlock | null>(() => getActiveUnlock());
   const isFreeOrder = cart.total === 0;
   const cartItemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
   const donationPresets = parseDonationPresets(settings.donation_presets);
@@ -83,16 +86,6 @@ function CheckoutForm() {
       setQueueWait(items?.reduce((sum, i) => sum + i.quantity, 0) ?? 0);
     }
     load();
-  }, []);
-
-  // Restore the menu page's access-code unlock, re-verifying it against the DB.
-  useEffect(() => {
-    const stored = readUnlock();
-    if (!stored) return;
-    verifyAccessCode(stored.code).then((valid) => {
-      if (valid) setUnlock(valid);
-      else clearUnlock();
-    });
   }, []);
 
   // Donations may have been switched off after something was already added.
@@ -162,14 +155,29 @@ function CheckoutForm() {
     // re-verify it against the DB so a code disabled mid-service can't slip past.
     const freshConfig = await fetchShopConfig();
     if (!getShopStatus(freshConfig.settings, freshConfig.hours).isOpen) {
-      const stored = readUnlock();
-      const stillValid = stored ? await verifyAccessCode(stored.code) : null;
+      const active = getActiveUnlock();
+      const stillValid = active ? await verifyAccessCode(active.code) : null;
       if (!stillValid) {
-        clearUnlock();
+        clearActiveUnlock();
         setUnlock(null);
         setSettings(freshConfig.settings);
         setHours(freshConfig.hours);
         setError('Ordering just closed — your order was not placed.');
+        return;
+      }
+      // Keep the latest details (the code's category may have changed).
+      setActiveUnlock(stillValid);
+      setUnlock(stillValid);
+      // A category-limited code (e.g. teas only) can't push anything else through.
+      const blocked = cart.items.find(
+        (item) => !unlockAllowsCategory(stillValid, item.menu_item.category_id),
+      );
+      if (blocked) {
+        setError(
+          stillValid.allowedCategoryName
+            ? `Only ${stillValid.allowedCategoryName} can be ordered right now — remove "${blocked.menu_item.name}" to continue.`
+            : 'One of your items can’t be ordered right now.',
+        );
         return;
       }
     }
@@ -355,6 +363,11 @@ function CheckoutForm() {
             <p className="font-heading font-bold text-success">
               Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓
             </p>
+            {unlock.allowedCategoryName && (
+              <p className="mt-1 font-body text-sm text-text-light">
+                {unlock.allowedCategoryName} only.
+              </p>
+            )}
           </div>
         )}
 

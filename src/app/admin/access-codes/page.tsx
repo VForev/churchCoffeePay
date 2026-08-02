@@ -7,21 +7,26 @@ import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
-import type { AccessCode } from '@/types';
+import type { AccessCode, Category } from '@/types';
 
 export default function AdminAccessCodesPage() {
   const [codes, setCodes] = useState<AccessCode[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [editCode, setEditCode] = useState<Partial<AccessCode> | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const categoryName = (id: string | null | undefined) =>
+    categories.find((c) => c.id === id)?.name ?? null;
+
   async function fetchData() {
-    const { data } = await supabase
-      .from('access_codes')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (data) setCodes(data as AccessCode[]);
+    const [codesRes, catsRes] = await Promise.all([
+      supabase.from('access_codes').select('*').order('created_at', { ascending: false }),
+      supabase.from('categories').select('*').order('display_order'),
+    ]);
+    if (codesRes.data) setCodes(codesRes.data as AccessCode[]);
+    if (catsRes.data) setCategories(catsRes.data as Category[]);
     setLoading(false);
   }
 
@@ -41,6 +46,7 @@ export default function AdminAccessCodesPage() {
       code,
       label: (editCode.label ?? '').trim(),
       is_active: editCode.is_active ?? true,
+      allowed_category_id: editCode.allowed_category_id || null,
     };
 
     const { error: saveError } = editCode.id
@@ -107,6 +113,14 @@ export default function AdminAccessCodesPage() {
                 </div>
                 <p className="mt-1 truncate text-sm text-text-light">
                   {code.label || <span className="italic">No label</span>}
+                  {' · '}
+                  {code.allowed_category_id ? (
+                    <span className="text-warm">
+                      {categoryName(code.allowed_category_id) ?? 'a category'} only
+                    </span>
+                  ) : (
+                    <span>whole menu</span>
+                  )}
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
@@ -161,6 +175,29 @@ export default function AdminAccessCodesPage() {
               onChange={(e) => setEditCode({ ...editCode, label: e.target.value })}
               placeholder="e.g. Brothers Meeting"
             />
+            <div>
+              <label className="mb-1.5 block font-accent text-sm font-semibold text-text">
+                What they can order
+              </label>
+              <select
+                value={editCode.allowed_category_id || ''}
+                onChange={(e) =>
+                  setEditCode({ ...editCode, allowed_category_id: e.target.value || null })
+                }
+                className="w-full rounded-xl border border-gray-200 bg-surface px-4 py-2.5 font-body"
+              >
+                <option value="">Whole menu</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} only
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1.5 font-body text-xs text-text-light">
+                Limit a code to one category — e.g. a brothers&apos; meeting that may order teas but
+                nothing else.
+              </p>
+            </div>
             <label className="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-gray-100 p-3">
               <input
                 type="checkbox"

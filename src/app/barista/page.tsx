@@ -197,6 +197,24 @@ export default function BaristaPage() {
     fetchOrders();
   }
 
+  /**
+   * Quick-delete straight from the board — for a junk or offensive order that shouldn't
+   * be on screen at all. Irreversible (order_items cascade), so it confirms first.
+   */
+  async function deleteOrder(order: FullOrder) {
+    if (!confirm(`Delete ${order.customer_name}'s order? This can't be undone.`)) return;
+    const { error } = await supabase.from('orders').delete().eq('id', order.id);
+    if (error) {
+      alert(
+        error.code === '23503'
+          ? 'Could not delete this order because other records still reference it. Run supabase-fix-delete-constraints.sql in the Supabase SQL editor, then try again.'
+          : `Could not delete this order: ${error.message}`,
+      );
+      return;
+    }
+    fetchOrders();
+  }
+
   /** Completing removes the order from the board, so offer a brief window to take it back. */
   async function completeOrder(order: FullOrder) {
     await updateStatus(order.id, 'completed');
@@ -232,6 +250,7 @@ export default function BaristaPage() {
           color="warning"
           waitMinutes={calcWaitMinutes(orders, order)}
           onReprint={() => reprintLabels(order.id)}
+          onDelete={() => deleteOrder(order)}
           actions={
             <Button size="lg" fullWidth onClick={() => updateStatus(order.id, 'in_progress')}>
               Start Making
@@ -249,6 +268,7 @@ export default function BaristaPage() {
           color="primary"
           waitMinutes={calcWaitMinutes(orders, order)}
           onReprint={() => reprintLabels(order.id)}
+          onDelete={() => deleteOrder(order)}
           onBack={() => updateStatus(order.id, PREVIOUS_STATUS.in_progress!)}
           backLabel="Back to Pending"
           actions={
@@ -267,6 +287,7 @@ export default function BaristaPage() {
         color="success"
         waitMinutes={null}
         onReprint={() => reprintLabels(order.id)}
+        onDelete={() => deleteOrder(order)}
         onBack={() => updateStatus(order.id, PREVIOUS_STATUS.ready!)}
         backLabel="Back to Making"
         actions={
@@ -457,6 +478,7 @@ function OrderCard({
   onBack,
   backLabel,
   onReprint,
+  onDelete,
 }: {
   order: FullOrder;
   actions: React.ReactNode;
@@ -466,6 +488,8 @@ function OrderCard({
   onBack?: () => void;
   backLabel?: string;
   onReprint?: () => void;
+  /** Quick-remove a junk/offensive order from the board entirely. */
+  onDelete?: () => void;
 }) {
   const timeAgo = getTimeAgo(order.created_at);
   const itemCount = orderItemCount(order);
@@ -477,12 +501,24 @@ function OrderCard({
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-2xl border border-gray-100 shadow-sm',
+        'relative overflow-hidden rounded-2xl border border-gray-100 shadow-sm',
         style.cardBg,
         style.cardRing,
       )}
     >
       <div className={cn('h-2 w-full', style.strip)} />
+
+      {/* Corner delete — for a junk or offensive order you just want gone */}
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          title="Delete this order"
+          aria-label="Delete this order"
+          className="absolute right-2 top-3.5 z-10 flex h-7 w-7 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-white/70 text-lg font-bold leading-none text-text-light shadow-sm transition-colors hover:bg-danger hover:text-white"
+        >
+          ×
+        </button>
+      )}
 
       <div className="p-4">
         {/* Cups first — it's the first thing your hands do */}
@@ -504,7 +540,7 @@ function OrderCard({
         )}
 
         {/* Who it's for — the thing the barista shouts */}
-        <div className="mb-3 flex items-start justify-between gap-2">
+        <div className={cn('mb-3 flex items-start justify-between gap-2', onDelete && 'pr-8')}>
           <div className="min-w-0">
             <h3 className="font-heading text-2xl font-extrabold leading-tight text-text-dark">
               {order.customer_name}
