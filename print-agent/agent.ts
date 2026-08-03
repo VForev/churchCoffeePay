@@ -52,6 +52,35 @@ const SUPABASE_KEY =
 const PRINTER_NAME = process.env.PRINTER_NAME ?? '';
 
 /**
+ * The printer name actually sent to the OS. Starts as PRINTER_NAME, but at startup we
+ * reconcile it against the real printer list: the single most common setup mistake is a
+ * name that's close but not exact — e.g. the Mac-style "Clabel__CT221B" from the example
+ * against a Windows queue named "Clabel-CT221B". SumatraPDF then can't find the printer
+ * and every job fails with "Command failed". resolvePrinterName() forgives punctuation
+ * and case so it prints anyway, and warns loudly when it truly can't find a match.
+ */
+let RESOLVED_PRINTER = PRINTER_NAME;
+
+/** Lowercase, strip spaces/underscores/hyphens — so "Clabel__CT221B" == "Clabel-CT221B". */
+const normalizeName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** Reconcile PRINTER_NAME against the OS's real printer names. Returns a note to show. */
+function resolvePrinterName(printers: string[]): string | null {
+  if (!PRINTER_NAME) return null; // using the system default — nothing to match
+  if (printers.includes(PRINTER_NAME)) return null; // exact match, all good
+
+  const near = printers.find((p) => normalizeName(p) === normalizeName(PRINTER_NAME));
+  if (near) {
+    RESOLVED_PRINTER = near;
+    return `  Note: PRINTER_NAME "${PRINTER_NAME}" wasn't exact — using "${near}" instead.`;
+  }
+  return (
+    `  ⚠ No printer named "${PRINTER_NAME}" was found, so printing will fail.\n` +
+    `    Copy a name from the Available list above into PRINTER_NAME in .env, then restart.`
+  );
+}
+
+/**
  * The printer's paper/label size, by name. This is the fix for a label that feeds
  * blank or the wrong size: the printer must be told the media is (say) 40 × 30 mm,
  * exactly like picking the paper size in a print dialog. Leave it blank and the
@@ -223,8 +252,8 @@ const KEEP_PDF = process.env.KEEP_PDF === '1';
 
 /** Loads and caches the target printer's supported paper sizes. */
 async function loadPrinterPaperSizes(): Promise<void> {
-  printerPaperSizes = await listPaperSizes(PRINTER_NAME || undefined);
-  printerPaperSizesDetailed = await listPaperSizesDetailed(PRINTER_NAME || undefined);
+  printerPaperSizes = await listPaperSizes(RESOLVED_PRINTER || undefined);
+  printerPaperSizesDetailed = await listPaperSizesDetailed(RESOLVED_PRINTER || undefined);
 }
 
 /**
@@ -277,7 +306,7 @@ async function printLabel(label: LabelData) {
     // uses its default media and the label can feed out blank.
     await printPdf({
       file,
-      printerName: PRINTER_NAME || undefined,
+      printerName: RESOLVED_PRINTER || undefined,
       media: resolvePaperSize(),
       widthMm: labelSettings.width_mm,
       heightMm: labelSettings.height_mm,
@@ -394,6 +423,9 @@ async function catchUp() {
  * sample when there's no saved preview (e.g. `npm run test-label` before any real request).
  */
 async function testLabel() {
+  const printerNote = resolvePrinterName(await listPrinterNames());
+  if (printerNote) console.log(printerNote);
+
   const data =
     testLabelData ??
     {
@@ -428,18 +460,20 @@ function openOnScreen(path: string) {
  * the same PDF on screen, to locate a blank-label problem. See renderDiagnosticPdf.
  */
 async function runDoctor() {
+  const printers = await listPrinterNames();
+  const printerNote = resolvePrinterName(printers);
   await loadLabelSettings();
   await loadPrinterPaperSizes();
-  const printers = await listPrinterNames();
   const paperSize = resolvePaperSize();
 
   console.log('── Print doctor ─────────────────────────────');
-  console.log(`  Using printer: ${PRINTER_NAME || '(system default)'}`);
+  console.log(`  Using printer: ${RESOLVED_PRINTER || '(system default)'}`);
   console.log(`  Available:     ${printers.join(', ') || 'NONE FOUND'}`);
+  if (printerNote) console.log(printerNote);
   console.log(`  Label size:    ${labelSettings.width_mm} × ${labelSettings.height_mm} mm`);
   console.log('');
   console.log('  Paper sizes this printer supports:');
-  const detailed = await listPaperSizesDetailed(PRINTER_NAME || undefined);
+  const detailed = await listPaperSizesDetailed(RESOLVED_PRINTER || undefined);
   if (detailed.length > 0) {
     // The name is what you copy into PRINTER_PAPER_SIZE; the mm are just to identify it.
     for (const size of detailed) {
@@ -468,7 +502,7 @@ async function runDoctor() {
   try {
     await printPdf({
       file,
-      printerName: PRINTER_NAME || undefined,
+      printerName: RESOLVED_PRINTER || undefined,
       media: paperSize,
       widthMm: labelSettings.width_mm,
       heightMm: labelSettings.height_mm,
@@ -496,18 +530,20 @@ async function main() {
   }
 
   const printers = await listPrinterNames();
+  const printerNote = resolvePrinterName(printers);
   await loadLabelSettings();
   await loadPrinterPaperSizes();
   const paperSize = resolvePaperSize();
 
   console.log('LOTG label printer');
-  console.log(`  Printer:    ${PRINTER_NAME || '(system default)'}`);
+  console.log(`  Printer:    ${RESOLVED_PRINTER || '(system default)'}`);
   console.log(`  Label size: ${labelSettings.width_mm} × ${labelSettings.height_mm} mm (set at /admin/labels)`);
   console.log(`  Paper size: ${paperSize ? `"${paperSize}"` : '(none matched — run `npm run doctor` to list sizes)'}`);
   console.log(`  Available:  ${printers.join(', ') || 'none found'}`);
   console.log(
     `  Printing:   ${labelSettings.auto_print ? 'automatic — prints when an order comes in' : 'manual — barista prints from /barista'}`,
   );
+  if (printerNote) console.log(printerNote);
   console.log('');
 
   await catchUp();
