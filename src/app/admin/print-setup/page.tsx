@@ -21,6 +21,30 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
 PRINTER_NAME=`;
 
 export default function PrintSetupPage() {
+  // The startup file needs your site's /live address. We bake it in on download so
+  // there's nothing to edit — grab the template and swap the placeholder for this origin.
+  async function downloadStartupFile() {
+    try {
+      const res = await fetch('/LOTG-Startup.bat');
+      const template = await res.text();
+      const text = template.replace(
+        'https://YOUR-SITE.netlify.app/live',
+        `${window.location.origin}/live`,
+      );
+      const url = URL.createObjectURL(new Blob([text], { type: 'application/octet-stream' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'LOTG-Startup.bat';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fall back to the plain file (with the placeholder URL to edit) if fetch fails.
+      window.location.href = '/LOTG-Startup.bat';
+    }
+  }
+
   return (
     <div className="max-w-3xl">
       <div className="mb-6">
@@ -32,29 +56,50 @@ export default function PrintSetupPage() {
         </p>
       </div>
 
-      {/* Download */}
+      {/* Downloads */}
       <Card className="mb-6 border-primary/20 bg-primary/5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="font-heading text-lg font-bold text-text-dark">The one-click launcher</h2>
-            <p className="mt-0.5 font-body text-sm text-text-light">
-              One small file. Each time you double-click it, it downloads the latest printer
-              software, installs anything missing, and starts printing.
+        <h2 className="font-heading text-lg font-bold text-text-dark">Download the files</h2>
+        <p className="mt-0.5 font-body text-sm text-text-light">
+          Save both onto the <strong>Windows computer</strong> the printer is plugged into — put
+          them in the <strong>same folder</strong>.
+        </p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col rounded-xl border border-primary/20 bg-surface p-4">
+            <h3 className="font-heading font-bold text-text-dark">1. The launcher</h3>
+            <p className="mt-1 flex-1 font-body text-xs text-text-light">
+              Downloads the latest printer software and starts printing. Double-click it each
+              service morning. <strong>Required.</strong>
             </p>
+            <a
+              href="/LOTG-Printer.bat"
+              download
+              className="mt-3 cursor-pointer rounded-xl bg-primary px-4 py-2.5 text-center font-accent text-sm font-bold text-white transition-colors hover:bg-primary-light"
+            >
+              ↓ LOTG-Printer.bat
+            </a>
           </div>
-          <a
-            href="/LOTG-Printer.bat"
-            download
-            className="shrink-0 cursor-pointer rounded-xl bg-primary px-6 py-3 font-accent font-bold text-white transition-colors hover:bg-primary-light"
-          >
-            ↓ Download the launcher
-          </a>
+
+          <div className="flex flex-col rounded-xl border border-primary/20 bg-surface p-4">
+            <h3 className="font-heading font-bold text-text-dark">2. Start at boot</h3>
+            <p className="mt-1 flex-1 font-body text-xs text-text-light">
+              Put this in the Startup folder and the PC auto-starts the printer and opens the live
+              screen full-screen. Already set to your site — nothing to edit. <em>Optional.</em>
+            </p>
+            <button
+              onClick={downloadStartupFile}
+              className="mt-3 cursor-pointer rounded-xl bg-primary px-4 py-2.5 text-center font-accent text-sm font-bold text-white transition-colors hover:bg-primary-light"
+            >
+              ↓ LOTG-Startup.bat
+            </button>
+          </div>
         </div>
+
         <p className="mt-3 font-body text-xs text-text-light">
-          Download this <strong>on the Windows computer</strong> the printer is plugged into.
-          When you first open it, Windows may say <em>&ldquo;Windows protected your PC&rdquo;</em>{' '}
-          — click <strong>More info → Run anyway</strong>. That warning appears for any downloaded
-          launcher; this one only runs the printer software.
+          When you first open either one, Windows may say{' '}
+          <em>&ldquo;Windows protected your PC&rdquo;</em> — click{' '}
+          <strong>More info → Run anyway</strong>. That warning shows for any downloaded file; these
+          only run the printer software.
         </p>
       </Card>
 
@@ -147,12 +192,13 @@ export default function PrintSetupPage() {
           each time.
         </p>
         <p className="mt-3 rounded-xl bg-bg px-4 py-3 text-text-light">
-          <strong className="text-text-dark">Want it to start by itself when the PC turns on?</strong>{' '}
+          <strong className="text-text-dark">Want it fully automatic when the PC turns on?</strong>{' '}
+          Use the <strong>Start at boot</strong> file above (
+          <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">LOTG-Startup.bat</code>).
           Press <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">Win + R</code>,
           type <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">shell:startup</code>,
-          and drop a shortcut to{' '}
-          <code className="rounded bg-surface px-1.5 py-0.5 text-text-dark">LOTG-Printer.bat</code>{' '}
-          into the folder that opens. Then nobody has to remember.
+          and drop it into the folder that opens. From then on the PC starts the printer{' '}
+          <em>and</em> opens the live orders screen full-screen by itself — nobody has to touch it.
         </p>
       </Step>
 
