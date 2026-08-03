@@ -44,15 +44,15 @@ REM --- 2. Give the desktop and Wi-Fi a few seconds to wake up --
 timeout /t 15 /nobreak >nul
 
 
-REM --- 3. Open the live screen in Chrome ----------------------
-REM Want it full-screen on a wall display? Put  --start-fullscreen
-REM (or  --kiosk  to lock it) right before "%LIVE_URL%" below.
-start "" chrome --new-window "%LIVE_URL%"
+REM --- 3. Open the live screen in Chrome, full-screen ---------
+REM --start-fullscreen fills the whole screen (press F11 to exit).
+REM Swap it for  --kiosk  if you want it locked with no way out but Alt+F4.
+start "" chrome --new-window --start-fullscreen "%LIVE_URL%"
 
 REM If Chrome doesn't open, it may not be found by name. Either make
 REM Chrome your default browser and change the line above to:
 REM   start "" "%LIVE_URL%"
 REM or use Chrome's full path:
-REM   start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --new-window "%LIVE_URL%"
+REM   start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --new-window --start-fullscreen "%LIVE_URL%"
 
 exit /b 0
