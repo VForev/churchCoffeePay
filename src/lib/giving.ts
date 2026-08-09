@@ -19,6 +19,12 @@
 export const PUSHPAY_LINK = 'https://ppay.co/2Wtl1NeKi5Y';
 
 /**
+ * Where Pushpay sends someone once they're done: /yourlive, the customer's own copy of the
+ * order board — not /live, which is the lobby TV.
+ */
+const RETURN_PATH = '/yourlive';
+
+/**
  * The link with a "back to the coffee orders" button on the far side.
  *
  * `rbu`/`rbt` are Pushpay's return-button URL and label. Building it from the live origin
@@ -28,6 +34,9 @@ export const PUSHPAY_LINK = 'https://ppay.co/2Wtl1NeKi5Y';
  */
 export function pushpayLinkWithReturn(origin: string): string {
   if (!origin) return PUSHPAY_LINK;
-  const params = new URLSearchParams({ rbu: `${origin}/live`, rbt: 'Back to coffee orders' });
+  const params = new URLSearchParams({
+    rbu: `${origin}${RETURN_PATH}`,
+    rbt: 'Back to coffee orders',
+  });
   return `${PUSHPAY_LINK}?${params.toString()}`;
 }

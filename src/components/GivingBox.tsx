@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
  *
  * A link, not Pushpay's embedded widget: the widget is a third-party script, and church
  * wifi and strict mobile browsers block those often enough that it would sometimes show
- * nothing at all. Pushpay sends them back to /live when they're done.
+ * nothing at all. Pushpay sends them back to /yourlive when they're done.
  */
 export default function GivingBox({
   title = 'Give to Light of the Gospel',
@@ -32,8 +32,8 @@ export default function GivingBox({
       <p className="mx-auto mt-1 max-w-sm font-body text-sm text-text-light">{message}</p>
 
       {/* The plain link is the href so long-press and "open in new tab" still work; the
-          return-to-/live URL is added on a normal click, when window.location.origin is
-          finally something real (it isn't during the server render). */}
+          return-to-/yourlive URL is added on a normal click, when window.location.origin
+          is finally something real (it isn't during the server render). */}
       <a
         href={PUSHPAY_LINK}
         onClick={(e) => {

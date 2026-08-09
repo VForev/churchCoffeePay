@@ -193,7 +193,7 @@ export default function MenuPage() {
 
           <div className="flex shrink-0 items-center gap-2">
             <button
-              onClick={() => router.push('/live')}
+              onClick={() => router.push('/yourlive')}
               className="flex cursor-pointer items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2.5 font-accent text-sm font-semibold text-primary transition-all hover:bg-primary/10"
             >
               <span className="h-2 w-2 animate-pulse rounded-full bg-success" />

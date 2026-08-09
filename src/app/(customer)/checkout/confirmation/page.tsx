@@ -37,7 +37,7 @@ function ConfirmationContent() {
         <p className="text-text-light font-body mb-8 text-sm">
           We&apos;ll call your name when it&apos;s ready.
         </p>
-        <Button onClick={() => router.push('/live')} fullWidth variant="secondary" className="mb-3">
+        <Button onClick={() => router.push('/yourlive')} fullWidth variant="secondary" className="mb-3">
           Track Your Order Live
         </Button>
         <Button onClick={() => router.push('/')} fullWidth variant="ghost">

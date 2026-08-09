@@ -126,7 +126,8 @@ Until this migration runs, the app falls back to sensible defaults (nothing sold
 |-------|-------------|-------------|
 | `/tablet` | Counter POS — two-panel layout: menu left, cart right. Barista builds order, customer pays on same device | Barista at counter |
 | `/barista` | Barista dashboard — two tabs: **Orders** (real-time kanban with back buttons + undo) and **Sold Out / 86** (mark drinks and add-ins out of stock) | Barista making drinks |
-| `/live` | Public live orders screen — queue position, status and wait time for all active orders, with the Pushpay giving box under the queue | Everyone (share the URL / QR code) |
+| `/live` | Public live orders screen — queue position, status and wait time for all active orders. **No giving box** | The lobby TV (share the URL / QR code) |
+| `/yourlive` | The same board, plus the Pushpay giving box under the queue | A customer on their own phone — where "Track Order" and the confirmation screen send them |
 
 ### Admin (requires login)
 
@@ -485,7 +486,7 @@ Separate from the checkout donation above, and easy to confuse — **there are t
 
 | | Checkout donation | Pushpay giving box |
 |---|---|---|
-| Where | `/checkout`, `/tablet` | `/checkout/confirmation`, `/live` |
+| Where | `/checkout`, `/tablet` | `/checkout/confirmation`, `/yourlive` |
 | When | Before paying, as part of the order | After the order is placed |
 | Money goes | Through Stripe, with the coffee | Straight to the church, via Pushpay |
 | Recorded | `orders.tip_amount` | Nowhere — we never see it |
@@ -495,12 +496,27 @@ embedded widget.** The widget would keep people on our page, but it's a third-pa
 and church wifi and strict mobile browsers block those often enough that the box would
 sometimes render nothing at all. A link always works.
 
-Giving finishes **back on `/live`**: the link is built with `?rbu=<origin>/live`, so the
-netlify site, a preview deploy and localhost each send people back to themselves. The plain
-link is the `href` (so long-press and open-in-new-tab work) and the return URL is added on
-click, when `window.location.origin` is finally something real.
+Giving finishes **back on `/yourlive`**: the link is built with `?rbu=<origin>/yourlive`, so
+the netlify site, a preview deploy and localhost each send people back to themselves. The
+plain link is the `href` (so long-press and open-in-new-tab work) and the return URL is added
+on click, when `window.location.origin` is finally something real.
 
 The link lives in `src/lib/giving.ts`. To point at a different campaign, replace it.
+
+### /live vs /yourlive
+
+Both routes render the same `src/components/LiveOrders.tsx`, which takes one prop —
+`showGiving`. One component, not two pages, so the queue maths and the wait countdown can't
+drift between the screen on the wall and the screen in someone's hand.
+
+- **`/live`** — the lobby TV and the shared QR code. Read from across the room by people who
+  aren't touching it, so an ask for money would be clutter.
+- **`/yourlive`** — a customer's own phone, after ordering. Someone is holding this one, so
+  the giving box belongs here.
+
+The customer-facing links (the **Track Order** button on the menu, **Track Your Order Live**
+on the confirmation screen) point at `/yourlive`. `/live` is what goes on the TV, in the QR
+code, and in the print agent's startup file.
 
 ---
 
@@ -602,8 +618,9 @@ For Netlify:
 2. Create or activate an event with "All Free" checked
 
 **Share the live order board with customers:**
-- Share the URL `https://<your-domain>/live` or display it on a screen at the coffee stand
-- Customers can open it on their phones to track their order
+- Put `https://<your-domain>/live` on the screen at the coffee stand — no giving box on it
+- For a QR code or a link people open on their phones, use `https://<your-domain>/yourlive`
+  instead: same board, with the giving box under the queue
 
 **Process a counter order:**
 1. Open `/tablet` on the iPad/tablet at the counter
