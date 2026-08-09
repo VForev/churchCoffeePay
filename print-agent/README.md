@@ -120,6 +120,8 @@ on or off, resized, or reshaped at **`/admin/labels`** without touching this PC.
 ```
 ┌────────────────────────────┐
 │        COLD CUP            │  ← reversed out of black, first thing you see
+│  ✝ Light of the Gospel     │  ← church mark and name, switchable in /admin/labels
+│  ────────────────────────  │
 │                 CUP 1 OF 2 │
 │  Sarah K                   │  ← the name you'll call out
 │  Vanilla Latte             │
@@ -134,6 +136,12 @@ on or off, resized, or reshaped at **`/admin/labels`** without touching this PC.
 Hot vs cold comes from the same logic the barista board uses (`src/lib/temperature.ts`) —
 the drink's Temperature modifier first, then the drink's name. If it genuinely can't tell
 (a pastry, a bottled water), the band is left off rather than guessed.
+
+The church mark is a solid-black silhouette stored as base64 in `src/lib/logo.ts`, so the
+agent and the admin preview draw the identical artwork with no shared image file to keep
+in sync. Both the mark and the name can be switched off, renamed and resized at
+`/admin/labels` — on a short 50 × 30 roll that row costs about a line and a half of
+modifiers, so it's worth checking the preview before you leave it on.
 
 ---
 

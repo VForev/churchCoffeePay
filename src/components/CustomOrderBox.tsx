@@ -13,6 +13,7 @@ import {
   CUSTOM_ORDER_ITEM_ID,
   type AccessUnlock,
 } from '@/lib/access-code';
+import { fetchShopConfig, getShopStatus } from '@/lib/shop';
 
 /**
  * Free-text "write your own order" box, shown only when an access code allows it
@@ -53,6 +54,16 @@ export default function CustomOrderBox({
 
     setSubmitting(true);
     setError('');
+
+    // A lock stops write-ins too, and this page may have been sitting open since before
+    // it went on — so ask the database, not the state we loaded with.
+    const config = await fetchShopConfig();
+    if (getShopStatus(config.settings, config.hours).isLocked) {
+      clearActiveUnlock();
+      setSubmitting(false);
+      setError('Ordering has been closed — your order was not sent.');
+      return;
+    }
 
     // Re-verify the code is still active and still allows write-ins before we place it.
     const fresh = await verifyAccessCode(unlock.code);

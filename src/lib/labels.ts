@@ -12,6 +12,8 @@
  * agent is a separate Node package and imports this file directly.
  */
 
+import { DEFAULT_CHURCH_NAME } from './logo';
+
 export interface LabelSettings {
   id: number;
   /** The sticker itself, not the backing paper. */
@@ -20,6 +22,12 @@ export interface LabelSettings {
   margin_mm: number;
   /** The black HOT CUP / COLD CUP band. */
   show_temp_band: boolean;
+  /** The Light of the Gospel mark at the top of the label. */
+  show_logo: boolean;
+  /** The church name printed beside (or instead of) the mark. */
+  show_church_name: boolean;
+  /** What that name says — "Light of the Gospel" unless the admin changes it. */
+  church_name: string;
   /** "CUP 1 OF 3". Only ever drawn on multi-cup orders. */
   show_cup_counter: boolean;
   show_modifiers: boolean;
@@ -46,6 +54,8 @@ export interface LabelSettings {
   note_scale: number;
   /** Size multiplier for the bottom order-code/time line and the cup counter. */
   footer_scale: number;
+  /** Size multiplier for the whole branding row — mark and church name together. */
+  brand_scale: number;
   /**
    * Per-modifier-group control, keyed by group name. Each group can be hidden from the
    * label and given its own size multiplier on top of the global modifier size. Groups
@@ -85,6 +95,9 @@ export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   height_mm: 30,
   margin_mm: 2,
   show_temp_band: true,
+  show_logo: true,
+  show_church_name: true,
+  church_name: DEFAULT_CHURCH_NAME,
   show_cup_counter: true,
   show_modifiers: true,
   show_note: true,
@@ -98,6 +111,7 @@ export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   modifier_scale: 1,
   note_scale: 1,
   footer_scale: 1,
+  brand_scale: 1,
   modifier_group_styles: {},
   modifier_group_order: [],
   test_print_requested_at: null,
@@ -133,6 +147,13 @@ export function normalizeLabelSettings(row: Partial<LabelSettings> | null | unde
     rotate_label: Boolean(merged.rotate_label),
     uppercase_drink: Boolean(merged.uppercase_drink),
     center_text: Boolean(merged.center_text),
+    // Branding defaults ON: these arrived with the branding migration, and a row written
+    // before it has no columns for them — the church's own labels should carry its mark
+    // without anyone having to go and switch it on.
+    show_logo: merged.show_logo !== false,
+    show_church_name: merged.show_church_name !== false,
+    // An empty name would print an empty gap rather than nothing, so fall back.
+    church_name: (merged.church_name ?? '').trim() || DEFAULT_CHURCH_NAME,
     // Defaults ON: a missing column (before the migration) means print-on-order, the
     // behaviour that shipped first, rather than silently printing nothing.
     auto_print: merged.auto_print !== false,
@@ -141,6 +162,7 @@ export function normalizeLabelSettings(row: Partial<LabelSettings> | null | unde
     modifier_scale: clamp(Number(merged.modifier_scale) || 1, SCALE_MIN, SCALE_MAX),
     note_scale: clamp(Number(merged.note_scale) || 1, SCALE_MIN, SCALE_MAX),
     footer_scale: clamp(Number(merged.footer_scale) || 1, SCALE_MIN, SCALE_MAX),
+    brand_scale: clamp(Number(merged.brand_scale) || 1, SCALE_MIN, SCALE_MAX),
     modifier_group_styles: normalizeGroupStyles(merged.modifier_group_styles),
     modifier_group_order: Array.isArray(merged.modifier_group_order)
       ? merged.modifier_group_order.filter((g): g is string => typeof g === 'string')
@@ -189,6 +211,14 @@ export function groupStyle(settings: LabelSettings, group: string): ModifierGrou
 }
 
 /**
+ * Whether the branding row appears at all — the mark, the church name, or both. Asked
+ * by the preview and the PDF alike so neither one reserves space the other doesn't use.
+ */
+export function showsBrand(s: LabelSettings): boolean {
+  return s.show_logo || (s.show_church_name && s.church_name.trim().length > 0);
+}
+
+/**
  * Whether to spin the printed design 90° onto a portrait page for the printer.
  *
  * This printer prints PORTRAIT pages upright. A tall label (50×80) is already portrait,
@@ -216,6 +246,10 @@ export interface LabelMetrics {
   heightMm: number;
   marginMm: number;
   bandMm: number;
+  /** Height of the church mark in the branding row. */
+  logoMm: number;
+  /** Type size of the church name beside it. */
+  churchMm: number;
   nameMm: number;
   drinkMm: number;
   modifierMm: number;
@@ -236,6 +270,11 @@ export function labelMetrics(s: LabelSettings): LabelMetrics {
     heightMm: s.height_mm,
     marginMm: s.margin_mm,
     bandMm: 3.5 * scale,
+    // Deliberately small. The branding row costs height that the modifier lines want,
+    // and on a 50×30 roll every millimetre spent up here is an option the barista
+    // doesn't get to read. The scale slider is there for anyone who wants it louder.
+    logoMm: 3.4 * scale * s.brand_scale,
+    churchMm: 2.1 * scale * s.brand_scale,
     nameMm: 4.75 * scale * s.name_scale,
     drinkMm: 3.35 * scale * s.drink_scale,
     modifierMm: 2.45 * scale * s.modifier_scale,

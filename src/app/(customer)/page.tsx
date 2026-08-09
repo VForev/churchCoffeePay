@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { cartStore } from '@/lib/cart-store';
 import { useCart } from '@/lib/hooks';
-import { fetchShopConfig, getShopStatus, DEFAULT_SETTINGS } from '@/lib/shop';
+import { fetchShopConfig, getShopStatus, canOrderNow, DEFAULT_SETTINGS } from '@/lib/shop';
 import {
+  clearActiveUnlock,
   getActiveUnlock,
   unlockAllowsCategory,
   type AccessUnlock,
@@ -54,11 +55,14 @@ export default function MenuPage() {
   // An approved group can unlock ordering while the shop is closed with an access code.
   // Held in memory (see access-code.ts): it survives menu → checkout within one order,
   // but a page restart/refresh wipes it so we always ask for the code again.
-  const [unlock, setUnlock] = useState<AccessUnlock | null>(() => getActiveUnlock());
-  const canOrder = status.isOpen || !!unlock;
+  const [enteredUnlock, setUnlock] = useState<AccessUnlock | null>(() => getActiveUnlock());
+  // An admin locking the shop mid-service takes an already-granted unlock with it, or a
+  // phone that typed a code five minutes ago would carry on ordering straight through it.
+  const unlock = status.isLocked ? null : enteredUnlock;
+  const canOrder = canOrderNow(status, !!unlock);
   // A code may be limited to one category (e.g. teas), so ordering is decided per item.
   const canOrderItem = (item: MenuItem) =>
-    status.isOpen || unlockAllowsCategory(unlock, item.category_id);
+    canOrderNow(status, unlockAllowsCategory(unlock, item.category_id));
 
   const fetchQueueWait = useCallback(async () => {
     const { data: activeOrders } = await supabase
@@ -96,6 +100,9 @@ export default function MenuPage() {
     setActiveEvent((eventRes.data as Event) ?? null);
     setSettings(config.settings);
     setHours(config.hours);
+    // Forget the code for good, not just for this page: the unlock lives in module memory
+    // and would otherwise still be sitting there when checkout loads.
+    if (getShopStatus(config.settings, config.hours).isLocked) clearActiveUnlock();
     setLoading(false);
   }, []);
 

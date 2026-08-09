@@ -15,7 +15,11 @@ import PDFDocument from 'pdfkit';
 import { createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { labelMetrics, effectiveRotate, groupStyle, orderModifierLines, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
+import { labelMetrics, effectiveRotate, groupStyle, orderModifierLines, showsBrand, TEMP_TEXT, EDGE_SAFE_MM, type LabelSettings, type LabelData } from '../src/lib/labels';
+import { LOGO_PNG_BASE64, LOGO_ASPECT } from '../src/lib/logo';
+
+/** The church mark, decoded once — every cup on a busy morning draws the same bytes. */
+const LOGO_PNG = Buffer.from(LOGO_PNG_BASE64, 'base64');
 
 const MM_TO_PT = 2.834645669;
 
@@ -72,6 +76,8 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   const noteSize = pt(m.noteMm);
   const footerSize = pt(m.footerMm);
   const bandHeight = pt(m.bandMm);
+  const logoHeight = pt(m.logoMm);
+  const churchSize = pt(m.churchMm);
 
   // This printer prints PORTRAIT pages upright. A tall label (e.g. 50×80) is already
   // portrait, so its page goes out as-is and reads the right way up. A wide label
@@ -111,6 +117,47 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
     y = bandHeight + gap;
   }
 
+  const align: 'left' | 'center' = settings.center_text ? 'center' : 'left';
+
+  // Branding — the church mark and its name, with a hairline under them. It sits below
+  // the temperature band (which is full-bleed black and has to stay at the very top) and
+  // above everything the barista reads, so the cup says who made it without competing
+  // with the name on it.
+  if (showsBrand(settings)) {
+    const rowTop = y;
+    const logoWidth = settings.show_logo ? logoHeight * LOGO_ASPECT : 0;
+    const rowHeight = Math.max(settings.show_logo ? logoHeight : 0, churchSize);
+
+    if (settings.show_logo) {
+      doc.image(LOGO_PNG, margin, rowTop + (rowHeight - logoHeight) / 2, { height: logoHeight });
+    }
+
+    const churchText = settings.church_name.trim();
+    if (settings.show_church_name && churchText) {
+      // The name takes whatever the mark leaves, and shrinks rather than wrapping under it.
+      const textX = margin + (settings.show_logo ? logoWidth + gap * 1.5 : 0);
+      const textWidth = margin + contentWidth - textX;
+      const fitted = fitOneLine(doc, churchText, 'Helvetica-Bold', textWidth, churchSize, churchSize * 0.6);
+      doc
+        .fillColor('#000')
+        .font('Helvetica-Bold')
+        .fontSize(fitted.size)
+        .text(fitted.text, textX, rowTop + (rowHeight - fitted.size) / 2, {
+          width: textWidth,
+          align: settings.show_logo ? 'left' : align,
+          lineBreak: false,
+        });
+    }
+
+    y = rowTop + rowHeight + gap * 0.6;
+    doc
+      .lineWidth(0.5)
+      .moveTo(margin, y)
+      .lineTo(margin + contentWidth, y)
+      .stroke('#000');
+    y += gap;
+  }
+
   // Cup counter — skipped on single-drink orders, where it's noise.
   if (settings.show_cup_counter && data.cupTotal > 1) {
     doc
@@ -124,8 +171,6 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
       });
     y += footerSize * 1.3;
   }
-
-  const align: 'left' | 'center' = settings.center_text ? 'center' : 'left';
 
   // The name — the whole reason the label exists.
   const nameText = settings.uppercase_name ? data.customerName.toUpperCase() : data.customerName;

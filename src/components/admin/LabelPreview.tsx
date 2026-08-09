@@ -4,11 +4,13 @@ import {
   labelMetrics,
   groupStyle,
   orderModifierLines,
+  showsBrand,
   TEMP_TEXT,
   EDGE_SAFE_MM,
   type LabelSettings,
   type LabelData,
 } from '@/lib/labels';
+import { LOGO_DATA_URI, LOGO_ASPECT } from '@/lib/logo';
 
 /**
  * An on-screen mock of the printed label.
@@ -44,6 +46,8 @@ export default function LabelPreview({
   const showCounter = settings.show_cup_counter && data.cupTotal > 1;
   const showMods = settings.show_modifiers && modLines.length > 0;
   const showNote = settings.show_note && Boolean(data.note);
+  const showBrand = showsBrand(settings);
+  const churchText = settings.church_name.trim();
   const align: 'left' | 'center' = settings.center_text ? 'center' : 'left';
 
   const label = (
@@ -80,6 +84,43 @@ export default function LabelPreview({
           height: showBand ? `calc(100% - ${px(m.bandMm)})` : '100%',
         }}
       >
+        {showBrand && (
+          // Mark and church name on one row with a hairline under it — matching the PDF,
+          // which centres each against the taller of the two and rules a line beneath.
+          <div
+            className="flex items-center border-b border-black"
+            style={{
+              gap: px(m.gapMm * 1.5),
+              paddingBottom: px(m.gapMm * 0.6),
+              marginBottom: px(m.gapMm),
+              minHeight: px(Math.max(settings.show_logo ? m.logoMm : 0, m.churchMm)),
+            }}
+          >
+            {settings.show_logo && (
+              /* An inline data URI sized in millimetres — next/image would only add a
+                 loader and an optimiser that have nothing to do here. */
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={LOGO_DATA_URI}
+                alt=""
+                style={{ height: px(m.logoMm), width: px(m.logoMm * LOGO_ASPECT) }}
+              />
+            )}
+            {settings.show_church_name && churchText && (
+              <div
+                className="min-w-0 flex-1 overflow-hidden whitespace-nowrap font-bold leading-none"
+                style={{
+                  fontSize: px(m.churchMm),
+                  textOverflow: 'ellipsis',
+                  textAlign: settings.show_logo ? 'left' : align,
+                }}
+              >
+                {churchText}
+              </div>
+            )}
+          </div>
+        )}
+
         {showCounter && (
           <div
             className="text-right font-bold leading-none"

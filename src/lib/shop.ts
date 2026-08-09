@@ -27,8 +27,13 @@ export const DEFAULT_SETTINGS: ShopSettings = {
 
 export interface ShopStatus {
   isOpen: boolean;
+  /**
+   * Hard lock: ordering is off for everyone, and an access code won't get round it.
+   * Every other closed state still lets an approved group unlock with a code.
+   */
+  isLocked: boolean;
   /** Why ordering is open or closed, for showing the right message. */
-  reason: 'scheduled' | 'forced_open' | 'forced_closed' | 'outside_hours' | 'no_hours_set';
+  reason: 'scheduled' | 'forced_open' | 'forced_closed' | 'locked' | 'outside_hours' | 'no_hours_set';
   /** e.g. "11:30 AM" — only set while open. */
   closesAt: string | null;
   /** e.g. "Sunday at 9:00 AM" — only set while closed, and only if a future window exists. */
@@ -84,23 +89,22 @@ export function getShopStatus(
   now: Date = new Date(),
 ): ShopStatus {
   const scheduleSummary = summarizeSchedule(hours);
+  const base = { closesAt: null, nextOpensAt: null, isLocked: false, scheduleSummary };
 
+  // Checked before anything else: a lock is meant to be the one state nothing overrides.
+  if (settings.ordering_override === 'locked') {
+    return { ...base, isOpen: false, isLocked: true, reason: 'locked' };
+  }
   if (settings.ordering_override === 'open') {
-    return { isOpen: true, reason: 'forced_open', closesAt: null, nextOpensAt: null, scheduleSummary };
+    return { ...base, isOpen: true, reason: 'forced_open' };
   }
   if (settings.ordering_override === 'closed') {
-    return {
-      isOpen: false,
-      reason: 'forced_closed',
-      closesAt: null,
-      nextOpensAt: null,
-      scheduleSummary,
-    };
+    return { ...base, isOpen: false, reason: 'forced_closed' };
   }
 
   const openDays = hours.filter((h) => h.is_open);
   if (openDays.length === 0) {
-    return { isOpen: false, reason: 'no_hours_set', closesAt: null, nextOpensAt: null, scheduleSummary };
+    return { ...base, isOpen: false, reason: 'no_hours_set' };
   }
 
   const today = now.getDay();
@@ -113,20 +117,18 @@ export function getShopStatus(
     nowMinutes < timeToMinutes(todayHours.close_time)
   ) {
     return {
+      ...base,
       isOpen: true,
       reason: 'scheduled',
       closesAt: formatTime(todayHours.close_time),
-      nextOpensAt: null,
-      scheduleSummary,
     };
   }
 
   return {
+    ...base,
     isOpen: false,
     reason: 'outside_hours',
-    closesAt: null,
     nextOpensAt: findNextOpening(openDays, today, nowMinutes),
-    scheduleSummary,
   };
 }
 
@@ -148,6 +150,15 @@ function findNextOpening(
     return `${when} at ${formatTime(dayHours.open_time)}`;
   }
   return null;
+}
+
+/**
+ * The one rule for "may this browser place an order": open to everyone, or holding an
+ * access-code unlock while the shop isn't locked. Every page asks this rather than
+ * writing out the condition, so a lock can't be honoured in one place and missed in another.
+ */
+export function canOrderNow(status: ShopStatus, hasUnlock: boolean): boolean {
+  return status.isOpen || (!status.isLocked && hasUnlock);
 }
 
 /** Parses "1,2,5" into [1, 2, 5], dropping anything that isn't a positive number. */

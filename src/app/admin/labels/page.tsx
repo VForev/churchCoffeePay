@@ -167,6 +167,9 @@ export default function AdminLabelsPage() {
       height_mm: clean.height_mm,
       margin_mm: clean.margin_mm,
       show_temp_band: clean.show_temp_band,
+      show_logo: clean.show_logo,
+      show_church_name: clean.show_church_name,
+      church_name: clean.church_name,
       show_cup_counter: clean.show_cup_counter,
       show_modifiers: clean.show_modifiers,
       show_note: clean.show_note,
@@ -180,6 +183,7 @@ export default function AdminLabelsPage() {
       modifier_scale: clean.modifier_scale,
       note_scale: clean.note_scale,
       footer_scale: clean.footer_scale,
+      brand_scale: clean.brand_scale,
       modifier_group_styles: clean.modifier_group_styles,
       modifier_group_order: clean.modifier_group_order,
       auto_print: clean.auto_print,
@@ -278,6 +282,55 @@ export default function AdminLabelsPage() {
                 onChange={(rotate_label) => patch({ rotate_label })}
               />
             </div>
+          </Card>
+
+          <Card>
+            <h2 className="mb-1 font-heading font-bold text-text-dark">Church branding</h2>
+            <p className="mb-4 font-body text-xs text-text-light">
+              The mark and church name print across the top of every cup, above the customer&apos;s
+              name. On a short roll (50 × 30) this row costs about a line and a half of
+              modifiers — worth a look at the preview before Sunday. Turn both off and the label
+              goes back to being plain.
+            </p>
+
+            <div className="space-y-1">
+              <Toggle
+                label="Church logo"
+                help="The Light of the Gospel mark, printed solid black so it stays crisp on thermal paper"
+                checked={settings.show_logo}
+                onChange={(show_logo) => patch({ show_logo })}
+              />
+              <Toggle
+                label="Church name"
+                help="Printed beside the mark — or on its own if the mark is switched off"
+                checked={settings.show_church_name}
+                onChange={(show_church_name) => patch({ show_church_name })}
+              />
+            </div>
+
+            {settings.show_church_name && (
+              <label className="mt-3 block">
+                <span className="mb-1 block font-body text-xs text-text-light">What it says</span>
+                <input
+                  type="text"
+                  value={settings.church_name}
+                  maxLength={40}
+                  placeholder={DEFAULT_LABEL_SETTINGS.church_name}
+                  onChange={(e) => patch({ church_name: e.target.value })}
+                  className="w-full rounded-xl border-2 border-gray-200 px-3 py-2 font-body text-text-dark focus:border-primary focus:outline-none"
+                />
+              </label>
+            )}
+
+            {(settings.show_logo || settings.show_church_name) && (
+              <div className="mt-4">
+                <Slider
+                  label="Branding size"
+                  value={settings.brand_scale}
+                  onChange={(brand_scale) => patch({ brand_scale })}
+                />
+              </div>
+            )}
           </Card>
 
           <Card>

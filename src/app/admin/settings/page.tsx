@@ -14,6 +14,11 @@ const OVERRIDE_OPTIONS: { value: OrderingOverride; label: string; help: string }
   { value: 'auto', label: 'Follow Schedule', help: 'Opens and closes on the hours below' },
   { value: 'open', label: 'Force Open', help: 'Take orders now, ignoring the schedule' },
   { value: 'closed', label: 'Force Closed', help: 'Stop taking orders — e.g. you ran out early' },
+  {
+    value: 'locked',
+    label: '🔒 Lock Everything',
+    help: 'Nobody can order — access codes stop working too',
+  },
 ];
 
 /** Postgres hands back "09:00:00"; <input type="time"> wants "09:00". */
@@ -109,25 +114,34 @@ export default function AdminSettingsPage() {
       <Card
         className={cn(
           'mb-6 border-2',
-          status.isOpen ? 'border-success/40 bg-success/5' : 'border-warning/40 bg-warning/5',
+          status.isOpen
+            ? 'border-success/40 bg-success/5'
+            : status.isLocked
+              ? 'border-danger/40 bg-danger/5'
+              : 'border-warning/40 bg-warning/5',
         )}
       >
         <div className="flex items-center gap-3">
           <span
             className={cn(
               'h-3 w-3 rounded-full',
-              status.isOpen ? 'animate-pulse bg-success' : 'bg-warning',
+              status.isOpen ? 'animate-pulse bg-success' : status.isLocked ? 'bg-danger' : 'bg-warning',
             )}
           />
           <div>
             <p className="font-heading font-bold text-text-dark">
-              {status.isOpen ? 'Customers can order right now' : 'Ordering is closed right now'}
+              {status.isOpen
+                ? 'Customers can order right now'
+                : status.isLocked
+                  ? 'Ordering is locked — nobody can order'
+                  : 'Ordering is closed right now'}
             </p>
             <p className="mt-0.5 font-body text-sm text-text-light">
               {status.isOpen && status.closesAt && `Closes at ${status.closesAt}.`}
               {!status.isOpen && status.nextOpensAt && `Opens ${status.nextOpensAt}.`}
               {status.reason === 'forced_open' && ' Forced open — ignoring the schedule.'}
               {status.reason === 'forced_closed' && ' Forced closed — ignoring the schedule.'}
+              {status.reason === 'locked' && ' Locked — access codes are switched off too.'}
               {status.reason === 'no_hours_set' && ' No ordering hours are set yet.'}
             </p>
           </div>
@@ -163,30 +177,47 @@ export default function AdminSettingsPage() {
           Use the override when the day doesn&apos;t go to plan — running late, or out of milk.
         </p>
 
-        <div className="mb-5 grid gap-2 sm:grid-cols-3">
-          {OVERRIDE_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setSettings({ ...settings, ordering_override: opt.value })}
-              className={cn(
-                'cursor-pointer rounded-xl border-2 p-3 text-left transition-all',
-                settings.ordering_override === opt.value
-                  ? 'border-primary bg-primary/5'
-                  : 'border-gray-200 bg-surface hover:border-gray-300',
-              )}
-            >
-              <p
+        <div className="mb-5 grid gap-2 sm:grid-cols-2">
+          {OVERRIDE_OPTIONS.map((opt) => {
+            const selected = settings.ordering_override === opt.value;
+            // The lock is the destructive one — it turns off the escape hatch everyone
+            // else relies on, so it reads red rather than blending in with the others.
+            const isLock = opt.value === 'locked';
+            return (
+              <button
+                key={opt.value}
+                onClick={() => setSettings({ ...settings, ordering_override: opt.value })}
                 className={cn(
-                  'font-accent text-sm font-bold',
-                  settings.ordering_override === opt.value ? 'text-primary' : 'text-text-dark',
+                  'cursor-pointer rounded-xl border-2 p-3 text-left transition-all',
+                  selected
+                    ? isLock
+                      ? 'border-danger bg-danger/5'
+                      : 'border-primary bg-primary/5'
+                    : 'border-gray-200 bg-surface hover:border-gray-300',
                 )}
               >
-                {opt.label}
-              </p>
-              <p className="mt-0.5 font-body text-xs text-text-light">{opt.help}</p>
-            </button>
-          ))}
+                <p
+                  className={cn(
+                    'font-accent text-sm font-bold',
+                    selected ? (isLock ? 'text-danger' : 'text-primary') : 'text-text-dark',
+                  )}
+                >
+                  {opt.label}
+                </p>
+                <p className="mt-0.5 font-body text-xs text-text-light">{opt.help}</p>
+              </button>
+            );
+          })}
         </div>
+
+        {settings.ordering_override === 'locked' && (
+          <p className="mb-5 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3 font-body text-sm text-danger">
+            <strong className="font-accent font-bold">Ordering is locked.</strong> Nobody can place
+            an order — not with an access code, not a group that already unlocked one. Anyone
+            mid-order is stopped before they pay. The counter tablet at{' '}
+            <strong>/tablet</strong> still works, so a barista can take an order face to face.
+          </p>
+        )}
 
         <TextArea
           label="Message shown when closed"

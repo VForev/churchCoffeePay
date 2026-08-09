@@ -3,6 +3,7 @@
 import { useSearchParams, useRouter } from 'next/navigation';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import GivingBox from '@/components/GivingBox';
 import { Suspense } from 'react';
 
 function ConfirmationContent() {
@@ -14,7 +15,8 @@ function ConfirmationContent() {
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4">
-      <Card className="max-w-md w-full text-center py-10 px-6">
+      <div className="w-full max-w-md space-y-4">
+      <Card className="text-center py-10 px-6">
         <div className="text-6xl mb-4">&#9989;</div>
         <h1 className="text-2xl font-heading font-bold text-text-dark mb-2">
           Order Placed!
@@ -42,6 +44,11 @@ function ConfirmationContent() {
           Order Another Drink
         </Button>
       </Card>
+
+      {/* Asked once the order is safely placed, never before — nothing about giving is
+          allowed to sit between someone and their coffee. */}
+      <GivingBox />
+      </div>
     </div>
   );
 }

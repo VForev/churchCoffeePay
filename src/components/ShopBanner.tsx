@@ -154,7 +154,9 @@ export function ClosedNotice({
           <p className="mt-2 font-body text-xs text-amber-800/80">
             You can still browse the menu below.
           </p>
-          {onUnlock && <AccessCodeBox onUnlock={onUnlock} />}
+          {/* A lock is deliberately absolute — no access code gets past it, so we don't
+              offer the box and send someone hunting for a code that won't work. */}
+          {onUnlock && !status.isLocked && <AccessCodeBox onUnlock={onUnlock} />}
         </div>
       </div>
     </div>

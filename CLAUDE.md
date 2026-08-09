@@ -88,6 +88,14 @@ ALTER TABLE modifiers ADD COLUMN IF NOT EXISTS display_order INT NOT NULL DEFAUL
 
 **`supabase-access-sessions.sql`** — Auth session configuration.
 
+**`supabase-lock-ordering.sql`** — Required for the **Lock Everything** button at
+`/admin/settings`. Widens the `ordering_override` CHECK to allow `'locked'`. Until it runs,
+choosing Lock Everything fails to save and the shop stays on whatever it was.
+
+**`supabase-label-branding.sql`** — Adds the church logo / church name columns to
+`label_settings`. Until it runs, labels still print the branding (it defaults on in code)
+but the toggles at `/admin/labels` have nowhere to save.
+
 **`supabase-v2-features.sql`** — **Required** for sold-out flags, shop settings, ordering hours, and per-drink modifier overrides. Safe to re-run. Adds:
 - `menu_items.is_sold_out` and `modifiers.is_sold_out` — barista "86" flags
 - `shop_settings` — service banner, donation toggle, open/closed override (single row, `id = 1`)
@@ -110,7 +118,7 @@ Until this migration runs, the app falls back to sensible defaults (nothing sold
 |-------|-------------|
 | `/` | Main menu page — customers browse categories and items, add to cart |
 | `/checkout` | "Place Your Coffee Order" — customer name, coupon, donation, Stripe card payment. The word "checkout" is deliberately gone from the UI: customers read it as "order already placed" and bail. Name requires **first + last name, last initial is enough** (`validateFullName` in `src/lib/profanity.ts`) — one letter is what tells two Sarahs apart when the barista calls the order. |
-| `/checkout/confirmation` | Order confirmation screen after successful payment |
+| `/checkout/confirmation` | Order confirmation screen after successful payment — plus the Pushpay giving box |
 
 ### Staff
 
@@ -118,7 +126,7 @@ Until this migration runs, the app falls back to sensible defaults (nothing sold
 |-------|-------------|-------------|
 | `/tablet` | Counter POS — two-panel layout: menu left, cart right. Barista builds order, customer pays on same device | Barista at counter |
 | `/barista` | Barista dashboard — two tabs: **Orders** (real-time kanban with back buttons + undo) and **Sold Out / 86** (mark drinks and add-ins out of stock) | Barista making drinks |
-| `/live` | Public live orders screen — shows queue position, status, and wait time for all active orders | Everyone (share the URL / QR code) |
+| `/live` | Public live orders screen — queue position, status and wait time for all active orders, with the Pushpay giving box under the queue | Everyone (share the URL / QR code) |
 
 ### Admin (requires login)
 
@@ -134,7 +142,7 @@ Until this migration runs, the app falls back to sensible defaults (nothing sold
 | `/admin/orders` | Full order history — expand rows, filter by status, search by name, archive or delete |
 | `/admin/labels` | Cup label layout — roll size, what's on the label, text sizes, live preview, test print |
 | `/admin/print-setup` | Non-technical, step-by-step guide to installing the printer software on the shop PC; downloads the agent bundle |
-| `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, donation on/off, coupon box on/off |
+| `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, **lock everything**, donation on/off, coupon box on/off |
 
 ---
 
@@ -157,6 +165,9 @@ src/
 │   └── ui/                          # Button, Card, Modal, Input, Badge
 ├── lib/
 │   ├── cart-store.ts                # Client-side cart state (observer pattern)
+│   ├── shop.ts                      # Open/closed/locked logic — canOrderNow() lives here
+│   ├── logo.ts                      # Church mark as base64; shared with the print agent
+│   ├── giving.ts                    # Pushpay handle, token and link
 │   ├── supabase.ts                  # Supabase client
 │   ├── access.ts                    # Admin service-role client
 │   └── utils.ts                     # formatPrice, generateId, cn()
@@ -330,6 +341,21 @@ drift within a week and the preview would quietly start lying. **Change a size i
 The one thing the preview can't reproduce is PDFKit's shrink-to-fit on a long name, which
 it approximates with CSS. The roll is still the final word.
 
+### Church branding on the label
+
+Every cup carries the **Light of the Gospel** mark and name, in a row under the HOT/COLD
+band. Both are switchable, the name is editable, and the pair share one size slider —
+`/admin/labels` → **Church branding**.
+
+The artwork is a **pure-black silhouette embedded as base64 in `src/lib/logo.ts`**, not a
+file in `public/`. That's the only form both sides can reach: the preview runs in a browser
+and the agent runs on the shop PC, and a shared image file would have to be copied into
+both. Black, because thermal printers are 1-bit and the brown original dithers into mush at
+3mm tall. The full-colour logo for web use is `public/lotg-logo.png`.
+
+**It costs about a line and a half of modifiers on a 50 × 30 roll.** That's a real trade —
+check the preview, or turn it off, if the shop runs short labels with busy drinks.
+
 One ordering hazard the agent has to handle: the web app inserts the order row **before**
 its `order_items`, so a realtime event can arrive when the order still has zero drinks on
 it. The agent polls briefly for the items rather than printing a blank label.
@@ -407,10 +433,31 @@ Updates reach every open phone instantly via Supabase Realtime on `menu_items` a
 Customers can only place orders inside the windows set at **`/admin/settings`**.
 
 - **Weekly schedule** — per weekday, toggle open and set an open/close time. Sunday 9:00–11:30am is the default.
-- **Override** — three states:
+- **Override** — four states:
   - **Follow Schedule** (default) — auto opens/closes on the hours above
   - **Force Open** — take orders now regardless of the schedule (started early)
   - **Force Closed** — stop taking orders now (ran out of milk, packing up)
+  - **🔒 Lock Everything** — see below
+
+### 🔒 Lock Everything
+
+Force Closed still lets an approved group in with an access code. **Lock Everything is the
+state with no way round it** — that is the entire point of it, and the only difference
+between the two.
+
+When locked:
+- The "Have an access code?" box disappears from the closed notice — nobody is sent hunting
+  for a code that can't work.
+- An unlock **already granted** stops counting, so a phone that typed a code five minutes
+  ago is closed out too, and the code is wiped from memory.
+- Checkout re-checks the lock against the database immediately before charging, so an order
+  can't slip through from a page that has been sitting open. Same for a write-in order.
+- `/tablet` is unaffected. It's the barista's own device and never looked at ordering hours;
+  a lock is about the public, not about stopping staff serving someone at the counter.
+
+The rule lives in one place — `canOrderNow(status, hasUnlock)` in `src/lib/shop.ts`. Ask it
+rather than re-writing the condition, or a lock will be honoured on one page and missed on
+another.
 
 When closed, the menu is still fully browsable but the cart button reads **"Ordering Is Closed"** and checkout is blocked. Checkout also **re-checks the schedule at submit time**, so an order can't slip through on a page that's been sitting open since before closing.
 
@@ -428,6 +475,37 @@ Every customer-facing "tip" is now a **donation**, and it can be switched off en
 - When **off**, the donation box disappears from both `/checkout` and `/tablet`. Any amount already entered is zeroed out.
 
 **Database note:** the amount is still stored in `orders.tip_amount` — the column was left alone so existing orders and reports keep working. Only the UI language changed. Client-side, `CartState` calls it `donation_amount` and maps to `tip_amount` on insert.
+
+---
+
+## Giving to the Church (Pushpay)
+
+Separate from the checkout donation above, and easy to confuse — **there are two different
+"give" boxes and they do different things.**
+
+| | Checkout donation | Pushpay giving box |
+|---|---|---|
+| Where | `/checkout`, `/tablet` | `/checkout/confirmation`, `/live` |
+| When | Before paying, as part of the order | After the order is placed |
+| Money goes | Through Stripe, with the coffee | Straight to the church, via Pushpay |
+| Recorded | `orders.tip_amount` | Nowhere — we never see it |
+
+`src/components/GivingBox.tsx` is the Pushpay one. It tries the **embedded widget** first so
+nobody leaves the page, then falls back to the plain Pushpay link if that script hasn't
+rendered anything within 3.5 seconds. The fallback earns its keep: church wifi and strict
+mobile browsers block third-party scripts often enough that a box which only works sometimes
+is worse than one that always shows a link.
+
+Giving finishes **back on `/live`** either way — the widget's `wgc` token has that return URL
+signed into it, and the fallback link is built with `?rbu=<origin>/live`.
+
+Handle, token and link live in `src/lib/giving.ts`. All three are public values that ship in
+the page. To point at a different campaign, paste in the new snippet's values. The return URL
+inside the token **cannot be edited here** — it's signed, so changing where the widget returns
+to means regenerating the snippet in Pushpay.
+
+Only render one `GivingBox` per page: the Pushpay snippet addresses its container by a fixed
+element id.
 
 ---
 
@@ -514,6 +592,11 @@ For Netlify:
 1. On the tablet, open `/barista` → **Sold Out / 86** tab
 2. Tap the drink or add-in you ran out of — customers see it as Sold Out instantly
 3. Tap again to restock
+
+**Stop all ordering immediately, including access codes:**
+1. Go to `/admin/settings` → **Ordering Availability**
+2. Choose **🔒 Lock Everything** and save
+3. Put it back on **Follow Schedule** when you're ready to reopen
 
 **Turn off donation requests:**
 1. Go to `/admin/settings` → **Donations**

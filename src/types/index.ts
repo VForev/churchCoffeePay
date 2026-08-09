@@ -79,7 +79,11 @@ export interface ShopSettings {
   closed_message: string;
 }
 
-export type OrderingOverride = 'auto' | 'open' | 'closed';
+/**
+ * 'locked' is 'closed' with no way round it: access codes stop working too, so nobody
+ * can order at all. Everything else lets an approved group through with a code.
+ */
+export type OrderingOverride = 'auto' | 'open' | 'closed' | 'locked';
 
 /**
  * A code that lets a specific group order while the shop is otherwise closed

@@ -34,7 +34,9 @@ create table if not exists shop_settings (
   -- Coupons
   coupons_enabled boolean not null default true,
   -- Ordering availability
-  ordering_override text not null default 'auto' check (ordering_override in ('auto', 'open', 'closed')),
+  -- 'locked' is 'closed' with access codes switched off too — see supabase-lock-ordering.sql,
+  -- which widens this constraint on databases created before it existed.
+  ordering_override text not null default 'auto' check (ordering_override in ('auto', 'open', 'closed', 'locked')),
   closed_message text not null default 'Ordering is closed right now. Come see us during service!',
   -- Keeps the table to exactly one row
   constraint shop_settings_singleton check (id = 1)

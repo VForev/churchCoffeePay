@@ -10,6 +10,7 @@ import { useCart } from '@/lib/hooks';
 import {
   fetchShopConfig,
   getShopStatus,
+  canOrderNow,
   parseDonationPresets,
   DEFAULT_SETTINGS,
 } from '@/lib/shop';
@@ -154,7 +155,20 @@ function CheckoutForm() {
     // If closed, an access code can still let this order through, but only after we
     // re-verify it against the DB so a code disabled mid-service can't slip past.
     const freshConfig = await fetchShopConfig();
-    if (!getShopStatus(freshConfig.settings, freshConfig.hours).isOpen) {
+    const freshStatus = getShopStatus(freshConfig.settings, freshConfig.hours);
+
+    // A lock beats everything, including a code entered before the lock went on. This is
+    // the last gate before money moves, so it's checked here as well as on the page.
+    if (freshStatus.isLocked) {
+      clearActiveUnlock();
+      setUnlock(null);
+      setSettings(freshConfig.settings);
+      setHours(freshConfig.hours);
+      setError('Ordering has been closed — your order was not placed.');
+      return;
+    }
+
+    if (!freshStatus.isOpen) {
       const active = getActiveUnlock();
       const stillValid = active ? await verifyAccessCode(active.code) : null;
       if (!stillValid) {
@@ -335,7 +349,7 @@ function CheckoutForm() {
     }
   }
 
-  const orderingClosed = configLoaded && !status.isOpen && !unlock;
+  const orderingClosed = configLoaded && !canOrderNow(status, !!unlock);
 
   return (
     <div className="min-h-screen bg-bg">
@@ -358,7 +372,7 @@ function CheckoutForm() {
           </div>
         )}
 
-        {configLoaded && !status.isOpen && unlock && (
+        {configLoaded && !status.isOpen && !status.isLocked && unlock && (
           <div className="mb-6 rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
             <p className="font-heading font-bold text-success">
               Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓

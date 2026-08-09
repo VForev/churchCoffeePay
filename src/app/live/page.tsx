@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { fetchShopConfig, getShopStatus, DEFAULT_SETTINGS } from '@/lib/shop';
 import { safeDisplayName } from '@/lib/profanity';
 import ShopBanner from '@/components/ShopBanner';
+import GivingBox from '@/components/GivingBox';
 import type { Order, OrderItem, ShopSettings, OrderingHours } from '@/types';
 
 interface LiveOrder extends Order {
@@ -193,6 +194,13 @@ export default function LiveOrdersPage() {
             This page updates automatically · Est. 1 min per item
           </p>
         )}
+
+        {/* Under the queue, not above it — someone opens this page to find their drink,
+            and the ask only makes sense once they've found it. */}
+        <GivingBox
+          className="mt-2"
+          message="While you wait for your drink, you can give to the church right here."
+        />
       </main>
     </div>
   );
