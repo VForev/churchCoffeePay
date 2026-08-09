@@ -490,22 +490,17 @@ Separate from the checkout donation above, and easy to confuse — **there are t
 | Money goes | Through Stripe, with the coffee | Straight to the church, via Pushpay |
 | Recorded | `orders.tip_amount` | Nowhere — we never see it |
 
-`src/components/GivingBox.tsx` is the Pushpay one. It tries the **embedded widget** first so
-nobody leaves the page, then falls back to the plain Pushpay link if that script hasn't
-rendered anything within 3.5 seconds. The fallback earns its keep: church wifi and strict
-mobile browsers block third-party scripts often enough that a box which only works sometimes
-is worse than one that always shows a link.
+`src/components/GivingBox.tsx` is the Pushpay one. It's a **plain link to Pushpay, not their
+embedded widget.** The widget would keep people on our page, but it's a third-party script,
+and church wifi and strict mobile browsers block those often enough that the box would
+sometimes render nothing at all. A link always works.
 
-Giving finishes **back on `/live`** either way — the widget's `wgc` token has that return URL
-signed into it, and the fallback link is built with `?rbu=<origin>/live`.
+Giving finishes **back on `/live`**: the link is built with `?rbu=<origin>/live`, so the
+netlify site, a preview deploy and localhost each send people back to themselves. The plain
+link is the `href` (so long-press and open-in-new-tab work) and the return URL is added on
+click, when `window.location.origin` is finally something real.
 
-Handle, token and link live in `src/lib/giving.ts`. All three are public values that ship in
-the page. To point at a different campaign, paste in the new snippet's values. The return URL
-inside the token **cannot be edited here** — it's signed, so changing where the widget returns
-to means regenerating the snippet in Pushpay.
-
-Only render one `GivingBox` per page: the Pushpay snippet addresses its container by a fixed
-element id.
+The link lives in `src/lib/giving.ts`. To point at a different campaign, replace it.
 
 ---
 
