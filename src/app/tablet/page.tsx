@@ -1,13 +1,25 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import ModifierSelector from '@/components/menu/ModifierSelector';
+import SegmentedControl from '@/components/ui/SegmentedControl';
+import Stepper from '@/components/ui/Stepper';
+import IOSSpinner from '@/components/ui/Spinner';
 import { fetchItemModifierGroups } from '@/lib/menu';
 import { fetchShopConfig, parseDonationPresets, DEFAULT_SETTINGS } from '@/lib/shop';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
+import {
+  fadeUp,
+  springLayout,
+  springPop,
+  springSheet,
+  springSnappy,
+  staggerParent,
+} from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { generateId } from '@/lib/utils';
 import type {
@@ -20,6 +32,94 @@ import type {
   Coupon,
   ShopSettings,
 } from '@/types';
+
+/**
+ * Navigation bar for the counter flow's inner steps.
+ *
+ * Frosted with a leading back chevron, matching the customer-side checkout —
+ * a barista and a customer hand this tablet back and forth, and the two halves
+ * of that handover shouldn't look like two different applications.
+ */
+function TabletHeader({
+  title,
+  subtitle,
+  onBack,
+  backDisabled,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack: () => void;
+  backDisabled?: boolean;
+}) {
+  return (
+    <header className="material-bar hairline-b flex shrink-0 items-center gap-3 px-3 pb-3 pt-3 pt-safe">
+      <motion.button
+        whileTap={backDisabled ? undefined : { scale: 0.9 }}
+        transition={springSnappy}
+        onClick={onBack}
+        disabled={backDisabled}
+        aria-label="Back"
+        className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-fill-tertiary text-primary touch-manipulation disabled:opacity-40"
+      >
+        <svg viewBox="0 0 12 20" className="h-[19px] w-[11px]" fill="none">
+          <path
+            d="M10 2L2 10l8 8"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </motion.button>
+      <div className="min-w-0">
+        <h1 className="text-ios-title3 truncate text-label">{title}</h1>
+        {subtitle && (
+          <p className="text-ios-footnote tnum truncate text-label-secondary">{subtitle}</p>
+        )}
+      </div>
+    </header>
+  );
+}
+
+/**
+ * Stripe's card field lives in an iframe and can't inherit our CSS, so its
+ * colors are read off the live document and handed over as literals. Without
+ * this the card number is near-invisible in dark mode.
+ */
+function useStripeAppearance() {
+  const [style, setStyle] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const read = () => {
+      const cs = getComputedStyle(document.documentElement);
+      setStyle({
+        color: cs.getPropertyValue('--label').trim() || '#000',
+        placeholder: cs.getPropertyValue('--label-tertiary').trim() || '#999',
+        danger: cs.getPropertyValue('--ios-red').trim() || '#FF3B30',
+      });
+    };
+    read();
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    mq.addEventListener('change', read);
+    return () => mq.removeEventListener('change', read);
+  }, []);
+
+  return {
+    style: {
+      base: {
+        // Larger than the customer page: this is read at arm's length on a
+        // tablet propped on a counter, not held in someone's hand.
+        fontSize: '19px',
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
+        color: style.color,
+        letterSpacing: '-0.011em',
+        '::placeholder': { color: style.placeholder },
+      },
+      invalid: { color: style.danger, iconColor: style.danger },
+    },
+  };
+}
 
 // ─── Local cart ───────────────────────────────────────────────────────────────
 
@@ -67,6 +167,7 @@ type TabletView = 'order' | 'name' | 'payment' | 'confirmation';
 function TabletInner() {
   const stripe = useStripe();
   const elements = useElements();
+  const stripeAppearance = useStripeAppearance();
 
   // Menu data
   const [categories, setCategories] = useState<Category[]>([]);
@@ -322,20 +423,65 @@ function TabletInner() {
 
   if (view === 'confirmation') {
     return (
-      <div className="min-h-screen bg-success flex items-center justify-center p-8">
-        <div className="text-center text-white max-w-md">
-          <div className="text-8xl mb-6">✓</div>
-          <h1 className="text-4xl font-heading font-bold mb-3">Order Placed!</h1>
-          <p className="text-xl opacity-90 mb-8">
+      <div className="flex min-h-screen-safe items-center justify-center bg-success p-8">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={springPop}
+          className="max-w-md text-center text-white"
+        >
+          {/* Drawn checkmark rather than a glyph, so it can animate — the tick
+              landing is the signal the barista is watching for before they
+              hand the tablet back and start the next order. */}
+          <motion.svg
+            viewBox="0 0 52 52"
+            className="mx-auto mb-6 h-28 w-28"
+            initial="hidden"
+            animate="show"
+          >
+            <motion.circle
+              cx="26"
+              cy="26"
+              r="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              opacity="0.4"
+              variants={{
+                hidden: { pathLength: 0 },
+                show: { pathLength: 1, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
+              }}
+            />
+            <motion.path
+              d="M14 27l8 8 16-16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              variants={{
+                hidden: { pathLength: 0 },
+                show: {
+                  pathLength: 1,
+                  transition: { duration: 0.35, delay: 0.3, ease: [0.16, 1, 0.3, 1] },
+                },
+              }}
+            />
+          </motion.svg>
+
+          <h1 className="text-ios-largetitle mb-3 text-white">Order Placed</h1>
+          <p className="text-ios-title3 mb-8 font-normal text-white/90">
             {confirmedOrderName}&apos;s order is on its way
           </p>
-          <button
+          <motion.button
+            whileTap={{ scale: 0.96 }}
+            transition={springSnappy}
             onClick={resetForNextOrder}
-            className="bg-white text-success font-accent font-bold px-10 py-5 rounded-2xl text-xl shadow-lg hover:bg-gray-50 cursor-pointer touch-manipulation active:scale-95 transition-all"
+            className="min-h-[60px] cursor-pointer touch-manipulation rounded-full bg-white px-10 text-[20px] font-semibold text-success shadow-lg"
           >
             Next Order
-          </button>
-        </div>
+          </motion.button>
+        </motion.div>
       </div>
     );
   }
@@ -344,105 +490,106 @@ function TabletInner() {
 
   if (view === 'payment') {
     return (
-      <div className="min-h-screen bg-bg flex flex-col">
-        <header className="bg-primary text-white px-4 py-4 flex items-center gap-4 shrink-0">
-          <button
-            onClick={() => setView('name')}
-            disabled={processing}
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 cursor-pointer touch-manipulation disabled:opacity-40 text-xl"
-          >
-            ←
-          </button>
-          <div>
-            <h1 className="text-xl font-heading font-bold">Payment</h1>
-            <p className="text-sm opacity-75">{customerName}</p>
-          </div>
-        </header>
+      <div className="flex min-h-screen-safe flex-col bg-bg">
+        <TabletHeader
+          title="Payment"
+          subtitle={customerName}
+          onBack={() => setView('name')}
+          backDisabled={processing}
+        />
 
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-md mx-auto px-4 py-8 space-y-5">
+        <main className="scroll-ios flex-1 overflow-y-auto">
+          <motion.div
+            key="payment"
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={springSheet}
+            className="mx-auto max-w-md space-y-5 px-4 py-8 pb-safe-4"
+          >
             {/* Order recap */}
-            <div className="bg-surface rounded-2xl p-5 shadow-sm space-y-2">
-              <h2 className="font-heading font-bold text-text-dark text-lg mb-3">
-                Order for {customerName}
-              </h2>
+            <div className="space-y-2 rounded-[var(--r-xl)] bg-surface p-5 shadow-sm">
+              <h2 className="text-ios-title3 mb-3 text-label">Order for {customerName}</h2>
               {cart.items.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm gap-3">
+                <div key={item.id} className="flex justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-body font-semibold">
+                    <p className="text-ios-subhead font-semibold text-label">
                       {item.quantity}× {item.menu_item.name}
                     </p>
                     {item.selected_modifiers.length > 0 && (
-                      <p className="text-xs text-text-light">
-                        {item.selected_modifiers.map((m) => m.name).join(', ')}
+                      <p className="text-ios-caption text-label-secondary">
+                        {item.selected_modifiers.map((m) => m.name).join(' · ')}
                       </p>
                     )}
                   </div>
-                  <span className="font-accent font-semibold shrink-0">
+                  <span className="tnum text-ios-subhead shrink-0 font-semibold text-label">
                     {item.item_total === 0 ? 'Free' : `$${item.item_total.toFixed(2)}`}
                   </span>
                 </div>
               ))}
               {cart.discountAmount > 0 && (
-                <div className="flex justify-between text-sm text-success pt-1">
+                <div className="text-ios-subhead flex justify-between pt-1 text-success">
                   <span>Discount ({cart.coupon?.code})</span>
-                  <span className="font-accent">−${cart.discountAmount.toFixed(2)}</span>
+                  <span className="tnum">−${cart.discountAmount.toFixed(2)}</span>
                 </div>
               )}
               {cart.donationAmount > 0 && (
-                <div className="flex justify-between text-sm text-text-light pt-1">
+                <div className="text-ios-subhead flex justify-between pt-1 text-label-secondary">
                   <span>{settings.donation_label}</span>
-                  <span className="font-accent">${cart.donationAmount.toFixed(2)}</span>
+                  <span className="tnum">${cart.donationAmount.toFixed(2)}</span>
                 </div>
               )}
-              <div className="pt-3 border-t border-gray-100 flex justify-between font-heading font-bold text-2xl">
+              <div className="hairline-t text-ios-title1 flex justify-between pt-3 text-label">
                 <span>Total</span>
-                <span>{cart.total === 0 ? 'Free' : `$${cart.total.toFixed(2)}`}</span>
+                <span className="tnum">
+                  {cart.total === 0 ? 'Free' : `$${cart.total.toFixed(2)}`}
+                </span>
               </div>
             </div>
 
             {/* Card input */}
             {!isFreeOrder && (
-              <div className="bg-surface rounded-2xl p-5 shadow-sm">
-                <h3 className="font-heading font-bold text-text-dark mb-4">Enter Card Details</h3>
-                <div className="border-2 border-gray-200 rounded-xl p-4 focus-within:border-primary transition-colors">
-                  <CardElement
-                    options={{
-                      style: {
-                        base: {
-                          fontSize: '18px',
-                          fontFamily: 'Nunito, sans-serif',
-                          color: '#54595F',
-                          '::placeholder': { color: '#7A7A7A' },
-                        },
-                      },
-                    }}
-                  />
+              <div className="rounded-[var(--r-xl)] bg-surface p-5 shadow-sm">
+                <h3 className="text-ios-headline mb-4 text-label">Enter Card Details</h3>
+                <div className="rounded-[var(--r-md)] bg-fill-tertiary p-4">
+                  <CardElement options={stripeAppearance} />
                 </div>
               </div>
             )}
 
-            {payError && (
-              <p className="text-danger text-sm bg-danger/5 px-4 py-3 rounded-xl">{payError}</p>
-            )}
+            <AnimatePresence>
+              {payError && (
+                <motion.p
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={springSnappy}
+                  className="text-ios-subhead overflow-hidden rounded-[var(--r-md)] bg-danger/12 px-4 py-3 text-danger"
+                >
+                  {payError}
+                </motion.p>
+              )}
+            </AnimatePresence>
 
-            <button
+            <motion.button
+              whileTap={processing ? undefined : { scale: 0.97 }}
+              transition={springSnappy}
               onClick={handlePayment}
               disabled={processing}
               className={cn(
-                'w-full py-5 rounded-2xl font-accent font-bold text-xl transition-all touch-manipulation',
+                'flex w-full items-center justify-center gap-2.5 rounded-full py-5 text-[20px] font-semibold touch-manipulation',
                 processing
-                  ? 'bg-gray-100 text-text-light cursor-not-allowed'
-                  : 'bg-success text-white hover:bg-success-light cursor-pointer active:scale-95',
+                  ? 'cursor-not-allowed bg-fill-tertiary text-label-tertiary'
+                  : 'cursor-pointer bg-success text-white shadow-sm',
               )}
             >
+              {processing && <IOSSpinner size={20} />}
               {processing
-                ? 'Processing...'
+                ? 'Processing…'
                 : isFreeOrder
-                ? 'Place Order — Free!'
-                : `Pay $${cart.total.toFixed(2)}`}
-            </button>
-          </div>
+                  ? 'Place Order — Free!'
+                  : `Pay $${cart.total.toFixed(2)}`}
+            </motion.button>
+          </motion.div>
         </main>
       </div>
     );
@@ -452,140 +599,158 @@ function TabletInner() {
 
   if (view === 'name') {
     return (
-      <div className="min-h-screen bg-bg flex flex-col">
-        <header className="bg-primary text-white px-4 py-4 flex items-center gap-4 shrink-0">
-          <button
-            onClick={() => setView('order')}
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 cursor-pointer touch-manipulation text-xl"
-          >
-            ←
-          </button>
-          <div>
-            <h1 className="text-xl font-heading font-bold">Customer Name</h1>
-            <p className="text-sm opacity-75">
-              {totalItemCount} item{totalItemCount !== 1 ? 's' : ''} ·{' '}
-              {cart.subtotal === 0 ? 'Free' : `$${cart.subtotal.toFixed(2)}`}
-            </p>
-          </div>
-        </header>
+      <div className="flex min-h-screen-safe flex-col bg-bg">
+        <TabletHeader
+          title="Customer Name"
+          subtitle={`${totalItemCount} item${totalItemCount !== 1 ? 's' : ''} · ${
+            cart.subtotal === 0 ? 'Free' : `$${cart.subtotal.toFixed(2)}`
+          }`}
+          onBack={() => setView('order')}
+        />
 
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-lg mx-auto px-4 py-8 space-y-5">
+        <main className="scroll-ios flex-1 overflow-y-auto">
+          <motion.div
+            key="name"
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={springSheet}
+            className="mx-auto max-w-lg space-y-5 px-4 py-8 pb-safe-4"
+          >
             {/* Order summary + editable quantities */}
-            <div className="bg-surface rounded-2xl p-5 shadow-sm space-y-3">
-              <h2 className="font-heading font-bold text-text-dark text-lg">Order Summary</h2>
-              {cart.items.map((item) => (
-                <div key={item.id} className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-body font-semibold text-sm">
-                      {item.menu_item.name}
-                    </p>
-                    {item.selected_modifiers.length > 0 && (
-                      <p className="text-xs text-text-light">
-                        {item.selected_modifiers.map((m) => m.name).join(', ')}
+            <div className="space-y-3 rounded-[var(--r-xl)] bg-surface p-5 shadow-sm">
+              <h2 className="text-ios-title3 text-label">Order Summary</h2>
+              <AnimatePresence initial={false} mode="popLayout">
+                {cart.items.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+                    transition={springLayout}
+                    className="flex items-start justify-between gap-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-ios-subhead font-semibold text-label">
+                        {item.menu_item.name}
                       </p>
-                    )}
-                    <p className="text-sm font-accent font-semibold text-primary mt-0.5">
-                      {item.item_total === 0 ? 'Free' : `$${item.item_total.toFixed(2)}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => updateQty(item.id, item.quantity - 1)}
-                      className="w-8 h-8 rounded-lg border border-gray-200 bg-bg font-bold flex items-center justify-center cursor-pointer hover:bg-gray-100 touch-manipulation"
-                    >
-                      −
-                    </button>
-                    <span className="w-6 text-center text-sm font-accent font-bold">{item.quantity}</span>
-                    <button
-                      onClick={() => updateQty(item.id, item.quantity + 1)}
-                      className="w-8 h-8 rounded-lg border border-gray-200 bg-bg font-bold flex items-center justify-center cursor-pointer hover:bg-gray-100 touch-manipulation"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              ))}
+                      {item.selected_modifiers.length > 0 && (
+                        <p className="text-ios-caption text-label-secondary">
+                          {item.selected_modifiers.map((m) => m.name).join(' · ')}
+                        </p>
+                      )}
+                      <p className="tnum text-ios-subhead mt-0.5 font-semibold text-primary">
+                        {item.item_total === 0 ? 'Free' : `$${item.item_total.toFixed(2)}`}
+                      </p>
+                    </div>
+                    <Stepper
+                      value={item.quantity}
+                      onChange={(q) => updateQty(item.id, q)}
+                      className="shrink-0"
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
 
               {/* Coupon — hidden when the admin turns coupons off */}
               {settings.coupons_enabled && (
-              <div className="pt-3 border-t border-gray-100">
-                {coupon ? (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-success font-accent font-semibold">{coupon.code} applied</span>
-                    <button onClick={() => setCoupon(null)} className="text-xs text-danger cursor-pointer hover:underline">Remove</button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Coupon code"
-                      value={couponCode}
-                      onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(''); }}
-                      className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-body focus:outline-none focus:border-primary min-w-0"
-                    />
-                    <button
-                      onClick={applyCoupon}
-                      className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-accent hover:bg-gray-50 cursor-pointer shrink-0"
-                    >
-                      Apply
-                    </button>
-                  </div>
-                )}
-                {couponError && <p className="text-xs text-danger mt-1">{couponError}</p>}
-              </div>
+                <div className="hairline-t pt-3">
+                  {coupon ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-ios-subhead font-semibold text-success">
+                        {coupon.code} applied
+                      </span>
+                      <button
+                        onClick={() => setCoupon(null)}
+                        className="press cursor-pointer text-[15px] text-danger"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Coupon code"
+                        value={couponCode}
+                        onChange={(e) => {
+                          setCouponCode(e.target.value.toUpperCase());
+                          setCouponError('');
+                        }}
+                        className="min-w-0 flex-1 rounded-[var(--r-md)] bg-fill-tertiary px-3.5 py-2.5 text-[16px] text-label placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-primary/25"
+                      />
+                      <motion.button
+                        whileTap={{ scale: 0.95 }}
+                        transition={springSnappy}
+                        onClick={applyCoupon}
+                        className="shrink-0 cursor-pointer rounded-full bg-primary/12 px-5 py-2.5 text-[15px] font-semibold text-primary"
+                      >
+                        Apply
+                      </motion.button>
+                    </div>
+                  )}
+                  {couponError && (
+                    <p className="text-ios-caption mt-1.5 text-danger">{couponError}</p>
+                  )}
+                </div>
               )}
 
               {/* Donation — hidden when the admin turns donations off */}
               {settings.donations_enabled && (
-                <div>
-                  <p className="mb-2 font-body text-sm text-text-light">
+                <div className="hairline-t pt-3">
+                  <p className="text-ios-subhead mb-2 text-label-secondary">
                     {settings.donation_label} (optional)
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     {donationPresets.map((amount) => (
-                      <button
+                      <motion.button
                         key={amount}
                         type="button"
-                        onClick={() =>
-                          setDonationAmount(donationAmount === amount ? 0 : amount)
-                        }
+                        whileTap={{ scale: 0.94 }}
+                        transition={springSnappy}
+                        onClick={() => setDonationAmount(donationAmount === amount ? 0 : amount)}
                         className={cn(
-                          'cursor-pointer touch-manipulation rounded-xl border-2 px-4 py-2.5 font-accent text-sm font-bold transition-all active:scale-95',
+                          'tnum cursor-pointer touch-manipulation rounded-full px-5 py-2.5 text-[15px] font-semibold',
+                          'transition-colors duration-200 ease-[var(--ease-out-ios)]',
                           donationAmount === amount
-                            ? 'border-success bg-success text-white'
-                            : 'border-gray-200 bg-surface text-text hover:border-success/40',
+                            ? 'bg-success text-white shadow-sm'
+                            : 'bg-fill-tertiary text-label',
                         )}
                       >
                         ${amount.toFixed(2)}
-                      </button>
+                      </motion.button>
                     ))}
                     <input
                       type="number"
+                      inputMode="decimal"
                       min="0"
                       step="0.50"
                       placeholder="Other"
                       value={donationAmount || ''}
-                      onChange={(e) => setDonationAmount(Math.max(0, parseFloat(e.target.value) || 0))}
-                      className="w-28 rounded-xl border border-gray-200 px-3 py-2.5 font-body text-sm focus:border-primary focus:outline-none"
+                      onChange={(e) =>
+                        setDonationAmount(Math.max(0, parseFloat(e.target.value) || 0))
+                      }
+                      className="w-28 rounded-[var(--r-md)] bg-fill-tertiary px-3.5 py-2.5 text-[16px] text-label placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-primary/25"
                     />
                   </div>
                 </div>
               )}
 
               {/* Total */}
-              <div className="pt-3 border-t border-gray-100 flex justify-between font-heading font-bold text-xl">
+              <div className="hairline-t text-ios-title2 flex justify-between pt-3 text-label">
                 <span>Total</span>
-                <span>{cart.total === 0 ? 'Free' : `$${cart.total.toFixed(2)}`}</span>
+                <span className="tnum">
+                  {cart.total === 0 ? 'Free' : `$${cart.total.toFixed(2)}`}
+                </span>
               </div>
             </div>
 
             {/* Name input */}
-            <div className="bg-surface rounded-2xl p-5 shadow-sm">
-              <label className="block font-heading font-bold text-text-dark text-lg mb-1">
+            <div className="rounded-[var(--r-xl)] bg-surface p-5 shadow-sm">
+              <label className="text-ios-title3 mb-1 block text-label">
                 Customer&apos;s first &amp; last name
               </label>
-              <p className="mb-3 font-body text-sm text-text-light">
+              <p className="text-ios-subhead mb-3 text-label-secondary">
                 A last initial is enough — e.g. Sarah K
               </p>
               <input
@@ -600,26 +765,29 @@ function TabletInner() {
                 onKeyDown={(e) => e.key === 'Enter' && goToPayment()}
                 autoFocus
                 className={cn(
-                  'w-full px-4 py-4 rounded-xl border-2 bg-bg font-body text-xl text-text-dark placeholder:text-text-light focus:outline-none transition-colors',
-                  nameError ? 'border-danger' : 'border-gray-200 focus:border-primary',
+                  'w-full rounded-[var(--r-md)] bg-fill-tertiary px-4 py-4 text-[22px] text-label',
+                  'placeholder:text-label-tertiary focus:outline-none focus:ring-[3px]',
+                  nameError ? 'ring-2 ring-danger' : 'focus:ring-primary/25',
                 )}
               />
-              {nameError && <p className="mt-2 text-sm font-body text-danger">{nameError}</p>}
+              {nameError && <p className="text-ios-subhead mt-2 text-danger">{nameError}</p>}
             </div>
 
-            <button
+            <motion.button
+              whileTap={customerName.trim() ? { scale: 0.97 } : undefined}
+              transition={springSnappy}
               onClick={goToPayment}
               disabled={!customerName.trim()}
               className={cn(
-                'w-full py-5 rounded-2xl font-accent font-bold text-xl transition-all touch-manipulation',
+                'w-full rounded-full py-5 text-[20px] font-semibold touch-manipulation',
                 customerName.trim()
-                  ? 'bg-primary text-white hover:bg-primary-light cursor-pointer active:scale-95'
-                  : 'bg-gray-100 text-text-light cursor-not-allowed',
+                  ? 'cursor-pointer bg-primary text-white shadow-sm'
+                  : 'cursor-not-allowed bg-fill-tertiary text-label-tertiary',
               )}
             >
               Proceed to Payment →
-            </button>
-          </div>
+            </motion.button>
+          </motion.div>
         </main>
       </div>
     );
@@ -630,145 +798,168 @@ function TabletInner() {
   const filteredItems = menuItems.filter((i) => i.category_id === activeCategory);
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
+    <div className="flex min-h-screen-safe flex-col bg-bg">
       {/* Header */}
-      <header className="bg-primary text-white px-4 py-3 shrink-0">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+      <header className="material-bar hairline-b shrink-0 px-4 pb-2.5 pt-3 pt-safe">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-heading font-bold">LOTG Coffee</h1>
+            <h1 className="text-ios-title2 text-label">LOTG Coffee</h1>
             {activeEvent && (
-              <p className="text-xs opacity-75">
-                {activeEvent.name}{isEventFree && ' — Everything Free!'}
+              <p className="text-ios-caption text-warm">
+                {activeEvent.name}
+                {isEventFree && ' — Everything Free!'}
               </p>
             )}
           </div>
-          <span className="text-sm opacity-75 font-accent">Counter Order</span>
+          <span className="text-ios-footnote rounded-full bg-fill-tertiary px-3 py-1 font-medium text-label-secondary">
+            Counter Order
+          </span>
         </div>
       </header>
 
       {/* Category tabs — sticky */}
-      <div className="bg-surface border-b border-gray-100 sticky top-0 z-20 shrink-0">
-        <div className="max-w-5xl mx-auto px-4">
+      <div className="material-bar hairline-b sticky top-0 z-20 shrink-0">
+        <div className="mx-auto max-w-5xl px-4 py-2.5">
           {menuLoading ? (
-            <div className="h-14 flex items-center">
-              <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            <div className="flex h-9 items-center">
+              <IOSSpinner size={18} />
             </div>
           ) : (
-            <div className="flex gap-2 overflow-x-auto py-2.5 scrollbar-hide">
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={cn(
-                    'px-4 py-2.5 rounded-xl text-sm font-accent font-semibold whitespace-nowrap transition-colors cursor-pointer touch-manipulation shrink-0',
-                    activeCategory === cat.id
-                      ? 'bg-primary text-white'
-                      : 'bg-bg text-text hover:bg-gray-100',
-                  )}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              scrollable
+              segments={categories.map((c) => ({ id: c.id, label: c.name }))}
+              activeId={activeCategory}
+              onSelect={setActiveCategory}
+            />
           )}
         </div>
       </div>
 
       {/* Item grid — scrollable, padded to not hide behind bottom bar */}
-      <main className="flex-1 overflow-y-auto pb-28">
-        <div className="max-w-5xl mx-auto px-4 py-4">
+      <main className="scroll-ios flex-1 overflow-y-auto pb-32">
+        <div className="mx-auto max-w-5xl px-4 py-4">
           {menuLoading ? (
             <div className="flex justify-center py-20">
-              <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+              <IOSSpinner size={28} />
             </div>
           ) : filteredItems.length === 0 ? (
-            <p className="text-center text-text-light py-20">No items in this category</p>
+            <p className="text-ios-body py-20 text-center text-label-tertiary">
+              No items in this category
+            </p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <motion.div
+              key={activeCategory}
+              variants={staggerParent}
+              initial="hidden"
+              animate="show"
+              className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+            >
               {filteredItems.map((item) => {
                 const soldOut = item.is_sold_out;
 
                 return (
-                  <button
+                  <motion.button
                     key={item.id}
+                    variants={fadeUp}
+                    whileTap={soldOut ? undefined : { scale: 0.95 }}
+                    transition={springSnappy}
                     onClick={() => setSelectedItem(item)}
                     disabled={soldOut}
                     className={cn(
-                      'relative bg-surface rounded-2xl p-4 text-left shadow-sm border border-gray-100 transition-all touch-manipulation',
-                      soldOut
-                        ? 'cursor-not-allowed border-danger/30 bg-danger/5 opacity-70'
-                        : 'cursor-pointer active:scale-95 hover:shadow-md hover:border-primary/20',
+                      'relative flex flex-col rounded-[var(--r-lg)] bg-surface p-4 text-left shadow-sm touch-manipulation',
+                      soldOut ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
                     )}
                   >
                     {item.image_url && (
-                      <div className="w-full h-20 rounded-xl bg-bg mb-3 overflow-hidden">
+                      <div className="mb-3 h-20 w-full overflow-hidden rounded-[var(--r-md)] bg-fill-quaternary">
                         <img
                           src={item.image_url}
                           alt={item.name}
-                          className={cn('w-full h-full object-cover', soldOut && 'grayscale')}
+                          className={cn('h-full w-full object-cover', soldOut && 'grayscale')}
                         />
                       </div>
                     )}
-                    <h3 className="font-heading font-bold text-text-dark text-sm leading-tight mb-1">
+                    <h3 className="text-ios-subhead mb-1 font-semibold leading-tight text-label">
                       {item.name}
                     </h3>
                     {item.description && (
-                      <p className="text-xs text-text-light line-clamp-2 mb-2">{item.description}</p>
+                      <p className="text-ios-caption mb-2 line-clamp-2 text-label-secondary">
+                        {item.description}
+                      </p>
                     )}
                     <div className="mt-auto flex items-center justify-between gap-2">
-                      <span className="font-accent font-bold text-base">
+                      <span className="tnum text-ios-callout font-semibold">
                         {isEventFree || item.is_free ? (
                           <span className="text-success">Free</span>
                         ) : (
-                          <span className={soldOut ? 'text-text-light line-through' : 'text-primary'}>
+                          <span className={soldOut ? 'text-label-tertiary line-through' : 'text-label'}>
                             ${item.base_price.toFixed(2)}
                           </span>
                         )}
                       </span>
                       {soldOut && (
-                        <span className="rounded-full bg-danger px-2 py-0.5 font-accent text-[10px] font-bold uppercase tracking-wide text-white">
+                        <span className="rounded-full bg-danger px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                           Sold Out
                         </span>
                       )}
                     </div>
-                  </button>
+                  </motion.button>
                 );
               })}
-            </div>
+            </motion.div>
           )}
         </div>
       </main>
 
       {/* Sticky bottom bar — cart summary + continue */}
-      <div className="fixed bottom-0 left-0 right-0 bg-surface border-t border-gray-200 px-4 py-3 z-20">
-        <div className="max-w-5xl mx-auto">
-          {cartItems.length === 0 ? (
-            <p className="text-center text-text-light text-sm font-body py-1">
-              Tap items above to start the order
-            </p>
-          ) : (
-            <div className="flex items-center gap-4">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-text-light font-accent mb-0.5">
-                  {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}
-                </p>
-                <p className="text-sm font-body text-text truncate">
-                  {cartItems.map((i) => `${i.quantity > 1 ? `${i.quantity}× ` : ''}${i.menu_item.name}`).join(', ')}
-                </p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <span className="font-heading font-bold text-lg text-text-dark">
-                  {cart.subtotal === 0 ? 'Free' : `$${cart.subtotal.toFixed(2)}`}
-                </span>
-                <button
-                  onClick={() => setView('name')}
-                  className="bg-primary text-white font-accent font-bold px-5 py-3 rounded-xl hover:bg-primary-light cursor-pointer touch-manipulation active:scale-95 transition-all whitespace-nowrap text-base"
-                >
-                  Enter Name →
-                </button>
-              </div>
-            </div>
-          )}
+      <div className="material-bar hairline-t fixed bottom-0 left-0 right-0 z-20 px-4 py-3 pb-safe-4">
+        <div className="mx-auto max-w-5xl">
+          <AnimatePresence mode="wait" initial={false}>
+            {cartItems.length === 0 ? (
+              <motion.p
+                key="empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-ios-subhead py-1 text-center text-label-tertiary"
+              >
+                Tap items above to start the order
+              </motion.p>
+            ) : (
+              <motion.div
+                key="filled"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={springSnappy}
+                className="flex items-center gap-4"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-ios-caption tnum mb-0.5 text-label-secondary">
+                    {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-ios-subhead truncate text-label">
+                    {cartItems
+                      .map((i) => `${i.quantity > 1 ? `${i.quantity}× ` : ''}${i.menu_item.name}`)
+                      .join(', ')}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="tnum text-ios-title3 text-label">
+                    {cart.subtotal === 0 ? 'Free' : `$${cart.subtotal.toFixed(2)}`}
+                  </span>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    transition={springSnappy}
+                    onClick={() => setView('name')}
+                    className="cursor-pointer touch-manipulation whitespace-nowrap rounded-full bg-primary px-6 py-3.5 text-[17px] font-semibold text-white shadow-sm"
+                  >
+                    Enter Name →
+                  </motion.button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 

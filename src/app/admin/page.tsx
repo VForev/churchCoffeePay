@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import Card from '@/components/ui/Card';
+import SegmentedControl from '@/components/ui/SegmentedControl';
+import { springSnappy } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { drinkTemperature } from '@/lib/temperature';
 import type { Event } from '@/types';
+import IOSSpinner from '@/components/ui/Spinner';
 
 /**
  * Admin analytics.
@@ -199,78 +203,83 @@ export default function AdminDashboard() {
     <div>
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-heading text-2xl font-bold text-text-dark">Dashboard</h1>
-          <p className="mt-0.5 font-body text-sm text-text-light">
-            Showing <strong className="text-text">{activeWindow.label}</strong> · {eventName}
+          <h1 className="text-ios-largetitle text-label">Dashboard</h1>
+          <p className="text-ios-subhead mt-0.5 text-label-secondary">
+            Showing <strong className="font-semibold text-label">{activeWindow.label}</strong> ·{' '}
+            {eventName}
           </p>
         </div>
         <div className="flex gap-2">
-          <button
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            transition={springSnappy}
             onClick={fetchData}
-            className="cursor-pointer rounded-xl border border-gray-200 bg-surface px-4 py-2 font-accent text-sm font-semibold text-text hover:bg-gray-50"
+            className="cursor-pointer rounded-full bg-fill-tertiary px-4 py-2 text-[15px] font-medium text-label"
           >
             ↻ Refresh
-          </button>
-          <button
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            transition={springSnappy}
             onClick={resetFilters}
-            className="cursor-pointer rounded-xl border border-gray-200 bg-surface px-4 py-2 font-accent text-sm font-semibold text-text hover:bg-gray-50"
+            className="cursor-pointer rounded-full bg-fill-tertiary px-4 py-2 text-[15px] font-medium text-label"
           >
             Reset to today
-          </button>
+          </motion.button>
         </div>
       </div>
 
       {/* Filters — one row, above everything they control */}
       <Card className="mb-6">
-        <div className="mb-3 flex flex-wrap gap-2">
-          {RANGES.map((r) => (
-            <button
-              key={r.key}
-              onClick={() => setRange(r.key)}
-              className={cn(
-                'cursor-pointer rounded-full px-4 py-2 font-accent text-sm font-semibold transition-colors',
-                range === r.key
-                  ? 'bg-primary text-white'
-                  : 'bg-bg text-text-light hover:bg-gray-100 hover:text-text',
-              )}
-            >
-              {r.label}
-            </button>
-          ))}
+        <div className="mb-4">
+          <SegmentedControl
+            scrollable
+            segments={RANGES.map((r) => ({ id: r.key, label: r.label }))}
+            activeId={range}
+            onSelect={(id) => setRange(id as typeof range)}
+          />
         </div>
 
         <div className="flex flex-wrap items-end gap-4">
-          {range === 'custom' && (
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="font-body text-xs text-text-light">
-                From
-                <input
-                  type="date"
-                  value={customFrom}
-                  max={customTo || undefined}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  className="mt-1 block rounded-xl border-2 border-gray-200 px-3 py-2 font-body text-sm text-text-dark focus:border-primary focus:outline-none"
-                />
-              </label>
-              <label className="font-body text-xs text-text-light">
-                To
-                <input
-                  type="date"
-                  value={customTo}
-                  min={customFrom || undefined}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  className="mt-1 block rounded-xl border-2 border-gray-200 px-3 py-2 font-body text-sm text-text-dark focus:border-primary focus:outline-none"
-                />
-              </label>
-            </div>
-          )}
+          <AnimatePresence initial={false}>
+            {range === 'custom' && (
+              <motion.div
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                transition={springSnappy}
+                className="flex flex-wrap items-end gap-2 overflow-hidden"
+              >
+                <label className="text-ios-caption text-label-secondary">
+                  From
+                  <input
+                    type="date"
+                    value={customFrom}
+                    max={customTo || undefined}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    className="tnum mt-1 block rounded-[var(--r-md)] bg-fill-tertiary px-3 py-2 text-[15px] text-label focus:outline-none focus:ring-2 focus:ring-primary/25"
+                  />
+                </label>
+                <label className="text-ios-caption text-label-secondary">
+                  To
+                  <input
+                    type="date"
+                    value={customTo}
+                    min={customFrom || undefined}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    className="tnum mt-1 block rounded-[var(--r-md)] bg-fill-tertiary px-3 py-2 text-[15px] text-label focus:outline-none focus:ring-2 focus:ring-primary/25"
+                  />
+                </label>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <label className="font-body text-xs text-text-light">
+          <label className="text-ios-caption text-label-secondary">
             Event
             <select
               value={eventFilter}
               onChange={(e) => setEventFilter(e.target.value)}
-              className="mt-1 block rounded-xl border-2 border-gray-200 px-3 py-2 font-body text-sm text-text-dark focus:border-primary focus:outline-none"
+              className="mt-1 block rounded-[var(--r-md)] bg-fill-tertiary px-3 py-2 text-[15px] text-label focus:outline-none focus:ring-2 focus:ring-primary/25"
             >
               <option value={ALL_EVENTS}>All events</option>
               <option value={NO_EVENT}>Regular service (no event)</option>
@@ -287,7 +296,7 @@ export default function AdminDashboard() {
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
+          <IOSSpinner size={28} />
         </div>
       ) : stats.orderCount === 0 ? (
         <Card>
@@ -354,7 +363,7 @@ export default function AdminDashboard() {
               subtitle="Compare one event against another"
             />
             {eventRows.length === 0 ? (
-              <p className="py-6 text-center font-body text-sm text-text-light">
+              <p className="py-6 text-center text-ios-subhead text-label-secondary">
                 No orders in this window are tagged to an event.
               </p>
             ) : (
@@ -394,7 +403,7 @@ export default function AdminDashboard() {
                     ))}
                   </tbody>
                 </table>
-                <p className="mt-3 font-body text-xs text-text-light">
+                <p className="mt-3 text-ios-caption text-label-secondary">
                   Click a row to filter the whole dashboard to that event.
                 </p>
               </div>
@@ -407,7 +416,7 @@ export default function AdminDashboard() {
       <Card>
         <ChartHeading title="Low stock alerts" subtitle="Current levels, not affected by the filters above" />
         {lowStock.length === 0 ? (
-          <p className="font-body text-sm text-text-light">All inventory levels are good</p>
+          <p className="text-ios-subhead text-label-secondary">All inventory levels are good</p>
         ) : (
           <div className="space-y-2">
             {lowStock.map((item) => (
@@ -415,7 +424,7 @@ export default function AdminDashboard() {
                 key={item.name}
                 className="flex items-center justify-between rounded-xl bg-warning/5 px-3 py-2"
               >
-                <span className="font-body text-sm">{item.name}</span>
+                <span className="text-sm">{item.name}</span>
                 <span className="font-accent text-sm font-semibold text-warning">
                   {item.current_stock} {item.unit} left
                 </span>
@@ -522,15 +531,25 @@ function summarize(orders: AnalyticsOrder[]): Summary {
 function StatCard({ label, value, big }: { label: string; value: string; big?: boolean }) {
   return (
     <Card>
-      <p className="font-body text-sm text-text-light">{label}</p>
-      <p
-        className={cn(
-          'mt-1 font-heading font-bold text-text-dark',
-          big ? 'text-3xl' : 'text-2xl',
-        )}
-      >
-        {value}
-      </p>
+      <p className="text-ios-subhead text-label-secondary">{label}</p>
+      {/* Keyed on the value so changing the filter counts the number up into
+          place rather than swapping it. tabular figures stop the card width
+          twitching as digits change. */}
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.p
+          key={value}
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 8, position: 'absolute' }}
+          transition={springSnappy}
+          className={cn(
+            'tnum mt-1 font-bold tracking-[-0.02em] text-label',
+            big ? 'text-[32px] leading-9' : 'text-[26px] leading-8',
+          )}
+        >
+          {value}
+        </motion.p>
+      </AnimatePresence>
     </Card>
   );
 }
@@ -538,8 +557,8 @@ function StatCard({ label, value, big }: { label: string; value: string; big?: b
 function ChartHeading({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="mb-3">
-      <h2 className="font-heading font-bold text-text-dark">{title}</h2>
-      {subtitle && <p className="font-body text-xs text-text-light">{subtitle}</p>}
+      <h2 className="text-ios-headline text-label">{title}</h2>
+      {subtitle && <p className="text-ios-caption text-label-secondary">{subtitle}</p>}
     </div>
   );
 }
@@ -547,25 +566,29 @@ function ChartHeading({ title, subtitle }: { title: string; subtitle: string }) 
 /** Horizontal magnitude bars — one hue, longest first, value labelled on every row. */
 function BarList({ rows, unit }: { rows: { name: string; count: number }[]; unit: string }) {
   if (rows.length === 0) {
-    return <p className="font-body text-sm text-text-light">Nothing yet</p>;
+    return <p className="text-ios-subhead text-label-tertiary">Nothing yet</p>;
   }
 
   const max = Math.max(...rows.map((r) => r.count));
 
   return (
     <div className="space-y-2.5">
-      {rows.map((row) => (
+      {rows.map((row, i) => (
         <div key={row.name} title={`${row.name}: ${row.count} ${unit}`}>
           <div className="mb-1 flex items-baseline justify-between gap-3">
-            <span className="truncate font-body text-sm text-text-dark">{row.name}</span>
-            <span className="shrink-0 font-accent text-sm font-semibold text-text">
+            <span className="text-ios-subhead truncate text-label">{row.name}</span>
+            <span className="tnum text-ios-subhead shrink-0 font-semibold text-label-secondary">
               {row.count}
             </span>
           </div>
-          <div className="h-2 w-full rounded-full bg-bg">
-            <div
-              className="h-2 rounded-full bg-primary transition-all"
-              style={{ width: `${Math.max((row.count / max) * 100, 2)}%` }}
+          <div className="h-2 w-full overflow-hidden rounded-full bg-fill-tertiary">
+            {/* Bars grow from zero on mount, staggered down the list — the
+                chart draws itself instead of appearing already finished. */}
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.max((row.count / max) * 100, 2)}%` }}
+              transition={{ ...springSnappy, delay: i * 0.05 }}
+              className="h-2 rounded-full bg-primary"
             />
           </div>
         </div>
@@ -577,28 +600,30 @@ function BarList({ rows, unit }: { rows: { name: string; count: number }[]; unit
 /** Vertical bars, one per hour that actually saw an order. */
 function HourChart({ hours }: { hours: { hour: number; count: number }[] }) {
   if (hours.length === 0) {
-    return <p className="font-body text-sm text-text-light">Nothing yet</p>;
+    return <p className="text-ios-subhead text-label-tertiary">Nothing yet</p>;
   }
 
   const max = Math.max(...hours.map((h) => h.count));
 
   return (
-    <div className="flex h-44 gap-2 overflow-x-auto pb-1">
-      {hours.map(({ hour, count }) => (
+    <div className="scrollbar-hide flex h-44 gap-2 overflow-x-auto pb-1">
+      {hours.map(({ hour, count }, i) => (
         <div
           key={hour}
           className="flex h-full min-w-10 flex-1 flex-col items-center justify-end gap-1"
           title={`${formatHour(hour)}: ${count} order${count !== 1 ? 's' : ''}`}
         >
-          <span className="font-accent text-xs font-semibold text-text">{count}</span>
+          <span className="tnum text-ios-caption font-semibold text-label-secondary">{count}</span>
           {/* The bar scales against the plot area only — the two labels sit outside it. */}
           <div className="flex w-full flex-1 items-end">
-            <div
-              className="w-full rounded-t-md bg-primary transition-all"
-              style={{ height: `${Math.max((count / max) * 100, 4)}%` }}
+            <motion.div
+              initial={{ height: 0 }}
+              animate={{ height: `${Math.max((count / max) * 100, 4)}%` }}
+              transition={{ ...springSnappy, delay: i * 0.03 }}
+              className="w-full rounded-t-[6px] bg-primary"
             />
           </div>
-          <span className="whitespace-nowrap font-body text-xs text-text-light">
+          <span className="text-ios-caption whitespace-nowrap text-label-tertiary">
             {formatHour(hour)}
           </span>
         </div>

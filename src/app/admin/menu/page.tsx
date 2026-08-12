@@ -9,6 +9,8 @@ import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
+import { SwitchField } from '@/components/ui/List';
+import IOSSpinner from '@/components/ui/Spinner';
 import type {
   Category,
   MenuItem,
@@ -155,14 +157,14 @@ export default function AdminMenuPage() {
     fetchData();
   }
 
-  if (loading) return <div className="flex justify-center py-20"><div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-20"><IOSSpinner size={28} /></div>;
 
   const sortedCats = [...categories].sort((a, b) => a.display_order - b.display_order);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
-        <h1 className="text-2xl font-heading font-bold text-text-dark">Menu Management</h1>
+        <h1 className="text-ios-largetitle text-label">Menu Management</h1>
         <div className="flex gap-2">
           <Button size="sm" variant="ghost" className="border border-gray-200" onClick={() => setEditCat({ name: '', display_order: categories.length, is_active: true })}>
             + Category
@@ -175,7 +177,7 @@ export default function AdminMenuPage() {
 
       {/* Categories */}
       <Card className="mb-6">
-        <h2 className="font-heading font-bold text-text-dark mb-3">Categories</h2>
+        <h2 className="text-ios-headline text-label mb-3">Categories</h2>
         <div className="space-y-1">
           {sortedCats.map((cat, idx) => (
             <div key={cat.id} className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-gray-50">
@@ -312,15 +314,17 @@ export default function AdminMenuPage() {
               <Input label="Price" type="number" step="0.01" min="0" value={editItem.base_price || 0} onChange={(e) => setEditItem({ ...editItem, base_price: parseFloat(e.target.value) })} />
             </div>
             <Input label="Image URL" value={editItem.image_url || ''} onChange={(e) => setEditItem({ ...editItem, image_url: e.target.value })} placeholder="https://..." />
-            <div className="flex gap-4 flex-wrap">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={editItem.is_free || false} onChange={(e) => setEditItem({ ...editItem, is_free: e.target.checked })} className="accent-primary w-4 h-4" />
-                <span className="text-sm font-body">Free item</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={editItem.is_available ?? true} onChange={(e) => setEditItem({ ...editItem, is_available: e.target.checked })} className="accent-primary w-4 h-4" />
-                <span className="text-sm font-body">Available</span>
-              </label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <SwitchField
+                label="Free item"
+                checked={editItem.is_free || false}
+                onChange={(v) => setEditItem({ ...editItem, is_free: v })}
+              />
+              <SwitchField
+                label="Available"
+                checked={editItem.is_available ?? true}
+                onChange={(v) => setEditItem({ ...editItem, is_available: v })}
+              />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => setEditItem(null)}>Cancel</Button>
@@ -340,10 +344,12 @@ export default function AdminMenuPage() {
         {editCat && (
           <div className="space-y-4">
             <Input label="Name" value={editCat.name || ''} onChange={(e) => setEditCat({ ...editCat, name: e.target.value })} required />
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={editCat.is_active ?? true} onChange={(e) => setEditCat({ ...editCat, is_active: e.target.checked })} className="accent-primary w-4 h-4" />
-              <span className="text-sm font-body">Active (visible to customers)</span>
-            </label>
+            <SwitchField
+              label="Active"
+              help="Visible to customers"
+              checked={editCat.is_active ?? true}
+              onChange={(v) => setEditCat({ ...editCat, is_active: v })}
+            />
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => setEditCat(null)}>Cancel</Button>
               <Button onClick={saveCat} disabled={saving || !editCat.name}>{saving ? 'Saving...' : 'Save'}</Button>
@@ -468,7 +474,7 @@ function ItemOptionsModal({ item, onClose }: { item: MenuItem; onClose: () => vo
       {error ? (
         <p className="min-w-0 flex-1 truncate text-sm text-danger">{error}</p>
       ) : (
-        <p className="min-w-0 flex-1 font-body text-xs text-text-light">
+        <p className="min-w-0 flex-1 text-ios-caption text-label-secondary">
           Applies to {item.name} only.
         </p>
       )}
@@ -487,7 +493,7 @@ function ItemOptionsModal({ item, onClose }: { item: MenuItem; onClose: () => vo
     <Modal isOpen onClose={onClose} title={`${item.name} — Options`} size="lg" footer={footer}>
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
+          <IOSSpinner size={22} />
         </div>
       ) : (
         <div className="space-y-5">
@@ -547,7 +553,7 @@ function ItemOptionsModal({ item, onClose }: { item: MenuItem; onClose: () => vo
                         <Badge variant="neutral">{hiddenCount} hidden</Badge>
                       )}
                     </div>
-                    <p className="mt-0.5 font-body text-xs text-text-light">
+                    <p className="mt-0.5 text-ios-caption text-label-secondary">
                       {linked
                         ? `${groupMods.length} option${groupMods.length !== 1 ? 's' : ''} on this drink`
                         : 'Not offered on this drink'}
@@ -558,7 +564,7 @@ function ItemOptionsModal({ item, onClose }: { item: MenuItem; onClose: () => vo
                 {linked && groupMods.length > 0 && (
                   <div className="mt-4 space-y-2 border-t border-gray-100 pt-3">
                     {!group.allow_multiple && lockedCount > 1 && (
-                      <p className="rounded-lg bg-warning/10 px-3 py-2 font-body text-xs text-amber-800">
+                      <p className="rounded-lg bg-warning/10 px-3 py-2 font-body text-xs text-warning">
                         {group.name} lets the customer pick only one, so locking more than one
                         option won&apos;t work — only the first will apply.
                       </p>

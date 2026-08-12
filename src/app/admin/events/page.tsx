@@ -8,6 +8,8 @@ import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
 import type { Event } from '@/types';
+import { SwitchField } from '@/components/ui/List';
+import IOSSpinner from '@/components/ui/Spinner';
 
 export default function AdminEventsPage() {
   const [events, setEvents] = useState<Event[]>([]);
@@ -67,13 +69,13 @@ export default function AdminEventsPage() {
     fetchData();
   }
 
-  if (loading) return <div className="flex justify-center py-20"><div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-20"><IOSSpinner size={28} /></div>;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-text-dark">Event Pricing</h1>
+          <h1 className="text-ios-largetitle text-label">Event Pricing</h1>
           <p className="text-sm text-text-light mt-1">Create pricing profiles for different events. Only one can be active at a time.</p>
         </div>
         <Button size="sm" onClick={() => setEditEvent({ name: '', is_all_free: false })}>
@@ -87,7 +89,7 @@ export default function AdminEventsPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div>
-                  <h3 className="font-heading font-bold text-text-dark">{event.name}</h3>
+                  <h3 className="text-ios-headline text-label">{event.name}</h3>
                   <div className="flex gap-2 mt-1">
                     {event.is_active && <Badge variant="success">Active</Badge>}
                     {event.is_all_free && <Badge variant="secondary">Everything Free</Badge>}
@@ -119,10 +121,12 @@ export default function AdminEventsPage() {
         {editEvent && (
           <div className="space-y-4">
             <Input label="Event Name" value={editEvent.name || ''} onChange={(e) => setEditEvent({ ...editEvent, name: e.target.value })} placeholder="e.g., Sunday Morning, Youth Night" />
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={editEvent.is_all_free || false} onChange={(e) => setEditEvent({ ...editEvent, is_all_free: e.target.checked })} className="accent-primary" />
-              <span className="text-sm font-body">Everything free during this event</span>
-            </label>
+            <SwitchField
+              label="Everything free"
+              help="All drinks and add-ins show as $0 during this event"
+              checked={editEvent.is_all_free || false}
+              onChange={(v) => setEditEvent({ ...editEvent, is_all_free: v })}
+            />
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => setEditEvent(null)}>Cancel</Button>
               <Button onClick={saveEvent} disabled={saving || !editEvent.name}>{saving ? 'Saving...' : 'Save'}</Button>

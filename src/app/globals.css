@@ -1,51 +1,415 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   iOS design system
+   --------------------------------------------------------------------------
+   Apple's semantic color system, in two appearances. The rule that keeps this
+   maintainable: **raw system colors are declared once and never used directly
+   by a component.** Components only ever reference the semantic tokens below
+   (label, fill, separator, background), and the semantic tokens are the only
+   thing that gets redefined for dark mode. Add a raw hex to a component and it
+   will look correct in light mode and wrong in dark mode, silently.
+   ========================================================================== */
+
 :root {
-  --color-primary: #4054B2;
-  --color-primary-light: #5A6FCC;
-  --color-secondary: #6EC1E4;
-  --color-secondary-light: #8ED1EC;
-  --color-success: #23A455;
-  --color-success-light: #61CE70;
-  --color-warm: #6B5D4B;
-  --color-warm-light: #8A7A68;
-  --color-bg: #F0F4F7;
-  --color-surface: #FFFFFF;
-  --color-text: #54595F;
-  --color-text-dark: #000000;
-  --color-text-light: #7A7A7A;
-  --color-danger: #DC2626;
-  --color-warning: #F59E0B;
+  /* Tells the browser to render native form controls, scrollbars and the
+     caret in the matching appearance. Without it, dark mode gets white
+     scrollbars and light-mode date pickers. */
+  color-scheme: light dark;
+
+  /* ---- Raw iOS system colors — LIGHT appearance ---- */
+  --ios-blue: #007AFF;
+  --ios-blue-dim: #0051D5;      /* pressed state */
+  --ios-green: #34C759;
+  --ios-green-dim: #248A3D;
+  --ios-red: #FF3B30;
+  --ios-red-dim: #D70015;
+  --ios-orange: #FF9500;
+  --ios-yellow: #FFCC00;
+  --ios-indigo: #5856D6;
+  --ios-teal: #30B0C7;
+  --ios-brown: #A2845E;
+  --ios-pink: #FF2D55;
+
+  /* ---- Semantic: backgrounds ----
+     iOS distinguishes plain from "grouped" backgrounds. Grouped is what a
+     Settings-style list uses: a tinted page with white cards floating on it.
+     That is the shape most of this app already has, so grouped is the default. */
+  --bg-page: #F2F2F7;           /* systemGroupedBackground */
+  --bg-elevated: #FFFFFF;       /* secondarySystemGroupedBackground — cards, rows */
+  --bg-elevated-2: #F2F2F7;     /* tertiarySystemGroupedBackground — nested */
+  --bg-plain: #FFFFFF;          /* systemBackground — full-bleed sheets */
+
+  /* ---- Semantic: labels ----
+     Note these are alpha, not solid. That is deliberate and is why iOS text
+     sits correctly on any background tint without being respecified. */
+  --label: #000000;
+  --label-secondary: rgba(60, 60, 67, 0.60);
+  --label-tertiary: rgba(60, 60, 67, 0.30);
+  --label-quaternary: rgba(60, 60, 67, 0.18);
+
+  /* ---- Semantic: fills (segmented controls, chips, inert buttons) ---- */
+  --fill: rgba(120, 120, 128, 0.20);
+  --fill-secondary: rgba(120, 120, 128, 0.16);
+  --fill-tertiary: rgba(118, 118, 128, 0.12);
+  --fill-quaternary: rgba(116, 116, 128, 0.08);
+
+  /* ---- Semantic: separators ---- */
+  --separator: rgba(60, 60, 67, 0.29);
+  --separator-opaque: #C6C6C8;
+
+  /* ---- Materials (the frosted-glass navigation bars) ---- */
+  --material-bar: rgba(249, 249, 249, 0.80);
+  --material-thick: rgba(255, 255, 255, 0.90);
+  --scrim: rgba(0, 0, 0, 0.40);
+
+  /* ---- Elevation ----
+     iOS shadows are wide, soft and very low opacity. A tight dark shadow
+     reads as Material Design, not as iOS. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-raised: 0 2px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.10);
+  --shadow-sheet: 0 -1px 0 rgba(0, 0, 0, 0.04), 0 -12px 48px rgba(0, 0, 0, 0.18);
+
+  /* ---- Corner radii — iOS continuous-curvature scale ---- */
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;    /* standard grouped-list card */
+  --r-xl: 20px;
+  --r-sheet: 38px; /* iPhone display corner radius */
+
+  /* ---- Timing ----
+     One curve does most of the work in iOS: the sheet-presentation ease.
+     It starts fast and settles slowly, which is what reads as "smooth". */
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out-ios: cubic-bezier(0.16, 1, 0.30, 1);
+  --ease-in-out-ios: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 200ms;
+  --dur-base: 350ms;
+  --dur-slow: 500ms;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* ---- Raw system colors shift too: iOS brightens accents in dark mode
+       so they hold contrast against black. #007AFF on black is muddy. ---- */
+    --ios-blue: #0A84FF;
+    --ios-blue-dim: #0A84FF;
+    --ios-green: #30D158;
+    --ios-green-dim: #30D158;
+    --ios-red: #FF453A;
+    --ios-red-dim: #FF453A;
+    --ios-orange: #FF9F0A;
+    --ios-yellow: #FFD60A;
+    --ios-indigo: #5E5CE6;
+    --ios-teal: #40C8E0;
+    --ios-brown: #AC8E68;
+    --ios-pink: #FF375F;
+
+    /* True black page, raised cards — the iOS dark grouped style. */
+    --bg-page: #000000;
+    --bg-elevated: #1C1C1E;
+    --bg-elevated-2: #2C2C2E;
+    --bg-plain: #1C1C1E;
+
+    --label: #FFFFFF;
+    --label-secondary: rgba(235, 235, 245, 0.60);
+    --label-tertiary: rgba(235, 235, 245, 0.30);
+    --label-quaternary: rgba(235, 235, 245, 0.18);
+
+    --fill: rgba(120, 120, 128, 0.36);
+    --fill-secondary: rgba(120, 120, 128, 0.32);
+    --fill-tertiary: rgba(118, 118, 128, 0.24);
+    --fill-quaternary: rgba(118, 118, 128, 0.18);
+
+    --separator: rgba(84, 84, 88, 0.60);
+    --separator-opaque: #38383A;
+
+    --material-bar: rgba(30, 30, 30, 0.80);
+    --material-thick: rgba(37, 37, 37, 0.90);
+    --scrim: rgba(0, 0, 0, 0.60);
+
+    /* Shadows do almost nothing on black; iOS separates dark surfaces with
+       lightness instead. Keep them, but faint, for the sheet lip only. */
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.30);
+    --shadow-raised: 0 8px 32px rgba(0, 0, 0, 0.50);
+    --shadow-sheet: 0 -12px 48px rgba(0, 0, 0, 0.60);
+  }
+}
+
+/* ==========================================================================
+   Tailwind theme mapping
+   --------------------------------------------------------------------------
+   `@theme inline` emits utilities that reference the custom property at
+   runtime rather than baking in its value. That is what lets a single set of
+   class names flip appearance — without it, dark mode would need a `dark:`
+   variant on every colored element in the app.
+
+   The legacy token names (primary, surface, text-light, …) are kept and
+   repointed rather than renamed, so all existing pages inherit the new system
+   without being touched.
+   ========================================================================== */
+
 @theme inline {
-  --color-primary: var(--color-primary);
-  --color-primary-light: var(--color-primary-light);
-  --color-secondary: var(--color-secondary);
-  --color-secondary-light: var(--color-secondary-light);
-  --color-success: var(--color-success);
-  --color-success-light: var(--color-success-light);
-  --color-warm: var(--color-warm);
-  --color-warm-light: var(--color-warm-light);
-  --color-bg: var(--color-bg);
-  --color-surface: var(--color-surface);
-  --color-text: var(--color-text);
-  --color-text-dark: var(--color-text-dark);
-  --color-text-light: var(--color-text-light);
-  --color-danger: var(--color-danger);
-  --color-warning: var(--color-warning);
-  --font-heading: 'Kumbh Sans', sans-serif;
-  --font-body: 'Nunito', sans-serif;
-  --font-accent: 'Roboto', sans-serif;
+  /* -- Legacy names, repointed to iOS semantics -- */
+  --color-primary: var(--ios-blue);
+  --color-primary-light: var(--ios-blue-dim);
+  --color-secondary: var(--ios-teal);
+  --color-secondary-light: var(--ios-teal);
+  --color-success: var(--ios-green);
+  --color-success-light: var(--ios-green-dim);
+  --color-warm: var(--ios-brown);
+  --color-warm-light: var(--ios-brown);
+  --color-bg: var(--bg-page);
+  --color-surface: var(--bg-elevated);
+  --color-text: var(--label-secondary);
+  --color-text-dark: var(--label);
+  --color-text-light: var(--label-tertiary);
+  --color-danger: var(--ios-red);
+  --color-warning: var(--ios-orange);
+
+  /* -- iOS-native names, for new code -- */
+  --color-label: var(--label);
+  --color-label-secondary: var(--label-secondary);
+  --color-label-tertiary: var(--label-tertiary);
+  --color-label-quaternary: var(--label-quaternary);
+  --color-fill: var(--fill);
+  --color-fill-secondary: var(--fill-secondary);
+  --color-fill-tertiary: var(--fill-tertiary);
+  --color-fill-quaternary: var(--fill-quaternary);
+  --color-separator: var(--separator);
+  --color-separator-opaque: var(--separator-opaque);
+  --color-elevated: var(--bg-elevated);
+  --color-elevated-2: var(--bg-elevated-2);
+  --color-plain: var(--bg-plain);
+  --color-blue: var(--ios-blue);
+  --color-green: var(--ios-green);
+  --color-red: var(--ios-red);
+  --color-orange: var(--ios-orange);
+  --color-yellow: var(--ios-yellow);
+  --color-indigo: var(--ios-indigo);
+  --color-teal: var(--ios-teal);
+  --color-pink: var(--ios-pink);
+
+  /* -- Tailwind's built-in gray scale, remapped to iOS separators/fills.
+        The app uses border-gray-100/200 and bg-gray-50/100 in ~100 places;
+        remapping here makes every one of them appearance-aware instead of
+        leaving light-gray hairlines glowing on a black page. -- */
+  --color-gray-50: var(--fill-quaternary);
+  --color-gray-100: var(--separator);
+  --color-gray-200: var(--separator);
+  --color-gray-300: var(--separator-opaque);
+  --color-gray-400: var(--label-tertiary);
+  --color-gray-500: var(--label-secondary);
+  --color-gray-600: var(--label-secondary);
+  --color-gray-700: var(--label);
+  --color-gray-800: var(--label);
+  --color-gray-900: var(--label);
+
+  /* -- Amber aliases used by the barista board's pending column -- */
+  --color-amber-50: var(--fill-quaternary);
+  --color-amber-300: var(--ios-orange);
+  --color-amber-400: var(--ios-orange);
+  --color-amber-500: var(--ios-orange);
+  --color-amber-700: var(--ios-orange);
+  --color-amber-800: var(--ios-orange);
+  --color-amber-900: var(--label);
+  --color-amber-950: var(--label);
+  --color-red-700: var(--ios-red-dim);
+  --color-red-800: var(--ios-red-dim);
+
+  /* -- Type. iOS is one typeface at many weights, so all three legacy font
+        slots resolve to the same system stack. SF Pro on Apple devices;
+        Segoe UI / Roboto elsewhere, which is still the native face there. -- */
+  --font-heading: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, system-ui, sans-serif;
+  --font-accent: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, system-ui, sans-serif;
+
+  /* -- Radii -- */
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-2xl: var(--r-xl);
+  --radius-3xl: var(--r-sheet);
+
+  /* -- Shadows -- */
+  --shadow-sm: var(--shadow-card);
+  --shadow-md: var(--shadow-raised);
+  --shadow-lg: var(--shadow-raised);
+  --shadow-xl: var(--shadow-raised);
+
+  /* -- Easing, exposed as ease-ios / ease-out-ios utilities -- */
+  --ease-ios: var(--ease-ios);
+  --ease-out-ios: var(--ease-out-ios);
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+html {
+  /* Stops iOS Safari from inflating text in landscape. */
+  -webkit-text-size-adjust: 100%;
+  /* Anchors and programmatic scrolls glide instead of jumping. */
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--color-text);
+  background: var(--bg-page);
+  color: var(--label);
   font-family: var(--font-body);
+  /* SF is designed for this; without it the text looks heavy on retina. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Kills the grey flash box when tapping anything on iOS. This single line
+     does more for "does it feel like an app" than any animation. */
+  -webkit-tap-highlight-color: transparent;
+  /* Prevents a scrolling sheet from dragging the page behind it. */
+  overscroll-behavior-y: contain;
+  /* Removes the 300ms click delay without disabling pinch-zoom. */
+  touch-action: manipulation;
 }
 
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
-  color: var(--color-text-dark);
+  color: var(--label);
+  /* iOS tightens tracking as type gets larger — see the .text-ios-* scale. */
+  letter-spacing: -0.02em;
+}
+
+/* Controls are chrome, not content: selecting their text is never intended
+   and a stray long-press selection immediately breaks the app illusion. */
+button, [role='button'], label {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* iOS focus is a subtle ring, and only for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* Safari zooms the viewport when focusing an input under 16px. Enforce the
+   iOS body size on every control so that can never happen. */
+input, textarea, select {
+  font-size: 16px;
+  font-family: var(--font-body);
+}
+
+::placeholder { color: var(--label-tertiary); }
+
+::selection {
+  background: color-mix(in srgb, var(--ios-blue) 25%, transparent);
+}
+
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
+
+/* Used by the category rails on / and /tablet. Was referenced before it
+   existed, so those rails have been showing a scrollbar. */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
+/* Momentum scrolling inside sheets and columns. */
+.scroll-ios {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* The frosted navigation bar. backdrop-filter is the whole effect — if it is
+   unsupported the rgba background still keeps text legible. */
+.material-bar {
+  background: var(--material-bar);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+.material-thick {
+  background: var(--material-thick);
+  backdrop-filter: saturate(180%) blur(30px);
+  -webkit-backdrop-filter: saturate(180%) blur(30px);
+}
+
+/* Hairlines. A 1px CSS border is ~3 device pixels on a retina screen and
+   reads as heavy next to a real iOS separator; this draws a true hairline. */
+.hairline-b { box-shadow: inset 0 -0.5px 0 var(--separator); }
+.hairline-t { box-shadow: inset 0 0.5px 0 var(--separator); }
+
+/* Safe areas — the notch, the home indicator, and the rounded corners. */
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pb-safe-4 { padding-bottom: calc(env(safe-area-inset-bottom) + 1rem); }
+.min-h-screen-safe {
+  min-height: 100vh;
+  min-height: 100dvh; /* excludes the collapsing Safari toolbar */
+}
+
+/* ---- iOS type scale ----
+   Sizes, line heights and tracking taken from the SF Pro specimen. Reach for
+   these instead of picking Tailwind text sizes ad hoc; the tracking is what
+   makes large type look set rather than scaled. */
+.text-ios-largetitle { font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: -0.026em; }
+.text-ios-title1     { font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.022em; }
+.text-ios-title2     { font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -0.017em; }
+.text-ios-title3     { font-size: 20px; line-height: 25px; font-weight: 600; letter-spacing: -0.014em; }
+.text-ios-headline   { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -0.011em; }
+.text-ios-body       { font-size: 17px; line-height: 22px; font-weight: 400; letter-spacing: -0.011em; }
+.text-ios-callout    { font-size: 16px; line-height: 21px; font-weight: 400; letter-spacing: -0.006em; }
+.text-ios-subhead    { font-size: 15px; line-height: 20px; font-weight: 400; }
+.text-ios-footnote   { font-size: 13px; line-height: 18px; font-weight: 400; }
+.text-ios-caption    { font-size: 12px; line-height: 16px; font-weight: 400; }
+.text-ios-caption2   { font-size: 11px; line-height: 13px; font-weight: 400; }
+
+/* The uppercase header above a grouped list section. */
+.list-section-header {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--label-secondary);
+  padding: 0 16px 6px;
+}
+
+/* Tabular figures. Prices and countdowns must not jitter as digits change —
+   this is why the wait timer on /live stops twitching every second. */
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+
+/* ---- Press feedback ----
+   iOS acknowledges a touch instantly. Applied to plain elements that are not
+   Framer Motion components. */
+.press {
+  transition: transform 140ms var(--ease-out-ios), opacity 140ms var(--ease-out-ios);
+}
+.press:active { transform: scale(0.96); opacity: 0.75; }
+.press-sm:active { transform: scale(0.98); opacity: 0.85; }
+
+/* ---- Keyframes for non-JS transitions ---- */
+@keyframes ios-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ios-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes ios-pop {
+  0%   { opacity: 0; transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.animate-ios-fade  { animation: ios-fade-in var(--dur-base) var(--ease-out-ios) both; }
+.animate-ios-up    { animation: ios-slide-up var(--dur-base) var(--ease-out-ios) both; }
+.animate-ios-pop   { animation: ios-pop var(--dur-fast) var(--ease-out-ios) both; }
+
+/* Honour the accessibility setting. Framer Motion reads this too. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

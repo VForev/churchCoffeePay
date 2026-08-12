@@ -1,29 +1,34 @@
-import type { Metadata } from "next";
-import { Kumbh_Sans, Nunito, Roboto } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
-
-const kumbhSans = Kumbh_Sans({
-  variable: "--font-heading",
-  subsets: ["latin"],
-  weight: ["400", "600", "700"],
-});
-
-const nunito = Nunito({
-  variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "600", "700"],
-});
-
-const roboto = Roboto({
-  variable: "--font-accent",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-});
 
 export const metadata: Metadata = {
   title: "LOTG Coffee",
   description: "Light of the Gospel Church Coffee Bar",
-  viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
+  // Lets a customer add the menu to their home screen and have it open
+  // chromeless, like an app, rather than in a Safari tab.
+  appleWebApp: {
+    capable: true,
+    title: "LOTG Coffee",
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    // Stops iOS turning order numbers and prices into blue phone links.
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Content extends under the notch and home indicator; the safe-area
+  // utilities in globals.css put the padding back where it matters.
+  viewportFit: "cover",
+  // Paints the Safari chrome to match the page in each appearance, so the
+  // status bar doesn't sit in a white strip above a black page.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F2F2F7" },
+    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+  ],
 };
 
 export default function RootLayout({
@@ -32,11 +37,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${kumbhSans.variable} ${nunito.variable} ${roboto.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col font-body">{children}</body>
+    <html lang="en" className="h-full antialiased">
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import { OrderStatusBadge, PaymentBadge } from '@/components/ui/Badge';
 import type { Order, OrderItem, OrderItemModifier, Modifier, OrderStatus } from '@/types';
+import IOSSpinner from '@/components/ui/Spinner';
 
 interface FullOrder extends Order {
   order_items?: (OrderItem & {
@@ -282,7 +283,7 @@ export default function AdminOrdersPage() {
   if (loading) {
     return (
       <div className="flex justify-center py-20">
-        <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+        <IOSSpinner size={28} />
       </div>
     );
   }
@@ -290,13 +291,13 @@ export default function AdminOrdersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <h1 className="text-2xl font-heading font-bold text-text-dark">Order History</h1>
+        <h1 className="text-ios-largetitle text-label">Order History</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={() => { clearSelection(); setShowArchived(!showArchived); }}
             className={`text-sm font-accent px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
               showArchived
-                ? 'bg-warning/10 border-warning/30 text-amber-700'
+                ? 'bg-warning/10 border-warning/30 text-warning'
                 : 'bg-gray-50 border-gray-200 text-text-light hover:bg-gray-100'
             }`}
           >
@@ -426,7 +427,7 @@ export default function AdminOrdersPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="border border-warning/30 text-amber-700 hover:bg-warning/5"
+                    className="border border-warning/30 text-warning hover:bg-warning/5"
                     onClick={() => openBulk('archive')}
                   >
                     Archive {selected.size}
@@ -496,7 +497,7 @@ export default function AdminOrdersPage() {
                     <div className="space-y-2 mb-4">
                       {order.order_items.map((item) => (
                         <div key={item.id} className="text-sm">
-                          <span className="font-body font-semibold">
+                          <span className="font-semibold">
                             {item.quantity}x {item.menu_item?.name}
                           </span>
                           {item.order_item_modifiers?.length > 0 && (
@@ -539,7 +540,7 @@ export default function AdminOrdersPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="border border-warning/30 text-amber-700 hover:bg-warning/5"
+                          className="border border-warning/30 text-warning hover:bg-warning/5"
                           onClick={() => setConfirmModal({ type: 'archive', order })}
                         >
                           Archive

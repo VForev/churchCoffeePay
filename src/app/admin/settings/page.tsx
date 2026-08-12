@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { TextArea } from '@/components/ui/Input';
-import Card from '@/components/ui/Card';
+import Switch from '@/components/ui/Switch';
+import IOSSpinner from '@/components/ui/Spinner';
+import { ListGroup, ListRow } from '@/components/ui/List';
+import { fadeUp, springPop, springSnappy, staggerParent } from '@/lib/motion';
 import { fetchShopConfig, getShopStatus, DAY_NAMES, DEFAULT_SETTINGS } from '@/lib/shop';
 import { cn } from '@/lib/utils';
 import type { ShopSettings, OrderingHours, OrderingOverride } from '@/types';
@@ -87,290 +91,385 @@ export default function AdminSettingsPage() {
   if (loading) {
     return (
       <div className="flex justify-center py-20">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
+        <IOSSpinner size={28} />
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="font-heading text-2xl font-bold text-text-dark">Shop Settings</h1>
+    <motion.div
+      variants={staggerParent}
+      initial="hidden"
+      animate="show"
+      className="max-w-3xl space-y-7 pb-10"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-ios-largetitle text-label">Settings</h1>
         <div className="flex items-center gap-3">
-          {savedAt && !saving && (
-            <span className="font-accent text-sm text-success">Saved ✓</span>
-          )}
+          <AnimatePresence>
+            {savedAt && !saving && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={springPop}
+                className="text-ios-subhead flex items-center gap-1 font-medium text-success"
+              >
+                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none">
+                  <path
+                    d="M2.5 8.5l3.5 3.5 7.5-8"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Saved
+              </motion.span>
+            )}
+          </AnimatePresence>
           <Button onClick={save} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving && <IOSSpinner size={16} className="text-white" />}
+            {saving ? 'Saving…' : 'Save Changes'}
           </Button>
         </div>
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-xl bg-danger/5 px-4 py-3 text-sm text-danger">{error}</p>
-      )}
+      <AnimatePresence>
+        {error && (
+          <motion.p
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={springSnappy}
+            className="text-ios-subhead overflow-hidden rounded-[var(--r-md)] bg-danger/12 px-4 py-3 text-danger"
+          >
+            {error}
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       {/* Live status readout */}
-      <Card
+      <motion.div
+        variants={fadeUp}
         className={cn(
-          'mb-6 border-2',
+          'flex items-center gap-3 rounded-[var(--r-lg)] px-4 py-4 ring-1',
           status.isOpen
-            ? 'border-success/40 bg-success/5'
+            ? 'bg-success/10 ring-success/30'
             : status.isLocked
-              ? 'border-danger/40 bg-danger/5'
-              : 'border-warning/40 bg-warning/5',
+              ? 'bg-danger/10 ring-danger/30'
+              : 'bg-warning/10 ring-warning/30',
         )}
       >
-        <div className="flex items-center gap-3">
+        <span className="relative flex h-2.5 w-2.5 shrink-0">
+          {status.isOpen && (
+            <motion.span
+              animate={{ scale: [1, 2.4], opacity: [0.7, 0] }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
+              className="absolute inline-flex h-full w-full rounded-full bg-success"
+            />
+          )}
           <span
             className={cn(
-              'h-3 w-3 rounded-full',
-              status.isOpen ? 'animate-pulse bg-success' : status.isLocked ? 'bg-danger' : 'bg-warning',
+              'relative inline-flex h-2.5 w-2.5 rounded-full',
+              status.isOpen ? 'bg-success' : status.isLocked ? 'bg-danger' : 'bg-warning',
             )}
           />
-          <div>
-            <p className="font-heading font-bold text-text-dark">
-              {status.isOpen
-                ? 'Customers can order right now'
-                : status.isLocked
-                  ? 'Ordering is locked — nobody can order'
-                  : 'Ordering is closed right now'}
-            </p>
-            <p className="mt-0.5 font-body text-sm text-text-light">
-              {status.isOpen && status.closesAt && `Closes at ${status.closesAt}.`}
-              {!status.isOpen && status.nextOpensAt && `Opens ${status.nextOpensAt}.`}
-              {status.reason === 'forced_open' && ' Forced open — ignoring the schedule.'}
-              {status.reason === 'forced_closed' && ' Forced closed — ignoring the schedule.'}
-              {status.reason === 'locked' && ' Locked — access codes are switched off too.'}
-              {status.reason === 'no_hours_set' && ' No ordering hours are set yet.'}
-            </p>
-          </div>
+        </span>
+        <div>
+          <p className="text-ios-headline text-label">
+            {status.isOpen
+              ? 'Customers can order right now'
+              : status.isLocked
+                ? 'Ordering is locked — nobody can order'
+                : 'Ordering is closed right now'}
+          </p>
+          <p className="text-ios-subhead mt-0.5 text-label-secondary">
+            {status.isOpen && status.closesAt && `Closes at ${status.closesAt}.`}
+            {!status.isOpen && status.nextOpensAt && `Opens ${status.nextOpensAt}.`}
+            {status.reason === 'forced_open' && ' Forced open — ignoring the schedule.'}
+            {status.reason === 'forced_closed' && ' Forced closed — ignoring the schedule.'}
+            {status.reason === 'locked' && ' Locked — access codes are switched off too.'}
+            {status.reason === 'no_hours_set' && ' No ordering hours are set yet.'}
+          </p>
         </div>
-      </Card>
+      </motion.div>
 
       {/* Banner */}
-      <Card className="mb-6">
-        <h2 className="mb-1 font-heading font-bold text-text-dark">Service Banner</h2>
-        <p className="mb-4 font-body text-sm text-text-light">
-          The big title customers see at the top of the menu and the live screen.
-        </p>
-        <div className="space-y-4">
-          <Input
-            label="Title"
-            placeholder="LOTG Coffee"
-            value={settings.service_title}
-            onChange={(e) => setSettings({ ...settings, service_title: e.target.value })}
-          />
-          <Input
-            label="Subtitle"
-            placeholder="Sunday Service · Coffee in the lobby"
-            value={settings.service_subtitle}
-            onChange={(e) => setSettings({ ...settings, service_subtitle: e.target.value })}
-          />
-        </div>
-      </Card>
+      <motion.div variants={fadeUp}>
+        <ListGroup
+          header="Service Banner"
+          footer="The big title customers see at the top of the menu and the live screen."
+        >
+          <div className="space-y-4 p-4">
+            <Input
+              label="Title"
+              placeholder="LOTG Coffee"
+              value={settings.service_title}
+              onChange={(e) => setSettings({ ...settings, service_title: e.target.value })}
+            />
+            <Input
+              label="Subtitle"
+              placeholder="Sunday Service · Coffee in the lobby"
+              value={settings.service_subtitle}
+              onChange={(e) => setSettings({ ...settings, service_subtitle: e.target.value })}
+            />
+          </div>
+        </ListGroup>
+      </motion.div>
 
       {/* Ordering availability */}
-      <Card className="mb-6">
-        <h2 className="mb-1 font-heading font-bold text-text-dark">Ordering Availability</h2>
-        <p className="mb-4 font-body text-sm text-text-light">
-          Use the override when the day doesn&apos;t go to plan — running late, or out of milk.
-        </p>
-
-        <div className="mb-5 grid gap-2 sm:grid-cols-2">
+      <motion.div variants={fadeUp}>
+        <ListGroup
+          header="Ordering Availability"
+          footer="Use the override when the day doesn't go to plan — running late, or out of milk."
+        >
           {OVERRIDE_OPTIONS.map((opt) => {
             const selected = settings.ordering_override === opt.value;
             // The lock is the destructive one — it turns off the escape hatch everyone
             // else relies on, so it reads red rather than blending in with the others.
             const isLock = opt.value === 'locked';
             return (
-              <button
+              <ListRow
                 key={opt.value}
+                label={opt.label}
+                detail={opt.help}
+                destructive={isLock && selected}
                 onClick={() => setSettings({ ...settings, ordering_override: opt.value })}
-                className={cn(
-                  'cursor-pointer rounded-xl border-2 p-3 text-left transition-all',
-                  selected
-                    ? isLock
-                      ? 'border-danger bg-danger/5'
-                      : 'border-primary bg-primary/5'
-                    : 'border-gray-200 bg-surface hover:border-gray-300',
-                )}
-              >
-                <p
-                  className={cn(
-                    'font-accent text-sm font-bold',
-                    selected ? (isLock ? 'text-danger' : 'text-primary') : 'text-text-dark',
-                  )}
-                >
-                  {opt.label}
-                </p>
-                <p className="mt-0.5 font-body text-xs text-text-light">{opt.help}</p>
-              </button>
+                accessory={
+                  // A checkmark on the chosen row, iOS's way of showing a
+                  // single choice in a list — not four boxed radio buttons.
+                  <AnimatePresence>
+                    {selected && (
+                      <motion.span
+                        initial={{ opacity: 0, scale: 0.4 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.4 }}
+                        transition={springPop}
+                        className={isLock ? 'text-danger' : 'text-primary'}
+                      >
+                        <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none">
+                          <path
+                            d="M2.5 8.5l3.5 3.5 7.5-8"
+                            stroke="currentColor"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                }
+              />
             );
           })}
+        </ListGroup>
+
+        <AnimatePresence>
+          {settings.ordering_override === 'locked' && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={springSnappy}
+              className="overflow-hidden"
+            >
+              <p className="text-ios-subhead mt-3 rounded-[var(--r-md)] bg-danger/12 px-4 py-3 text-danger">
+                <strong className="font-semibold">Ordering is locked.</strong> Nobody can place an
+                order — not with an access code, not a group that already unlocked one. Anyone
+                mid-order is stopped before they pay. The counter tablet at{' '}
+                <strong className="font-semibold">/tablet</strong> still works, so a barista can
+                take an order face to face.
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="mt-3">
+          <ListGroup>
+            <div className="p-4">
+              <TextArea
+                label="Message shown when closed"
+                rows={2}
+                value={settings.closed_message}
+                onChange={(e) => setSettings({ ...settings, closed_message: e.target.value })}
+              />
+            </div>
+          </ListGroup>
         </div>
-
-        {settings.ordering_override === 'locked' && (
-          <p className="mb-5 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3 font-body text-sm text-danger">
-            <strong className="font-accent font-bold">Ordering is locked.</strong> Nobody can place
-            an order — not with an access code, not a group that already unlocked one. Anyone
-            mid-order is stopped before they pay. The counter tablet at{' '}
-            <strong>/tablet</strong> still works, so a barista can take an order face to face.
-          </p>
-        )}
-
-        <TextArea
-          label="Message shown when closed"
-          rows={2}
-          value={settings.closed_message}
-          onChange={(e) => setSettings({ ...settings, closed_message: e.target.value })}
-        />
-      </Card>
+      </motion.div>
 
       {/* Weekly hours */}
-      <Card className="mb-6">
-        <h2 className="mb-1 font-heading font-bold text-text-dark">Ordering Hours</h2>
-        <p className="mb-4 font-body text-sm text-text-light">
-          Customers can only place orders inside these windows.
-        </p>
-
-        <div className="space-y-2">
+      <motion.div variants={fadeUp}>
+        <ListGroup
+          header="Ordering Hours"
+          footer="Customers can only place orders inside these windows."
+        >
           {DAY_NAMES.map((dayName, day) => {
             const dayHours = hours.find((h) => h.day_of_week === day);
             if (!dayHours) return null;
+            const invalid = dayHours.is_open && dayHours.close_time <= dayHours.open_time;
 
             return (
               <div
                 key={day}
-                className={cn(
-                  'flex flex-wrap items-center gap-3 rounded-xl border p-3 transition-colors',
-                  dayHours.is_open ? 'border-primary/20 bg-primary/5' : 'border-gray-100 bg-surface',
-                )}
+                className="relative px-4 py-2.5 before:absolute before:bottom-0 before:left-4 before:right-0 before:h-px before:bg-separator last:before:hidden"
               >
-                <label className="flex w-32 shrink-0 cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={dayHours.is_open}
-                    onChange={(e) => updateDay(day, { is_open: e.target.checked })}
-                    className="h-4 w-4 accent-primary"
-                  />
+                <div className="flex min-h-[44px] items-center gap-3">
                   <span
                     className={cn(
-                      'font-accent text-sm font-semibold',
-                      dayHours.is_open ? 'text-primary' : 'text-text-light',
+                      'text-ios-body w-28 shrink-0',
+                      dayHours.is_open ? 'text-label' : 'text-label-tertiary',
                     )}
                   >
                     {dayName}
                   </span>
-                </label>
 
-                {dayHours.is_open ? (
-                  <div className="flex flex-1 flex-wrap items-center gap-2">
-                    <input
-                      type="time"
-                      value={toTimeInput(dayHours.open_time)}
-                      onChange={(e) => updateDay(day, { open_time: e.target.value })}
-                      className="rounded-lg border border-gray-200 bg-surface px-3 py-2 font-body text-sm text-text-dark focus:border-primary focus:outline-none"
+                  <div className="flex flex-1 items-center justify-end gap-2">
+                    <AnimatePresence mode="wait" initial={false}>
+                      {dayHours.is_open ? (
+                        <motion.div
+                          key="times"
+                          initial={{ opacity: 0, x: 8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: 8 }}
+                          transition={springSnappy}
+                          className="flex flex-wrap items-center justify-end gap-1.5"
+                        >
+                          <input
+                            type="time"
+                            value={toTimeInput(dayHours.open_time)}
+                            onChange={(e) => updateDay(day, { open_time: e.target.value })}
+                            className="tnum rounded-[var(--r-sm)] bg-fill-tertiary px-2.5 py-1.5 text-[15px] text-label focus:outline-none focus:ring-2 focus:ring-primary/25"
+                          />
+                          <span className="text-ios-subhead text-label-tertiary">to</span>
+                          <input
+                            type="time"
+                            value={toTimeInput(dayHours.close_time)}
+                            onChange={(e) => updateDay(day, { close_time: e.target.value })}
+                            className="tnum rounded-[var(--r-sm)] bg-fill-tertiary px-2.5 py-1.5 text-[15px] text-label focus:outline-none focus:ring-2 focus:ring-primary/25"
+                          />
+                        </motion.div>
+                      ) : (
+                        <motion.span
+                          key="closed"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="text-ios-subhead text-label-tertiary"
+                        >
+                          Closed
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+
+                    <Switch
+                      checked={dayHours.is_open}
+                      onChange={(v) => updateDay(day, { is_open: v })}
+                      label={dayName}
                     />
-                    <span className="font-body text-sm text-text-light">to</span>
-                    <input
-                      type="time"
-                      value={toTimeInput(dayHours.close_time)}
-                      onChange={(e) => updateDay(day, { close_time: e.target.value })}
-                      className="rounded-lg border border-gray-200 bg-surface px-3 py-2 font-body text-sm text-text-dark focus:border-primary focus:outline-none"
-                    />
-                    {dayHours.close_time <= dayHours.open_time && (
-                      <span className="font-accent text-xs text-danger">
-                        Closing time must be after opening time
-                      </span>
-                    )}
                   </div>
-                ) : (
-                  <span className="font-body text-sm text-text-light">Closed</span>
+                </div>
+
+                {invalid && (
+                  <p className="text-ios-caption pb-1 text-right text-danger">
+                    Closing time must be after opening time
+                  </p>
                 )}
               </div>
             );
           })}
-        </div>
-      </Card>
+        </ListGroup>
+      </motion.div>
 
       {/* Donations */}
-      <Card className="mb-6">
-        <h2 className="mb-1 font-heading font-bold text-text-dark">Donations</h2>
-        <p className="mb-4 font-body text-sm text-text-light">
-          Turn this off for services where you&apos;d rather not ask.
-        </p>
-
-        <label className="mb-4 flex cursor-pointer items-center gap-3 rounded-xl border-2 border-gray-100 p-3 transition-colors hover:border-gray-200">
-          <input
-            type="checkbox"
-            checked={settings.donations_enabled}
-            onChange={(e) => setSettings({ ...settings, donations_enabled: e.target.checked })}
-            className="h-5 w-5 accent-primary"
-          />
-          <div>
-            <span className="font-accent text-sm font-semibold text-text-dark">
-              Ask customers for a donation
-            </span>
-            <p className="font-body text-xs text-text-light">
-              {settings.donations_enabled
+      <motion.div variants={fadeUp}>
+        <ListGroup
+          header="Donations"
+          footer="Turn this off for services where you'd rather not ask."
+        >
+          <ListRow
+            label="Ask customers for a donation"
+            detail={
+              settings.donations_enabled
                 ? 'The donation box shows at checkout.'
-                : 'Checkout hides the donation box entirely.'}
-            </p>
-          </div>
-        </label>
+                : 'Checkout hides the donation box entirely.'
+            }
+            accessory={
+              <Switch
+                checked={settings.donations_enabled}
+                onChange={(v) => setSettings({ ...settings, donations_enabled: v })}
+                label="Ask customers for a donation"
+              />
+            }
+          />
+        </ListGroup>
 
-        {settings.donations_enabled && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              label="What to call it"
-              placeholder="Donation"
-              value={settings.donation_label}
-              onChange={(e) => setSettings({ ...settings, donation_label: e.target.value })}
-            />
-            <Input
-              label="Quick amounts (comma-separated)"
-              placeholder="1,2,5"
-              value={settings.donation_presets}
-              onChange={(e) => setSettings({ ...settings, donation_presets: e.target.value })}
-            />
-          </div>
-        )}
-      </Card>
+        <AnimatePresence>
+          {settings.donations_enabled && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={springSnappy}
+              className="overflow-hidden"
+            >
+              <div className="mt-3">
+                <ListGroup>
+                  <div className="grid gap-4 p-4 sm:grid-cols-2">
+                    <Input
+                      label="What to call it"
+                      placeholder="Donation"
+                      value={settings.donation_label}
+                      onChange={(e) => setSettings({ ...settings, donation_label: e.target.value })}
+                    />
+                    <Input
+                      label="Quick amounts (comma-separated)"
+                      placeholder="1,2,5"
+                      value={settings.donation_presets}
+                      onChange={(e) =>
+                        setSettings({ ...settings, donation_presets: e.target.value })
+                      }
+                    />
+                  </div>
+                </ListGroup>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
 
       {/* Coupons */}
-      <Card className="mb-6">
-        <h2 className="mb-1 font-heading font-bold text-text-dark">Coupons</h2>
-        <p className="mb-4 font-body text-sm text-text-light">
-          Hide the coupon box when you&apos;re not running any codes — it only invites people to
-          hunt for one they don&apos;t have.
-        </p>
-
-        <label className="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-gray-100 p-3 transition-colors hover:border-gray-200">
-          <input
-            type="checkbox"
-            checked={settings.coupons_enabled}
-            onChange={(e) => setSettings({ ...settings, coupons_enabled: e.target.checked })}
-            className="h-5 w-5 accent-primary"
-          />
-          <div>
-            <span className="font-accent text-sm font-semibold text-text-dark">
-              Let customers enter a coupon code
-            </span>
-            <p className="font-body text-xs text-text-light">
-              {settings.coupons_enabled
+      <motion.div variants={fadeUp}>
+        <ListGroup
+          header="Coupons"
+          footer="Hide the coupon box when you're not running any codes — it only invites people to hunt for one they don't have."
+        >
+          <ListRow
+            label="Let customers enter a coupon code"
+            detail={
+              settings.coupons_enabled
                 ? 'The coupon box shows at checkout and on the tablet.'
-                : 'The coupon box is hidden everywhere. Existing codes still work if re-enabled.'}
-            </p>
-          </div>
-        </label>
-      </Card>
+                : 'Hidden everywhere. Existing codes still work if re-enabled.'
+            }
+            accessory={
+              <Switch
+                checked={settings.coupons_enabled}
+                onChange={(v) => setSettings({ ...settings, coupons_enabled: v })}
+                label="Let customers enter a coupon code"
+              />
+            }
+          />
+        </ListGroup>
+      </motion.div>
 
-      <div className="flex justify-end pb-6">
+      <motion.div variants={fadeUp} className="flex justify-end">
         <Button onClick={save} disabled={saving} size="lg">
-          {saving ? 'Saving...' : 'Save Changes'}
+          {saving && <IOSSpinner size={18} className="text-white" />}
+          {saving ? 'Saving…' : 'Save Changes'}
         </Button>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

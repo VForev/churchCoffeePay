@@ -147,6 +147,12 @@ modifiers, so it's worth checking the preview before you leave it on.
 
 ## When something goes wrong
 
+**A change you made on the website hasn't reached the roll.** Check the version first,
+before anything else. The black window prints `Printer software version: xxxxxxxx` when it
+starts, and **Admin → Set Up the Cup Printer** shows what it should be. If they don't match,
+this PC is running old code: close the window and double-click `LOTG-Printer.bat` again.
+That's the whole fix, and it's the cause far more often than anything in the layout.
+
 **Nothing prints.** Is the window still open? Is the PC awake — check Windows sleep
 settings. Run `npm run test-label` to test the printer without needing an order.
 

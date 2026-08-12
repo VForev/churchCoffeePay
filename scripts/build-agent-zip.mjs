@@ -19,6 +19,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
@@ -49,11 +50,25 @@ function main() {
     data: readFileSync(join(root, rel)),
   }));
 
+  // A version stamp the launcher prints on the shop PC, so "is that machine running the
+  // code I just pushed?" is a question you can answer by reading the screen instead of
+  // guessing. It's a hash of the contents, not a timestamp, so an unchanged build produces
+  // an unchanged zip — otherwise every `npm run dev` would show up as a git change.
+  const hash = createHash('sha256');
+  for (const entry of entries) hash.update(entry.name).update(entry.data);
+  const version = hash.digest('hex').slice(0, 8);
+  entries.push({ name: 'print-agent/VERSION.txt', data: Buffer.from(`${version}\n`, 'utf8') });
+
   const zip = makeZip(entries);
   mkdirSync(join(root, 'public'), { recursive: true });
   writeFileSync(join(root, 'public', 'print-agent.zip'), zip);
+  // The same stamp, readable by the browser, so /admin/print-setup can show what the
+  // shop PC *should* be running next to what it says it is running.
+  writeFileSync(join(root, 'public', 'print-agent-version.txt'), `${version}\n`);
 
-  console.log(`Built public/print-agent.zip (${entries.length} files, ${zip.length} bytes)`);
+  console.log(
+    `Built public/print-agent.zip (${entries.length} files, ${zip.length} bytes, version ${version})`,
+  );
 }
 
 // ─── A minimal, dependency-free ZIP writer (DEFLATE / method 8) ────────────────

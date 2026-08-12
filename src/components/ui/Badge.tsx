@@ -9,23 +9,41 @@ interface BadgeProps {
   variant?: BadgeVariant;
   children: React.ReactNode;
   className?: string;
+  /** Solid fill instead of a tint — for the one status that must carry across
+   *  a room, like SOLD OUT or a READY card on the barista board. */
+  solid?: boolean;
 }
 
-const variantStyles: Record<BadgeVariant, string> = {
-  primary: 'bg-primary/10 text-primary',
-  secondary: 'bg-secondary/10 text-secondary',
-  success: 'bg-success/10 text-success',
-  warning: 'bg-warning/10 text-amber-700',
-  danger: 'bg-danger/10 text-danger',
-  neutral: 'bg-gray-100 text-text-light',
+/**
+ * Tinted by default: accent text on a 15% wash of the same accent. That ratio
+ * holds contrast in both appearances, which a fixed pastel background would
+ * not — a `bg-green-100` chip becomes unreadable on a black page.
+ */
+const tintStyles: Record<BadgeVariant, string> = {
+  primary: 'bg-primary/15 text-primary',
+  secondary: 'bg-secondary/15 text-secondary',
+  success: 'bg-success/15 text-success',
+  warning: 'bg-warning/15 text-warning',
+  danger: 'bg-danger/15 text-danger',
+  neutral: 'bg-fill-secondary text-label-secondary',
 };
 
-export default function Badge({ variant = 'neutral', children, className }: BadgeProps) {
+const solidStyles: Record<BadgeVariant, string> = {
+  primary: 'bg-primary text-white',
+  secondary: 'bg-secondary text-white',
+  success: 'bg-success text-white',
+  warning: 'bg-warning text-white',
+  danger: 'bg-danger text-white',
+  neutral: 'bg-label-secondary text-plain',
+};
+
+export default function Badge({ variant = 'neutral', children, className, solid }: BadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-accent font-semibold',
-        variantStyles[variant],
+        'inline-flex items-center gap-1 rounded-full px-2.5 py-1',
+        'font-accent text-[13px] font-semibold leading-none tracking-[-0.01em]',
+        solid ? solidStyles[variant] : tintStyles[variant],
         className,
       )}
     >

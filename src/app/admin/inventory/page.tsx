@@ -8,6 +8,7 @@ import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
 import type { InventoryItem, InventoryLog } from '@/types';
+import IOSSpinner from '@/components/ui/Spinner';
 
 export default function AdminInventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -76,14 +77,14 @@ export default function AdminInventoryPage() {
     fetchData();
   }
 
-  if (loading) return <div className="flex justify-center py-20"><div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-20"><IOSSpinner size={28} /></div>;
 
   const lowStockItems = items.filter((i) => i.current_stock <= i.low_stock_threshold);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-heading font-bold text-text-dark">Inventory</h1>
+        <h1 className="text-ios-largetitle text-label">Inventory</h1>
         <div className="flex gap-2">
           <Button size="sm" variant="ghost" className="border border-gray-200" onClick={() => setShowLogs(!showLogs)}>
             {showLogs ? 'Show Stock' : 'View Log'}

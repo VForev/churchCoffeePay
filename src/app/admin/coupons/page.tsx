@@ -8,6 +8,7 @@ import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
 import type { Coupon, DiscountType } from '@/types';
+import IOSSpinner from '@/components/ui/Spinner';
 
 export default function AdminCouponsPage() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -67,12 +68,12 @@ export default function AdminCouponsPage() {
     fetchData();
   }
 
-  if (loading) return <div className="flex justify-center py-20"><div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-20"><IOSSpinner size={28} /></div>;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-heading font-bold text-text-dark">Coupon Codes</h1>
+        <h1 className="text-ios-largetitle text-label">Coupon Codes</h1>
         <Button size="sm" onClick={() => setEditCoupon({ code: '', discount_type: 'percentage', discount_value: 0, is_active: true })}>
           + Coupon
         </Button>
@@ -84,7 +85,7 @@ export default function AdminCouponsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="font-heading font-bold text-text-dark font-mono">{coupon.code}</h3>
+                  <h3 className="text-ios-headline text-label font-mono">{coupon.code}</h3>
                   <Badge variant={coupon.is_active ? 'success' : 'neutral'}>
                     {coupon.is_active ? 'Active' : 'Disabled'}
                   </Badge>
@@ -121,7 +122,7 @@ export default function AdminCouponsPage() {
               <select
                 value={editCoupon.discount_type || 'percentage'}
                 onChange={(e) => setEditCoupon({ ...editCoupon, discount_type: e.target.value as DiscountType })}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-surface font-body"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-surface"
               >
                 <option value="percentage">Percentage Off</option>
                 <option value="fixed_amount">Fixed Amount Off</option>

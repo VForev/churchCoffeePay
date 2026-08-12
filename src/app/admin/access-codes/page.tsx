@@ -1,13 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
 import Input, { TextArea } from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
+import Switch from '@/components/ui/Switch';
+import { springSnappy } from '@/lib/motion';
 import type { AccessCode, Category } from '@/types';
+import IOSSpinner from '@/components/ui/Spinner';
 
 export default function AdminAccessCodesPage() {
   const [codes, setCodes] = useState<AccessCode[]>([]);
@@ -86,19 +90,19 @@ export default function AdminAccessCodesPage() {
   if (loading)
     return (
       <div className="flex justify-center py-20">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
+        <IOSSpinner size={28} />
       </div>
     );
 
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="font-heading text-2xl font-bold text-text-dark">Access Codes</h1>
+        <h1 className="text-ios-largetitle text-label">Access Codes</h1>
         <Button size="sm" onClick={() => setEditCode({ code: '', label: '', is_active: true })}>
           + Access Code
         </Button>
       </div>
-      <p className="mb-6 max-w-2xl font-body text-sm text-text-light">
+      <p className="mb-6 max-w-2xl text-ios-subhead text-label-secondary">
         Let a specific group order while the shop is closed to everyone else — a brothers&apos;
         meeting during youth service, or security on shift. Give them a code; the menu stays closed
         for everyone without one. Turn a code off the moment their window is over.
@@ -110,7 +114,7 @@ export default function AdminAccessCodesPage() {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-mono font-heading font-bold text-text-dark">{code.code}</h3>
+                  <h3 className="font-mono text-ios-headline text-label">{code.code}</h3>
                   <Badge variant={code.is_active ? 'success' : 'neutral'}>
                     {code.is_active ? 'Active' : 'Disabled'}
                   </Badge>
@@ -189,7 +193,7 @@ export default function AdminAccessCodesPage() {
                 onChange={(e) =>
                   setEditCode({ ...editCode, allowed_category_id: e.target.value || null })
                 }
-                className="w-full rounded-xl border border-gray-200 bg-surface px-4 py-2.5 font-body"
+                className="w-full rounded-xl border border-gray-200 bg-surface px-4 py-2.5"
               >
                 <option value="">Whole menu</option>
                 {categories.map((c) => (
@@ -198,57 +202,63 @@ export default function AdminAccessCodesPage() {
                   </option>
                 ))}
               </select>
-              <p className="mt-1.5 font-body text-xs text-text-light">
+              <p className="mt-1.5 text-ios-caption text-label-secondary">
                 Limit a code to one category — e.g. a brothers&apos; meeting that may order teas but
                 nothing else.
               </p>
             </div>
 
-            <div className="rounded-xl border-2 border-gray-100 p-3">
-              <label className="flex cursor-pointer items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={editCode.allow_custom_order ?? false}
-                  onChange={(e) =>
-                    setEditCode({ ...editCode, allow_custom_order: e.target.checked })
-                  }
-                  className="h-5 w-5 accent-primary"
-                />
-                <div>
-                  <span className="font-accent text-sm font-semibold text-text-dark">
+            <div className="rounded-[var(--r-md)] bg-fill-quaternary p-3">
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <span className="text-ios-subhead font-medium text-label">
                     Allow write-in custom orders
                   </span>
-                  <p className="font-body text-xs text-text-light">
+                  <p className="text-ios-caption text-label-secondary">
                     Shows a free-text box so they can ask for something off-menu.
                   </p>
                 </div>
-              </label>
-              {editCode.allow_custom_order && (
-                <div className="mt-3">
-                  <TextArea
-                    label="Fine print shown by the box"
-                    rows={2}
-                    value={editCode.custom_order_note ?? ''}
-                    onChange={(e) =>
-                      setEditCode({ ...editCode, custom_order_note: e.target.value })
-                    }
-                    placeholder="We'll do our best — if we can't make it, we won't. Sorry!"
-                  />
-                </div>
-              )}
+                <Switch
+                  checked={editCode.allow_custom_order ?? false}
+                  onChange={(v) => setEditCode({ ...editCode, allow_custom_order: v })}
+                  label="Allow write-in custom orders"
+                />
+              </div>
+              <AnimatePresence initial={false}>
+                {editCode.allow_custom_order && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={springSnappy}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-3">
+                      <TextArea
+                        label="Fine print shown by the box"
+                        rows={2}
+                        value={editCode.custom_order_note ?? ''}
+                        onChange={(e) =>
+                          setEditCode({ ...editCode, custom_order_note: e.target.value })
+                        }
+                        placeholder="We'll do our best — if we can't make it, we won't. Sorry!"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            <label className="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-gray-100 p-3">
-              <input
-                type="checkbox"
-                checked={editCode.is_active ?? true}
-                onChange={(e) => setEditCode({ ...editCode, is_active: e.target.checked })}
-                className="h-5 w-5 accent-primary"
-              />
-              <span className="font-accent text-sm font-semibold text-text-dark">
+            <div className="flex items-center gap-3 rounded-[var(--r-md)] bg-fill-quaternary p-3">
+              <span className="text-ios-subhead min-w-0 flex-1 font-medium text-label">
                 Active — customers can use this code now
               </span>
-            </label>
+              <Switch
+                checked={editCode.is_active ?? true}
+                onChange={(v) => setEditCode({ ...editCode, is_active: v })}
+                label="Active"
+              />
+            </div>
             {error && <p className="text-sm text-danger">{error}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => setEditCode(null)}>

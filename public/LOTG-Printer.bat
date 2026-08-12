@@ -30,19 +30,27 @@ echo   ----------------------
 echo(
 
 REM ---- 1. Download / update the printer software --------------------------
+REM  A unique number is stuck on the end of the address every run. Without it a
+REM  network or proxy that caches downloads can keep handing back last week's copy,
+REM  and the PC quietly runs old code no matter how many times you restart it.
 where curl >nul 2>nul || goto no_curl
 echo   Checking for the latest version...
-curl -L -f -s -o "_update.zip" "%DOWNLOAD_URL%"
+curl -L -f -S -s --retry 2 --retry-delay 2 -H "Cache-Control: no-cache" -o "_update.zip" "%DOWNLOAD_URL%?v=%RANDOM%%RANDOM%"
 if errorlevel 1 goto dl_failed
 where tar >nul 2>nul || goto no_tar
 tar -xf "_update.zip" || goto unpack_failed
 del "_update.zip" >nul 2>nul
-echo   Up to date.
+echo   Downloaded the latest version.
 goto have_files
 
 :dl_failed
 if exist "%AGENT_DIR%\agent.ts" (
-  echo   Couldn't check for updates - using the copy already on this PC.
+  echo(
+  echo   ** COULDN'T DOWNLOAD THE LATEST VERSION **
+  echo   Running the copy already on this PC, which may be out of date.
+  echo   If a recent change to the labels hasn't shown up, that's why -
+  echo   check this PC's internet connection.
+  echo(
   goto have_files
 )
 echo   Couldn't download the printer software, and none is installed yet.
@@ -51,6 +59,16 @@ goto end_fail
 
 :have_files
 if not exist "%AGENT_DIR%\agent.ts" goto unpack_failed
+
+REM ---- Show which version is installed ------------------------------------
+REM  Compare this against the version shown on the website's printer setup page.
+REM  Same code = same letters. Different = this PC didn't get the update.
+if exist "%AGENT_DIR%\VERSION.txt" (
+  set /p AGENT_VERSION=<"%AGENT_DIR%\VERSION.txt"
+  call echo   Printer software version: %%AGENT_VERSION%%
+) else (
+  echo   Printer software version: older than versioning - it will update itself now.
+)
 echo(
 
 REM ---- 2. Make sure Node.js is installed ----------------------------------

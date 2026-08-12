@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@/lib/utils';
+import SegmentedControl from '@/components/ui/SegmentedControl';
 import type { Category } from '@/types';
 
 interface CategoryTabsProps {
@@ -9,24 +9,20 @@ interface CategoryTabsProps {
   onSelect: (id: string) => void;
 }
 
+/**
+ * The category rail is a scrollable iOS segmented control — the white pill
+ * slides between categories rather than each tab lighting up independently.
+ *
+ * Scrollable rather than evenly divided because the categories come from the
+ * database: five of them fit, but nine would crush the labels to nothing.
+ */
 export default function CategoryTabs({ categories, activeId, onSelect }: CategoryTabsProps) {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-      {categories.map((cat) => (
-        <button
-          key={cat.id}
-          onClick={() => onSelect(cat.id)}
-          className={cn(
-            'px-5 py-2 rounded-full font-accent font-semibold text-sm whitespace-nowrap transition-all duration-200',
-            'border-2 cursor-pointer',
-            activeId === cat.id
-              ? 'bg-primary text-white border-primary'
-              : 'bg-surface text-text border-gray-200 hover:border-primary/30 hover:text-primary',
-          )}
-        >
-          {cat.name}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      scrollable
+      segments={categories.map((c) => ({ id: c.id, label: c.name }))}
+      activeId={activeId}
+      onSelect={onSelect}
+    />
   );
 }

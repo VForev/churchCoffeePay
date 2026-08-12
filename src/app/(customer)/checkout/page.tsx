@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'motion/react';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
@@ -24,17 +25,62 @@ import {
 } from '@/lib/access-code';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import Card from '@/components/ui/Card';
+import { ListGroup, ListRow } from '@/components/ui/List';
 import { ClosedNotice } from '@/components/ShopBanner';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
+import IOSSpinner from '@/components/ui/Spinner';
+import { fadeUp, springPop, springSnappy, staggerParent } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import type { Coupon, ShopSettings, OrderingHours } from '@/types';
+
+/**
+ * Stripe renders the card field in its own iframe, so it can't inherit any of
+ * our CSS — its colors have to be handed over as literal values. Those values
+ * are read back off the live document rather than hardcoded, because a
+ * hardcoded light-mode grey turns the card number invisible on a black page.
+ *
+ * Re-read whenever the appearance changes, since the iframe won't repaint on
+ * its own.
+ */
+function useStripeAppearance() {
+  const [style, setStyle] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const read = () => {
+      const cs = getComputedStyle(document.documentElement);
+      setStyle({
+        color: cs.getPropertyValue('--label').trim() || '#000',
+        placeholder: cs.getPropertyValue('--label-tertiary').trim() || '#999',
+        danger: cs.getPropertyValue('--ios-red').trim() || '#FF3B30',
+      });
+    };
+    read();
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    mq.addEventListener('change', read);
+    return () => mq.removeEventListener('change', read);
+  }, []);
+
+  return {
+    style: {
+      base: {
+        fontSize: '17px',
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
+        color: style.color,
+        letterSpacing: '-0.011em',
+        '::placeholder': { color: style.placeholder },
+      },
+      invalid: { color: style.danger, iconColor: style.danger },
+    },
+  };
+}
 
 function CheckoutForm() {
   const router = useRouter();
   const cart = useCart();
   const stripe = useStripe();
   const elements = useElements();
+  const stripeAppearance = useStripeAppearance();
   const [couponCode, setCouponCode] = useState('');
   const [couponError, setCouponError] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
@@ -352,266 +398,341 @@ function CheckoutForm() {
   const orderingClosed = configLoaded && !canOrderNow(status, !!unlock);
 
   return (
-    <div className="min-h-screen bg-bg">
-      <header className="sticky top-0 z-30 border-b border-gray-100 bg-surface">
-        <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-4">
-          <button
+    <div className="min-h-screen-safe bg-bg">
+      {/* iOS navigation bar: a centered title with the back affordance on the
+          leading edge, frosted so the form scrolls under it. */}
+      <header className="material-bar hairline-b sticky top-0 z-30 pt-safe">
+        <div className="mx-auto flex max-w-xl items-center gap-1 px-2 py-2.5">
+          <motion.button
+            whileTap={{ scale: 0.92 }}
+            transition={springSnappy}
             onClick={() => router.push('/')}
-            className="cursor-pointer text-text-light hover:text-text"
+            className="flex cursor-pointer items-center gap-0.5 rounded-full px-2 py-1 text-[17px] text-primary"
           >
-            &larr;
-          </button>
-          <h1 className="font-heading text-xl font-bold">Place Your Coffee Order</h1>
+            {/* SF Symbols chevron.backward */}
+            <svg viewBox="0 0 12 20" className="h-[19px] w-[11px]" fill="none">
+              <path
+                d="M10 2L2 10l8 8"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Menu
+          </motion.button>
+          <h1 className="text-ios-headline flex-1 pr-16 text-center text-label">Your Order</h1>
         </div>
       </header>
 
-      <main className="mx-auto max-w-xl px-4 py-6">
+      <main className="mx-auto max-w-xl px-4 py-5 pb-safe-4">
         {orderingClosed && (
-          <div className="mb-6">
+          <div className="mb-5">
             <ClosedNotice settings={settings} status={status} onUnlock={setUnlock} />
           </div>
         )}
 
         {configLoaded && !status.isOpen && !status.isLocked && unlock && (
-          <div className="mb-6 rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
-            <p className="font-heading font-bold text-success">
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            animate="show"
+            className="mb-5 rounded-[var(--r-lg)] bg-success/12 px-5 py-4 ring-1 ring-success/30"
+          >
+            <p className="text-ios-headline text-success">
               Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓
             </p>
             {unlock.allowedCategoryName && (
-              <p className="mt-1 font-body text-sm text-text-light">
+              <p className="text-ios-subhead mt-1 text-label-secondary">
                 {unlock.allowedCategoryName} only.
               </p>
             )}
-          </div>
+          </motion.div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <Card>
-            <Input
-              label="First & Last Name"
-              placeholder="e.g. Sarah K"
-              value={cart.customer_name}
-              maxLength={MAX_NAME_LENGTH}
-              error={nameError}
-              onChange={(e) => {
-                cartStore.setCustomerName(e.target.value);
-                if (nameError) setNameError('');
-              }}
-              onBlur={(e) => {
-                const check = validateFullName(e.target.value);
-                if (e.target.value.trim() && !check.ok) setNameError(check.error ?? '');
-              }}
-              required
-            />
-            <p className="mt-1.5 font-body text-xs text-text-light">
-              A last initial is enough — it&apos;s how we tell two Sarahs apart when we call
-              your order.
-            </p>
-          </Card>
+        <motion.form
+          variants={staggerParent}
+          initial="hidden"
+          animate="show"
+          onSubmit={handleSubmit}
+          className="space-y-6"
+        >
+          <motion.div variants={fadeUp}>
+            <ListGroup
+              header="Your name"
+              footer="A last initial is enough — it's how we tell two Sarahs apart when we call your order."
+            >
+              <div className="p-4">
+                <Input
+                  placeholder="e.g. Sarah K"
+                  value={cart.customer_name}
+                  maxLength={MAX_NAME_LENGTH}
+                  error={nameError}
+                  autoComplete="name"
+                  onChange={(e) => {
+                    cartStore.setCustomerName(e.target.value);
+                    if (nameError) setNameError('');
+                  }}
+                  onBlur={(e) => {
+                    const check = validateFullName(e.target.value);
+                    if (e.target.value.trim() && !check.ok) setNameError(check.error ?? '');
+                  }}
+                  required
+                />
+              </div>
+            </ListGroup>
+          </motion.div>
 
-          <Card>
-            <h3 className="mb-3 font-heading font-bold text-text-dark">Your Drinks</h3>
-            <div className="space-y-2">
+          <motion.div variants={fadeUp}>
+            <ListGroup header="Your drinks">
               {cart.items.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <div>
-                    <span className="font-body">
-                      {item.quantity}x {item.menu_item.name}
+                <ListRow
+                  key={item.id}
+                  label={`${item.quantity} × ${item.menu_item.name}`}
+                  detail={
+                    item.selected_modifiers.length > 0
+                      ? item.selected_modifiers.map((m) => m.name).join(' · ')
+                      : undefined
+                  }
+                  accessory={
+                    <span className="tnum text-ios-body text-label">
+                      {item.item_total === 0 ? 'Free' : `$${item.item_total.toFixed(2)}`}
                     </span>
-                    {item.selected_modifiers.length > 0 && (
-                      <span className="block text-xs text-text-light">
-                        {item.selected_modifiers.map((m) => m.name).join(', ')}
-                      </span>
-                    )}
-                  </div>
-                  <span className="font-accent font-semibold">
-                    {item.item_total === 0 ? 'Free' : `$${item.item_total.toFixed(2)}`}
-                  </span>
-                </div>
+                  }
+                />
               ))}
-            </div>
-          </Card>
+            </ListGroup>
+          </motion.div>
 
           {settings.coupons_enabled && (
-          <Card>
-            <h3 className="mb-3 font-heading font-bold text-text-dark">Coupon Code</h3>
-            {cart.coupon ? (
-              <div className="flex items-center justify-between rounded-xl bg-success/5 p-3">
-                <div>
-                  <span className="font-accent font-semibold text-success">{cart.coupon.code}</span>
-                  <span className="ml-2 text-sm text-text-light">
-                    {cart.coupon.discount_type === 'percentage' &&
-                      `${cart.coupon.discount_value}% off`}
-                    {cart.coupon.discount_type === 'fixed_amount' &&
-                      `$${cart.coupon.discount_value.toFixed(2)} off`}
-                    {cart.coupon.discount_type === 'free_item' && 'Free order'}
-                  </span>
+            <motion.div variants={fadeUp}>
+              <ListGroup header="Coupon">
+                <div className="p-4">
+                  <AnimatePresence mode="wait" initial={false}>
+                    {cart.coupon ? (
+                      <motion.div
+                        key="applied"
+                        initial={{ opacity: 0, scale: 0.96 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.96 }}
+                        transition={springPop}
+                        className="flex items-center justify-between gap-3 rounded-[var(--r-md)] bg-success/12 px-3.5 py-3"
+                      >
+                        <div className="min-w-0">
+                          <span className="text-ios-callout font-semibold text-success">
+                            {cart.coupon.code}
+                          </span>
+                          <span className="text-ios-subhead ml-2 text-label-secondary">
+                            {cart.coupon.discount_type === 'percentage' &&
+                              `${cart.coupon.discount_value}% off`}
+                            {cart.coupon.discount_type === 'fixed_amount' &&
+                              `$${cart.coupon.discount_value.toFixed(2)} off`}
+                            {cart.coupon.discount_type === 'free_item' && 'Free order'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => cartStore.removeCoupon()}
+                          className="press shrink-0 cursor-pointer text-[15px] text-danger"
+                        >
+                          Remove
+                        </button>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="entry"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="flex gap-2"
+                      >
+                        <Input
+                          placeholder="Enter code"
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          error={couponError}
+                        />
+                        <Button
+                          type="button"
+                          variant="tinted"
+                          onClick={applyCoupon}
+                          disabled={couponLoading || !couponCode.trim()}
+                          className="shrink-0 self-start"
+                        >
+                          {couponLoading ? <IOSSpinner size={16} /> : 'Apply'}
+                        </Button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => cartStore.removeCoupon()}
-                  className="cursor-pointer text-xs text-danger hover:underline"
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Enter code"
-                  value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                  error={couponError}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={applyCoupon}
-                  disabled={couponLoading}
-                  className="shrink-0 border border-gray-200"
-                >
-                  Apply
-                </Button>
-              </div>
-            )}
-          </Card>
+              </ListGroup>
+            </motion.div>
           )}
 
           {/* Donation — hidden entirely when the admin turns donations off */}
           {settings.donations_enabled && (
-            <Card>
-              <h3 className="font-heading font-bold text-text-dark">
-                Add a {settings.donation_label}
-              </h3>
-              <p className="mb-3 mt-0.5 font-body text-xs text-text-light">
-                Optional — supports the coffee ministry.
-              </p>
-
-              {donationPresets.length > 0 && (
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {donationPresets.map((amount) => (
-                    <button
-                      key={amount}
-                      type="button"
-                      onClick={() =>
-                        cartStore.setDonation(cart.donation_amount === amount ? 0 : amount)
-                      }
-                      className={cn(
-                        'cursor-pointer rounded-xl border-2 px-4 py-2 font-accent text-sm font-semibold transition-all',
-                        cart.donation_amount === amount
-                          ? 'border-success bg-success text-white'
-                          : 'border-gray-200 bg-surface text-text hover:border-success/40',
-                      )}
-                    >
-                      ${amount.toFixed(2)}
-                    </button>
-                  ))}
-                  {cart.donation_amount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => cartStore.setDonation(0)}
-                      className="cursor-pointer px-3 py-2 font-accent text-sm text-text-light hover:text-danger"
-                    >
-                      Clear
-                    </button>
+            <motion.div variants={fadeUp}>
+              <ListGroup
+                header={`Add a ${settings.donation_label}`}
+                footer="Optional — supports the coffee ministry."
+              >
+                <div className="space-y-3 p-4">
+                  {donationPresets.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {donationPresets.map((amount) => {
+                        const active = cart.donation_amount === amount;
+                        return (
+                          <motion.button
+                            key={amount}
+                            type="button"
+                            whileTap={{ scale: 0.94 }}
+                            transition={springSnappy}
+                            onClick={() => cartStore.setDonation(active ? 0 : amount)}
+                            className={cn(
+                              'tnum cursor-pointer rounded-full px-5 py-2.5 text-[15px] font-semibold',
+                              'transition-colors duration-200 ease-[var(--ease-out-ios)]',
+                              active
+                                ? 'bg-success text-white shadow-sm'
+                                : 'bg-fill-tertiary text-label',
+                            )}
+                          >
+                            ${amount.toFixed(2)}
+                          </motion.button>
+                        );
+                      })}
+                      <AnimatePresence>
+                        {cart.donation_amount > 0 && (
+                          <motion.button
+                            type="button"
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            transition={springPop}
+                            onClick={() => cartStore.setDonation(0)}
+                            className="cursor-pointer px-3 py-2.5 text-[15px] text-label-secondary"
+                          >
+                            Clear
+                          </motion.button>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   )}
-                </div>
-              )}
 
-              <Input
-                type="number"
-                placeholder="Or enter another amount"
-                min="0"
-                step="0.01"
-                value={cart.donation_amount || ''}
-                onChange={(e) => cartStore.setDonation(parseFloat(e.target.value) || 0)}
-              />
-            </Card>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="Or enter another amount"
+                    min="0"
+                    step="0.01"
+                    value={cart.donation_amount || ''}
+                    onChange={(e) => cartStore.setDonation(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+              </ListGroup>
+            </motion.div>
           )}
 
           {!isFreeOrder && (
-            <Card>
-              <h3 className="mb-3 font-heading font-bold text-text-dark">Payment</h3>
-              <div className="rounded-xl border border-gray-200 p-3">
-                <CardElement
-                  options={{
-                    style: {
-                      base: {
-                        fontSize: '16px',
-                        fontFamily: 'Nunito, sans-serif',
-                        color: '#54595F',
-                        '::placeholder': { color: '#7A7A7A' },
-                      },
-                    },
-                  }}
-                />
-              </div>
-            </Card>
+            <motion.div variants={fadeUp}>
+              <ListGroup header="Payment">
+                <div className="p-4">
+                  <div className="rounded-[var(--r-md)] bg-fill-tertiary px-4 py-3.5">
+                    <CardElement options={stripeAppearance} />
+                  </div>
+                </div>
+              </ListGroup>
+            </motion.div>
           )}
 
-          <Card>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-text-light">Subtotal</span>
-                <span className="font-accent">${cart.subtotal.toFixed(2)}</span>
-              </div>
-              {cart.discount_amount > 0 && (
-                <div className="flex justify-between text-sm text-success">
-                  <span>Discount</span>
-                  <span className="font-accent">-${cart.discount_amount.toFixed(2)}</span>
+          <motion.div variants={fadeUp}>
+            <ListGroup>
+              <div className="space-y-2.5 p-4">
+                <div className="text-ios-subhead flex justify-between text-label-secondary">
+                  <span>Subtotal</span>
+                  <span className="tnum">${cart.subtotal.toFixed(2)}</span>
                 </div>
-              )}
-              {cart.donation_amount > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-text-light">{settings.donation_label}</span>
-                  <span className="font-accent">${cart.donation_amount.toFixed(2)}</span>
+                {cart.discount_amount > 0 && (
+                  <div className="text-ios-subhead flex justify-between text-success">
+                    <span>Discount</span>
+                    <span className="tnum">-${cart.discount_amount.toFixed(2)}</span>
+                  </div>
+                )}
+                {cart.donation_amount > 0 && (
+                  <div className="text-ios-subhead flex justify-between text-label-secondary">
+                    <span>{settings.donation_label}</span>
+                    <span className="tnum">${cart.donation_amount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="hairline-t text-ios-title3 flex justify-between pt-2.5 text-label">
+                  <span>Total</span>
+                  <span className="tnum">
+                    {isFreeOrder ? 'Free' : `$${cart.total.toFixed(2)}`}
+                  </span>
                 </div>
-              )}
-              <div className="flex justify-between border-t border-gray-100 pt-2 font-heading text-lg font-bold">
-                <span>Total</span>
-                <span>{isFreeOrder ? 'Free' : `$${cart.total.toFixed(2)}`}</span>
               </div>
-            </div>
-          </Card>
+            </ListGroup>
+          </motion.div>
 
           {queueWait !== null && !orderingClosed && (
-            <div className="flex items-center gap-3 rounded-xl border border-primary/10 bg-primary/5 px-4 py-3">
+            <motion.div
+              variants={fadeUp}
+              className="flex items-center gap-3 rounded-[var(--r-lg)] bg-primary/10 px-4 py-3.5"
+            >
               <span className="text-xl">&#8987;</span>
               <div>
-                <p className="font-body text-sm text-text">
+                <p className="text-ios-subhead text-label">
                   Estimated wait:{' '}
-                  <strong className="font-accent text-primary">
+                  <strong className="tnum font-semibold text-primary">
                     ~{queueWait + cartItemCount} min
                   </strong>
                 </p>
-                <p className="text-xs text-text-light">Based on current queue + your order</p>
+                <p className="text-ios-footnote text-label-tertiary">
+                  Based on current queue + your order
+                </p>
               </div>
-            </div>
+            </motion.div>
           )}
 
-          {error && <p className="text-center text-sm text-danger">{error}</p>}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={springSnappy}
+                className="overflow-hidden"
+              >
+                <p className="text-ios-subhead rounded-[var(--r-md)] bg-danger/12 px-4 py-3 text-center text-danger">
+                  {error}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <Button
-            type="submit"
-            fullWidth
-            size="lg"
-            disabled={processing || cart.items.length === 0 || orderingClosed}
-          >
-            {orderingClosed
-              ? 'Ordering Is Closed'
-              : processing
-                ? 'Placing your order...'
-                : isFreeOrder
-                  ? 'Place Order'
-                  : `Place Order · $${cart.total.toFixed(2)}`}
-          </Button>
+          <motion.div variants={fadeUp} className="space-y-2">
+            <Button
+              type="submit"
+              fullWidth
+              size="lg"
+              disabled={processing || cart.items.length === 0 || orderingClosed}
+            >
+              {processing && <IOSSpinner size={18} className="text-white" />}
+              {orderingClosed
+                ? 'Ordering Is Closed'
+                : processing
+                  ? 'Placing your order…'
+                  : isFreeOrder
+                    ? 'Place Order'
+                    : `Place Order · $${cart.total.toFixed(2)}`}
+            </Button>
 
-          {!orderingClosed && !processing && cart.items.length > 0 && (
-            <p className="text-center font-body text-xs text-text-light">
-              Your order is sent to the baristas once you tap the button above.
-            </p>
-          )}
-        </form>
+            {!orderingClosed && !processing && cart.items.length > 0 && (
+              <p className="text-ios-footnote text-center text-label-tertiary">
+                Your order is sent to the baristas once you tap the button above.
+              </p>
+            )}
+          </motion.div>
+        </motion.form>
       </main>
     </div>
   );

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { fadeUp, springSnappy } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import type { ShopSettings } from '@/types';
 import type { ShopStatus } from '@/lib/shop';
@@ -14,6 +16,23 @@ interface ShopBannerProps {
   className?: string;
 }
 
+/** The pulsing dot that says "this is live", not a static badge. */
+function StatusDot({ open }: { open: boolean }) {
+  if (!open) return <span className="h-2 w-2 rounded-full bg-white/60" />;
+  return (
+    <span className="relative flex h-2 w-2">
+      <motion.span
+        // A ring expanding and fading out of the dot — the same idle pulse
+        // iOS uses for live indicators. Cheaper and calmer than a blink.
+        animate={{ scale: [1, 2.2], opacity: [0.7, 0] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
+        className="absolute inline-flex h-full w-full rounded-full bg-white"
+      />
+      <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+    </span>
+  );
+}
+
 /**
  * The big "who we are / when we're open" header. This is the first thing a
  * customer sees, so it has to answer: what is this, and can I order right now?
@@ -23,40 +42,39 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
     return (
       <div
         className={cn(
-          'flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-2xl bg-gradient-to-r from-primary to-primary-light px-5 py-3 text-white shadow-md',
+          'flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-[var(--r-lg)] px-5 py-3 text-white',
+          'bg-gradient-to-r from-primary to-indigo shadow-sm',
           className,
         )}
       >
-        <h1 className="font-heading text-xl font-bold leading-none tracking-tight">
-          {settings.service_title}
-        </h1>
+        <h1 className="text-ios-title3 leading-none text-white">{settings.service_title}</h1>
 
         {settings.service_subtitle && (
-          <span className="font-body text-sm text-white/80">{settings.service_subtitle}</span>
+          <span className="text-ios-subhead text-white/80">{settings.service_subtitle}</span>
         )}
 
         <div className="ml-auto flex items-center gap-3">
           {status.isOpen ? (
             <>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-success px-3 py-1 font-accent text-xs font-bold">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-success px-3 py-1 text-[13px] font-semibold">
+                <StatusDot open />
                 Open
               </span>
               {status.closesAt && (
-                <span className="font-accent text-sm text-white/90">
-                  until <strong className="font-bold">{status.closesAt}</strong>
+                <span className="text-ios-subhead text-white/90">
+                  until <strong className="font-semibold">{status.closesAt}</strong>
                 </span>
               )}
             </>
           ) : (
             <>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 font-accent text-xs font-bold ring-1 ring-white/25">
-                <span className="h-2 w-2 rounded-full bg-white/60" />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[13px] font-semibold ring-1 ring-white/25">
+                <StatusDot open={false} />
                 Closed
               </span>
               {status.nextOpensAt && (
-                <span className="font-accent text-sm text-white/90">
-                  opens <strong className="font-bold">{status.nextOpensAt}</strong>
+                <span className="text-ios-subhead text-white/90">
+                  opens <strong className="font-semibold">{status.nextOpensAt}</strong>
                 </span>
               )}
             </>
@@ -67,49 +85,51 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
   }
 
   return (
-    <div
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
       className={cn(
-        'relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-primary-light px-6 py-7 text-white shadow-lg sm:px-8 sm:py-8',
+        'relative overflow-hidden rounded-[var(--r-xl)] px-6 py-7 text-white shadow-md sm:px-8 sm:py-8',
+        'bg-gradient-to-br from-primary to-indigo',
         className,
       )}
     >
       {/* Soft decorative glow, purely visual */}
-      <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-secondary/20 blur-3xl" />
+      <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-teal/30 blur-3xl" />
 
       <div className="relative">
-        <h1 className="font-heading text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
+        <h1 className="text-ios-title1 text-white sm:text-[34px] sm:leading-[41px]">
           {settings.service_title}
         </h1>
 
         {settings.service_subtitle && (
-          <p className="mt-1.5 font-body text-base text-white/85 sm:text-lg">
-            {settings.service_subtitle}
-          </p>
+          <p className="text-ios-body mt-1.5 text-white/85">{settings.service_subtitle}</p>
         )}
 
         {/* Open / closed state */}
         <div className="mt-5 flex flex-wrap items-center gap-2.5">
           {status.isOpen ? (
-            <span className="inline-flex items-center gap-2 rounded-full bg-success px-4 py-2 font-accent text-sm font-bold shadow-sm">
-              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-white" />
+            <span className="inline-flex items-center gap-2 rounded-full bg-success px-4 py-2 text-[15px] font-semibold shadow-sm">
+              <StatusDot open />
               Open — ordering now
             </span>
           ) : (
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 font-accent text-sm font-bold ring-1 ring-white/25">
-              <span className="h-2.5 w-2.5 rounded-full bg-white/60" />
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-[15px] font-semibold ring-1 ring-white/25">
+              <StatusDot open={false} />
               Closed
             </span>
           )}
 
           {status.isOpen && status.closesAt && (
-            <span className="font-accent text-sm text-white/90">
-              Serving until <strong className="font-bold">{status.closesAt}</strong>
+            <span className="text-ios-subhead text-white/90">
+              Serving until <strong className="font-semibold">{status.closesAt}</strong>
             </span>
           )}
 
           {!status.isOpen && status.nextOpensAt && (
-            <span className="font-accent text-sm text-white/90">
-              Opens <strong className="font-bold">{status.nextOpensAt}</strong>
+            <span className="text-ios-subhead text-white/90">
+              Opens <strong className="font-semibold">{status.nextOpensAt}</strong>
             </span>
           )}
         </div>
@@ -117,15 +137,18 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
         {/* Weekly schedule */}
         <div className="mt-4 flex items-start gap-2 border-t border-white/15 pt-4">
           <span className="text-base leading-none">🕒</span>
-          <p className="font-body text-sm text-white/80">{status.scheduleSummary}</p>
+          <p className="text-ios-subhead text-white/80">{status.scheduleSummary}</p>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 /**
  * Full-width notice shown when ordering is closed, explaining what to do instead.
+ *
+ * Uses the orange accent on a tint of itself rather than fixed amber shades,
+ * so it stays legible on a black page in dark mode.
  */
 export function ClosedNotice({
   settings,
@@ -138,20 +161,25 @@ export function ClosedNotice({
   onUnlock?: (unlock: AccessUnlock) => void;
 }) {
   return (
-    <div className="rounded-2xl border-2 border-warning/40 bg-warning/10 px-5 py-4">
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      className="rounded-[var(--r-lg)] bg-warning/12 px-5 py-4 ring-1 ring-warning/25"
+    >
       <div className="flex items-start gap-3">
         <span className="text-2xl leading-none">☕</span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-heading text-lg font-bold text-amber-900">
+          <h2 className="text-ios-headline text-label">
             We&apos;re not taking orders right now
           </h2>
-          <p className="mt-1 font-body text-sm text-amber-800">{settings.closed_message}</p>
+          <p className="text-ios-subhead mt-1 text-label-secondary">{settings.closed_message}</p>
           {status.nextOpensAt && (
-            <p className="mt-2 font-accent text-sm font-bold text-amber-900">
+            <p className="text-ios-subhead mt-2 font-semibold text-warning">
               Ordering opens {status.nextOpensAt}.
             </p>
           )}
-          <p className="mt-2 font-body text-xs text-amber-800/80">
+          <p className="text-ios-footnote mt-2 text-label-tertiary">
             You can still browse the menu below.
           </p>
           {/* A lock is deliberately absolute — no access code gets past it, so we don't
@@ -159,7 +187,7 @@ export function ClosedNotice({
           {onUnlock && !status.isLocked && <AccessCodeBox onUnlock={onUnlock} />}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -185,39 +213,59 @@ function AccessCodeBox({ onUnlock }: { onUnlock: (unlock: AccessUnlock) => void 
     onUnlock(unlock);
   }
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="mt-3 cursor-pointer font-accent text-sm font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950"
-      >
-        Have an access code?
-      </button>
-    );
-  }
-
   return (
-    <form onSubmit={submit} className="mt-3 flex flex-wrap items-start gap-2">
-      <div className="min-w-0 flex-1">
-        <input
-          autoFocus
-          value={code}
-          onChange={(e) => {
-            setCode(e.target.value.toUpperCase());
-            if (error) setError('');
-          }}
-          placeholder="Enter access code"
-          className="w-full rounded-xl border-2 border-amber-300 bg-white px-4 py-2.5 font-mono text-sm text-amber-950 placeholder:font-body placeholder:text-amber-800/50 focus:border-amber-500 focus:outline-none"
-        />
-        {error && <p className="mt-1.5 font-body text-xs text-danger">{error}</p>}
-      </div>
-      <button
-        type="submit"
-        disabled={checking || !code.trim()}
-        className="cursor-pointer rounded-xl bg-amber-900 px-5 py-2.5 font-accent text-sm font-bold text-white transition-colors hover:bg-amber-950 disabled:opacity-50"
-      >
-        {checking ? 'Checking…' : 'Unlock'}
-      </button>
-    </form>
+    <AnimatePresence mode="wait" initial={false}>
+      {!open ? (
+        <motion.button
+          key="trigger"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          whileTap={{ scale: 0.97 }}
+          transition={springSnappy}
+          onClick={() => setOpen(true)}
+          className="mt-3 cursor-pointer text-[15px] font-semibold text-primary"
+        >
+          Have an access code?
+        </motion.button>
+      ) : (
+        <motion.form
+          key="form"
+          // Height animation so the notice grows into the form rather than
+          // jumping — the layout shift is what would otherwise feel webby.
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={springSnappy}
+          onSubmit={submit}
+          className="overflow-hidden"
+        >
+          <div className="mt-3 flex flex-wrap items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <input
+                autoFocus
+                value={code}
+                onChange={(e) => {
+                  setCode(e.target.value.toUpperCase());
+                  if (error) setError('');
+                }}
+                placeholder="Enter access code"
+                className="w-full rounded-[var(--r-md)] bg-fill-tertiary px-4 py-3 font-mono text-[17px] tracking-[0.08em] text-label placeholder:font-body placeholder:tracking-normal placeholder:text-label-tertiary focus:outline-none focus:ring-[3px] focus:ring-primary/25"
+              />
+              {error && <p className="text-ios-footnote mt-1.5 text-danger">{error}</p>}
+            </div>
+            <motion.button
+              type="submit"
+              whileTap={{ scale: 0.96 }}
+              transition={springSnappy}
+              disabled={checking || !code.trim()}
+              className="min-h-[48px] cursor-pointer rounded-full bg-primary px-6 text-[17px] font-semibold text-white disabled:opacity-40"
+            >
+              {checking ? 'Checking…' : 'Unlock'}
+            </motion.button>
+          </div>
+        </motion.form>
+      )}
+    </AnimatePresence>
   );
 }

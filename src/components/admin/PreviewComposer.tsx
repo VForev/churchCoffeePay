@@ -52,23 +52,23 @@ export default function PreviewComposer({
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="mb-1 block font-body text-xs text-text-light">Customer name</span>
+          <span className="mb-1 block text-ios-caption text-label-secondary">Customer name</span>
           <input className={input} value={value.customerName} onChange={(e) => set({ customerName: e.target.value })} />
         </label>
         <label className="block">
-          <span className="mb-1 block font-body text-xs text-text-light">Drink</span>
+          <span className="mb-1 block text-ios-caption text-label-secondary">Drink</span>
           <input className={input} value={value.drinkName} onChange={(e) => set({ drinkName: e.target.value })} />
         </label>
       </div>
 
       <label className="block">
-        <span className="mb-1 block font-body text-xs text-text-light">Special instructions</span>
+        <span className="mb-1 block text-ios-caption text-label-secondary">Special instructions</span>
         <input className={input} value={value.note} onChange={(e) => set({ note: e.target.value })} placeholder="(leave blank for none)" />
       </label>
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-1.5">
-          <span className="font-body text-xs text-text-light">Cup:</span>
+          <span className="text-ios-caption text-label-secondary">Cup:</span>
           {([['hot', 'Hot'], ['iced', 'Cold'], [null, 'None']] as const).map(([t, lbl]) => (
             <button
               key={lbl}
@@ -88,7 +88,7 @@ export default function PreviewComposer({
             onChange={(e) => set({ multiCup: e.target.checked })}
             className="h-4 w-4 accent-primary"
           />
-          <span className="font-body text-xs text-text-light">Multi-cup (shows counter)</span>
+          <span className="text-ios-caption text-label-secondary">Multi-cup (shows counter)</span>
         </label>
       </div>
 
@@ -99,7 +99,7 @@ export default function PreviewComposer({
               <p className="mb-1.5 font-body text-xs font-semibold text-text-dark">{g.name}</p>
               <div className="flex flex-wrap gap-1.5">
                 {g.options.length === 0 && (
-                  <span className="font-body text-xs text-text-light">(no options)</span>
+                  <span className="text-ios-caption text-label-secondary">(no options)</span>
                 )}
                 {g.options.map((opt) => {
                   const on = (value.selected[g.name] ?? []).includes(opt);

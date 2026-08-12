@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +21,17 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
 PRINTER_NAME=`;
 
 export default function PrintSetupPage() {
+  // What the shop PC *should* be running. The launcher prints the same stamp in its
+  // window, so "did that machine actually get my change?" stops being guesswork.
+  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/print-agent-version.txt')
+      .then((res) => (res.ok ? res.text() : null))
+      .then((text) => setCurrentVersion(text?.trim() || null))
+      .catch(() => setCurrentVersion(null));
+  }, []);
+
   // The startup file needs your site's /live address. We bake it in on download so
   // there's nothing to edit — grab the template and swap the placeholder for this origin.
   async function downloadStartupFile() {
@@ -48,8 +59,8 @@ export default function PrintSetupPage() {
   return (
     <div className="max-w-3xl">
       <div className="mb-6">
-        <h1 className="font-heading text-2xl font-bold text-text-dark">Set Up the Cup Printer</h1>
-        <p className="mt-1 font-body text-sm text-text-light">
+        <h1 className="text-ios-largetitle text-label">Set Up the Cup Printer</h1>
+        <p className="mt-1 text-ios-subhead text-label-secondary">
           A one-time setup on the shop computer — about 10 minutes. Do these in order.
           After this, one double-click starts the printer (and pulls the latest version
           automatically), and labels print by themselves whenever an order comes in.
@@ -58,16 +69,16 @@ export default function PrintSetupPage() {
 
       {/* Downloads */}
       <Card className="mb-6 border-primary/20 bg-primary/5">
-        <h2 className="font-heading text-lg font-bold text-text-dark">Download the files</h2>
-        <p className="mt-0.5 font-body text-sm text-text-light">
+        <h2 className="text-ios-title3 text-label">Download the files</h2>
+        <p className="mt-0.5 text-ios-subhead text-label-secondary">
           Save both onto the <strong>Windows computer</strong> the printer is plugged into — put
           them in the <strong>same folder</strong>.
         </p>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col rounded-xl border border-primary/20 bg-surface p-4">
-            <h3 className="font-heading font-bold text-text-dark">1. The launcher</h3>
-            <p className="mt-1 flex-1 font-body text-xs text-text-light">
+            <h3 className="text-ios-headline text-label">1. The launcher</h3>
+            <p className="mt-1 flex-1 text-ios-caption text-label-secondary">
               Downloads the latest printer software and starts printing. Double-click it each
               service morning. <strong>Required.</strong>
             </p>
@@ -81,8 +92,8 @@ export default function PrintSetupPage() {
           </div>
 
           <div className="flex flex-col rounded-xl border border-primary/20 bg-surface p-4">
-            <h3 className="font-heading font-bold text-text-dark">2. Start at boot</h3>
-            <p className="mt-1 flex-1 font-body text-xs text-text-light">
+            <h3 className="text-ios-headline text-label">2. Start at boot</h3>
+            <p className="mt-1 flex-1 text-ios-caption text-label-secondary">
               Put this in the Startup folder and the PC auto-starts the printer and opens the live
               screen full-screen. Already set to your site — nothing to edit. <em>Optional.</em>
             </p>
@@ -95,7 +106,22 @@ export default function PrintSetupPage() {
           </div>
         </div>
 
-        <p className="mt-3 font-body text-xs text-text-light">
+        {currentVersion && (
+          <div className="mt-4 rounded-xl border border-primary/20 bg-surface px-4 py-3">
+            <p className="text-sm text-text">
+              Current printer software version:{' '}
+              <strong className="font-mono text-text-dark">{currentVersion}</strong>
+            </p>
+            <p className="mt-1 text-ios-caption text-label-secondary">
+              The shop PC prints its own version in the black window when it starts. If the two
+              don&apos;t match, that PC didn&apos;t get the latest update — close the window and
+              double-click <strong>LOTG-Printer.bat</strong> again. This is the first thing to check
+              when a label change hasn&apos;t reached the roll.
+            </p>
+          </div>
+        )}
+
+        <p className="mt-3 text-ios-caption text-label-secondary">
           When you first open either one, Windows may say{' '}
           <em>&ldquo;Windows protected your PC&rdquo;</em> — click{' '}
           <strong>More info → Run anyway</strong>. That warning shows for any downloaded file; these
@@ -214,7 +240,7 @@ export default function PrintSetupPage() {
       </Step>
 
       <Card className="mt-6">
-        <h2 className="mb-2 font-heading font-bold text-text-dark">If something goes wrong</h2>
+        <h2 className="mb-2 text-ios-headline text-label">If something goes wrong</h2>
         <ul className="space-y-2 font-body text-sm text-text">
           <li>
             <strong>Nothing prints.</strong> Is the launcher window still open and showing
@@ -236,8 +262,8 @@ export default function PrintSetupPage() {
       </Card>
 
       <Card className="mt-6">
-        <h2 className="mb-2 font-heading font-bold text-text-dark">Prefer to set it up by hand?</h2>
-        <p className="font-body text-sm text-text">
+        <h2 className="mb-2 text-ios-headline text-label">Prefer to set it up by hand?</h2>
+        <p className="text-sm text-text">
           You can skip the launcher and run the software yourself:{' '}
           <a
             href="/print-agent.zip"
@@ -285,7 +311,7 @@ function Step({
         {!last && <div className="w-0.5 flex-1 bg-gray-200" />}
       </div>
       <div className={cn('min-w-0 flex-1', last ? 'pb-2' : 'pb-6')}>
-        <h2 className="mb-2 font-heading text-lg font-bold text-text-dark">{title}</h2>
+        <h2 className="mb-2 text-ios-title3 text-label">{title}</h2>
         <div className="space-y-1 font-body text-sm leading-relaxed text-text">{children}</div>
       </div>
     </div>

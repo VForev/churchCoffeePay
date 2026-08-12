@@ -1,7 +1,7 @@
 'use client';
 
-import Card from '@/components/ui/Card';
-import Badge from '@/components/ui/Badge';
+import { motion } from 'motion/react';
+import { fadeUp, springSnappy } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import type { MenuItem } from '@/types';
 
@@ -27,54 +27,86 @@ export default function MenuCard({
   const disabled = soldOut || orderingClosed;
 
   return (
-    <Card
-      hover={!disabled}
+    <motion.button
+      type="button"
+      variants={fadeUp}
+      // Participates in the parent grid's stagger on first paint.
+      whileTap={disabled ? undefined : { scale: 0.97 }}
+      transition={springSnappy}
+      disabled={disabled}
       onClick={disabled ? undefined : onClick}
       className={cn(
-        'relative flex h-full flex-col justify-between',
-        soldOut && 'opacity-60',
-        disabled && 'cursor-not-allowed',
+        'group relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-surface p-0 text-left shadow-sm',
+        'touch-manipulation',
+        disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+        soldOut && 'opacity-55',
       )}
     >
       {item.image_url && (
-        <div className="mb-3 h-32 w-full overflow-hidden rounded-xl bg-bg">
+        <div className="relative aspect-[4/3] w-full overflow-hidden bg-fill-quaternary">
           <img
             src={item.image_url}
             alt={item.name}
-            className={cn('h-full w-full object-cover', soldOut && 'grayscale')}
+            className={cn(
+              'h-full w-full object-cover',
+              // A slow, small zoom on press — the photo reacts to the touch
+              // along with the card, which is what makes the tap feel physical.
+              'transition-transform duration-500 ease-[var(--ease-out-ios)] group-active:scale-[1.04]',
+              soldOut && 'grayscale',
+            )}
           />
+          {soldOut && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/35">
+              <span className="rounded-full bg-danger px-3 py-1.5 text-[13px] font-bold uppercase tracking-wide text-white shadow-sm">
+                Sold Out
+              </span>
+            </div>
+          )}
         </div>
       )}
 
-      <div className="flex-1">
-        <h3 className="font-heading text-base font-bold leading-tight text-text-dark">
-          {item.name}
-        </h3>
-        {item.description && (
-          <p className="mt-1 line-clamp-2 text-sm text-text-light">{item.description}</p>
-        )}
-      </div>
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex-1">
+          <h3 className="text-ios-headline text-label">{item.name}</h3>
+          {item.description && (
+            <p className="text-ios-subhead mt-1 line-clamp-2 text-label-secondary">
+              {item.description}
+            </p>
+          )}
+        </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2">
-        {isFree ? (
-          <Badge variant="success">Free</Badge>
-        ) : (
-          <span
-            className={cn(
-              'font-accent text-lg font-bold',
-              soldOut ? 'text-text-light line-through' : 'text-primary',
-            )}
-          >
-            ${price.toFixed(2)}
-          </span>
-        )}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          {isFree ? (
+            <span className="text-ios-headline text-success">Free</span>
+          ) : (
+            <span
+              className={cn(
+                'tnum text-ios-headline',
+                soldOut ? 'text-label-tertiary line-through' : 'text-label',
+              )}
+            >
+              ${price.toFixed(2)}
+            </span>
+          )}
 
-        {soldOut && (
-          <span className="inline-flex items-center rounded-full bg-danger px-3 py-1 font-accent text-xs font-bold uppercase tracking-wide text-white">
-            Sold Out
-          </span>
-        )}
+          {/* No image means the sold-out state has nowhere to overlay, so it
+              falls back to a chip on the price row. */}
+          {soldOut && !item.image_url && (
+            <span className="rounded-full bg-danger px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
+              Sold Out
+            </span>
+          )}
+
+          {!disabled && (
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white">
+              <svg viewBox="0 0 14 14" className="h-3 w-3" fill="currentColor">
+                <rect y="6" width="14" height="2" rx="1" />
+                <rect x="6" width="2" height="14" rx="1" />
+              </svg>
+            </span>
+          )}
+        </div>
       </div>
-    </Card>
+    </motion.button>
   );
 }

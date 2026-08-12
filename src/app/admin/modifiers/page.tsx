@@ -8,6 +8,8 @@ import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
 import type { ModifierGroup, Modifier } from '@/types';
+import { SwitchField } from '@/components/ui/List';
+import IOSSpinner from '@/components/ui/Spinner';
 
 type GroupWithMods = ModifierGroup & { modifiers: Modifier[] };
 
@@ -131,7 +133,7 @@ export default function AdminModifiersPage() {
     if (group) persistOrder('modifiers', group.modifiers, mod.id, direction);
   };
 
-  if (loading) return <div className="flex justify-center py-20"><div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-20"><IOSSpinner size={28} /></div>;
 
   const sortedGroups = sortByOrder(groups);
 
@@ -139,8 +141,8 @@ export default function AdminModifiersPage() {
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-text-dark">Modifier Groups</h1>
-          <p className="text-sm font-body text-text-light mt-0.5">
+          <h1 className="text-ios-largetitle text-label">Modifier Groups</h1>
+          <p className="text-ios-subhead text-label-secondary mt-0.5">
             The ▲/▼ order here is the order customers see when they customize a drink.
           </p>
         </div>
@@ -174,10 +176,10 @@ export default function AdminModifiersPage() {
                       ▼
                     </button>
                   </div>
-                  <h2 className="font-heading font-bold text-text-dark">{group.name}</h2>
+                  <h2 className="text-ios-headline text-label">{group.name}</h2>
                   {group.is_required && <Badge variant="danger">Required</Badge>}
                   {group.allow_multiple && <Badge variant="secondary">Multi-select</Badge>}
-                  <span className="text-xs text-text-light font-body">({sortedMods.length} options)</span>
+                  <span className="text-xs text-text-light">({sortedMods.length} options)</span>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -218,7 +220,7 @@ export default function AdminModifiersPage() {
                     </div>
 
                     <div className="flex-1 flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-body">{mod.name}</span>
+                      <span className="text-sm">{mod.name}</span>
                       {mod.price_adjustment > 0 && (
                         <span className="text-xs text-primary font-accent">+${mod.price_adjustment.toFixed(2)}</span>
                       )}
@@ -255,15 +257,19 @@ export default function AdminModifiersPage() {
         {editGroup && (
           <div className="space-y-4">
             <Input label="Name" value={editGroup.name || ''} onChange={(e) => setEditGroup({ ...editGroup, name: e.target.value })} />
-            <div className="flex gap-4 flex-wrap">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={editGroup.is_required || false} onChange={(e) => setEditGroup({ ...editGroup, is_required: e.target.checked })} className="accent-primary w-4 h-4" />
-                <span className="text-sm">Required selection</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={editGroup.allow_multiple || false} onChange={(e) => setEditGroup({ ...editGroup, allow_multiple: e.target.checked })} className="accent-primary w-4 h-4" />
-                <span className="text-sm">Allow multiple</span>
-              </label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <SwitchField
+                label="Required"
+                help="Customer must choose one"
+                checked={editGroup.is_required || false}
+                onChange={(v) => setEditGroup({ ...editGroup, is_required: v })}
+              />
+              <SwitchField
+                label="Allow multiple"
+                help="More than one option"
+                checked={editGroup.allow_multiple || false}
+                onChange={(v) => setEditGroup({ ...editGroup, allow_multiple: v })}
+              />
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setEditGroup(null)}>Cancel</Button>
@@ -279,15 +285,18 @@ export default function AdminModifiersPage() {
           <div className="space-y-4">
             <Input label="Name" value={editMod.name || ''} onChange={(e) => setEditMod({ ...editMod, name: e.target.value })} />
             <Input label="Price Adjustment ($)" type="number" step="0.01" min="0" value={editMod.price_adjustment || 0} onChange={(e) => setEditMod({ ...editMod, price_adjustment: parseFloat(e.target.value) })} />
-            <div className="flex gap-4 flex-wrap">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={editMod.is_default || false} onChange={(e) => setEditMod({ ...editMod, is_default: e.target.checked })} className="accent-primary w-4 h-4" />
-                <span className="text-sm">Default selection</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={editMod.is_available ?? true} onChange={(e) => setEditMod({ ...editMod, is_available: e.target.checked })} className="accent-primary w-4 h-4" />
-                <span className="text-sm">Available</span>
-              </label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <SwitchField
+                label="Default"
+                help="Pre-selected for customers"
+                checked={editMod.is_default || false}
+                onChange={(v) => setEditMod({ ...editMod, is_default: v })}
+              />
+              <SwitchField
+                label="Available"
+                checked={editMod.is_available ?? true}
+                onChange={(v) => setEditMod({ ...editMod, is_available: v })}
+              />
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setEditMod(null)}>Cancel</Button>

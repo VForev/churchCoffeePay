@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import { cartStore } from '@/lib/cart-store';
 import { useCart } from '@/lib/hooks';
@@ -18,6 +19,9 @@ import ModifierSelector from '@/components/menu/ModifierSelector';
 import CartDrawer from '@/components/cart/CartDrawer';
 import ShopBanner, { ClosedNotice } from '@/components/ShopBanner';
 import CustomOrderBox from '@/components/CustomOrderBox';
+import IOSSpinner from '@/components/ui/Spinner';
+import { fadeUp, springPop, springSheet, springSnappy, staggerParent } from '@/lib/motion';
+import { cn } from '@/lib/utils';
 import type {
   Category,
   MenuItem,
@@ -164,27 +168,30 @@ export default function MenuPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen-safe items-center justify-center bg-bg">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
-          <p className="font-body text-text-light">Loading menu...</p>
+          <IOSSpinner />
+          <p className="text-ios-subhead mt-4 text-label-secondary">Loading menu…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-bg">
-      {/* Compact sticky bar — stays out of the way once you start scrolling */}
-      <header className="sticky top-0 z-30 border-b border-gray-100 bg-surface">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+    <div className="min-h-screen-safe bg-bg">
+      {/* Frosted nav bar. The blur is the point: content scrolling under a
+          translucent bar is the single strongest "this is iOS" cue there is,
+          and it needs real content passing beneath it to read at all. */}
+      <header className="material-bar hairline-b sticky top-0 z-30 pt-safe">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-2.5">
           <div className="min-w-0">
-            <h2 className="truncate font-heading text-lg font-bold text-primary">
-              {settings.service_title}
-            </h2>
+            <h2 className="text-ios-headline truncate text-label">{settings.service_title}</h2>
             {queueWait !== null && canOrder && (
               <p
-                className={`font-accent text-xs ${queueWait === 0 ? 'text-success' : 'text-text-light'}`}
+                className={cn(
+                  'text-ios-caption',
+                  queueWait === 0 ? 'text-success' : 'text-label-secondary',
+                )}
               >
                 {queueWait === 0 ? 'No wait — order now!' : `~${queueWait} min current wait`}
               </p>
@@ -192,24 +199,48 @@ export default function MenuPage() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <button
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={springSnappy}
               onClick={() => router.push('/yourlive')}
-              className="flex cursor-pointer items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2.5 font-accent text-sm font-semibold text-primary transition-all hover:bg-primary/10"
+              className="flex cursor-pointer items-center gap-1.5 rounded-full bg-fill-tertiary px-3.5 py-2 text-[15px] font-medium text-label"
             >
-              <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
-              Track Order
-            </button>
-            <button
+              <span className="relative flex h-1.5 w-1.5">
+                <motion.span
+                  animate={{ scale: [1, 2.4], opacity: [0.7, 0] }}
+                  transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
+                  className="absolute inline-flex h-full w-full rounded-full bg-success"
+                />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+              </span>
+              Track
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={springSnappy}
               onClick={() => setCartOpen(true)}
-              className="relative cursor-pointer rounded-full bg-primary px-5 py-2.5 font-accent text-sm font-semibold text-white transition-all hover:bg-primary-light"
+              className="relative cursor-pointer rounded-full bg-primary px-5 py-2 text-[15px] font-semibold text-white"
             >
               Order
-              {cart.itemCount > 0 && (
-                <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-success text-xs font-bold text-white">
-                  {cart.itemCount}
-                </span>
-              )}
-            </button>
+              <AnimatePresence>
+                {cart.itemCount > 0 && (
+                  <motion.span
+                    // Springs in with overshoot each time the count changes, so
+                    // adding a drink is visibly acknowledged even when the cart
+                    // itself is closed.
+                    key={cart.itemCount}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    transition={springPop}
+                    className="tnum absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1 text-[12px] font-bold text-white"
+                  >
+                    {cart.itemCount}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </motion.button>
           </div>
         </div>
       </header>
@@ -218,12 +249,17 @@ export default function MenuPage() {
         <ShopBanner settings={settings} status={status} />
 
         {activeEvent && (
-          <div className="mt-3 rounded-2xl border border-warm/20 bg-warm/5 px-4 py-3">
-            <p className="font-accent text-sm font-semibold text-warm">
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            animate="show"
+            className="mt-3 rounded-[var(--r-lg)] bg-warm/12 px-4 py-3 ring-1 ring-warm/25"
+          >
+            <p className="text-ios-subhead font-semibold text-warm">
               {activeEvent.name}
               {isEventFree && ' — everything is free today!'}
             </p>
-          </div>
+          </motion.div>
         )}
 
         {!status.isOpen && !unlock && (
@@ -233,16 +269,21 @@ export default function MenuPage() {
         )}
 
         {!status.isOpen && unlock && (
-          <div className="mt-3 rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
-            <p className="font-heading font-bold text-success">
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            animate="show"
+            className="mt-3 rounded-[var(--r-lg)] bg-success/12 px-5 py-4 ring-1 ring-success/30"
+          >
+            <p className="text-ios-headline text-success">
               Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓
             </p>
-            <p className="mt-1 font-body text-sm text-text-light">
+            <p className="text-ios-subhead mt-1 text-label-secondary">
               {unlock.allowedCategoryName
                 ? `You can order ${unlock.allowedCategoryName} — the rest of the menu stays closed.`
                 : 'The shop is closed to everyone else — go ahead and order.'}
             </p>
-          </div>
+          </motion.div>
         )}
       </div>
 
@@ -250,17 +291,31 @@ export default function MenuPage() {
         <CategoryTabs categories={tabCategories} activeId={activeCategory} onSelect={setActiveCategory} />
       </div>
 
-      <main className="mx-auto max-w-5xl px-4 py-6">
+      {/* Extra bottom room so the floating order bar never covers the last row. */}
+      <main
+        className={cn(
+          'mx-auto max-w-5xl px-4 py-5',
+          cart.itemCount > 0 && canOrder && 'pb-28 sm:pb-5',
+        )}
+      >
         {activeCategory === CUSTOM_TAB_ID && unlock?.allowCustomOrder ? (
           <div className="mx-auto max-w-xl">
             <CustomOrderBox unlock={unlock} queueWait={queueWait} />
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-text-light">No items in this category</p>
+          <div className="py-16 text-center">
+            <p className="text-ios-subhead text-label-tertiary">No items in this category</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          // Re-keyed on the category so switching tabs replays the stagger —
+          // the grid rebuilds itself rather than swapping contents in place.
+          <motion.div
+            key={activeCategory}
+            variants={staggerParent}
+            initial="hidden"
+            animate="show"
+            className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3"
+          >
             {filteredItems.map((item) => (
               <MenuCard
                 key={item.id}
@@ -270,22 +325,33 @@ export default function MenuPage() {
                 onClick={() => setSelectedItem(item)}
               />
             ))}
-          </div>
+          </motion.div>
         )}
       </main>
 
-      {/* Mobile cart button */}
-      {cart.itemCount > 0 && !cartOpen && canOrder && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-100 bg-surface/90 p-4 backdrop-blur-sm sm:hidden">
-          <button
-            onClick={() => setCartOpen(true)}
-            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary py-3 font-accent font-semibold text-white"
+      {/* Floating order bar — rises from the bottom edge the moment the cart
+          stops being empty, the way an iOS app surfaces a pending action. */}
+      <AnimatePresence>
+        {cart.itemCount > 0 && !cartOpen && canOrder && (
+          <motion.div
+            initial={{ y: 100 }}
+            animate={{ y: 0 }}
+            exit={{ y: 100 }}
+            transition={springSheet}
+            className="material-bar hairline-t fixed bottom-0 left-0 right-0 z-30 px-4 pb-safe-4 pt-3 sm:hidden"
           >
-            View Order ({cart.itemCount})
-            <span className="text-sm opacity-75">${cart.total.toFixed(2)}</span>
-          </button>
-        </div>
-      )}
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              transition={springSnappy}
+              onClick={() => setCartOpen(true)}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-[17px] font-semibold text-white shadow-sm"
+            >
+              View Order ({cart.itemCount})
+              <span className="tnum opacity-75">${cart.total.toFixed(2)}</span>
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {selectedItem && (
         <ModifierSelector

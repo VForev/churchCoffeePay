@@ -2,6 +2,26 @@
 
 import { cn } from '@/lib/utils';
 
+/**
+ * iOS text fields sit in a filled well, not an outlined box. The fill already
+ * separates the field from the card behind it, so a border on top of it is
+ * redundant weight — the accent ring on focus is the only stroke used, and
+ * only while focused.
+ */
+const fieldBase = cn(
+  'w-full px-4 py-3 rounded-[var(--r-md)]',
+  'bg-fill-tertiary text-label placeholder:text-label-tertiary',
+  'font-body text-[17px] tracking-[-0.011em]',
+  'border border-transparent',
+  'focus:outline-none focus:border-primary focus:bg-transparent',
+  'focus:ring-[3px] focus:ring-primary/20',
+  'transition-[background-color,border-color,box-shadow] duration-200 ease-[var(--ease-out-ios)]',
+  'disabled:opacity-40',
+);
+
+const labelBase = 'block text-ios-footnote font-medium text-label-secondary mb-1.5 px-1';
+const errorBase = 'mt-1.5 px-1 text-ios-footnote text-danger';
+
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
@@ -13,23 +33,20 @@ export default function Input({ label, error, className, id, ...props }: InputPr
   return (
     <div className="w-full">
       {label && (
-        <label htmlFor={inputId} className="block text-sm font-accent font-semibold text-text mb-1.5">
+        <label htmlFor={inputId} className={labelBase}>
           {label}
         </label>
       )}
       <input
         id={inputId}
         className={cn(
-          'w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-surface',
-          'font-body text-text-dark placeholder:text-text-light',
-          'focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary',
-          'transition-all duration-200',
-          error && 'border-danger focus:ring-danger/30 focus:border-danger',
+          fieldBase,
+          error && 'border-danger focus:border-danger focus:ring-danger/20',
           className,
         )}
         {...props}
       />
-      {error && <p className="mt-1 text-sm text-danger">{error}</p>}
+      {error && <p className={errorBase}>{error}</p>}
     </div>
   );
 }
@@ -45,23 +62,21 @@ export function TextArea({ label, error, className, id, ...props }: TextAreaProp
   return (
     <div className="w-full">
       {label && (
-        <label htmlFor={inputId} className="block text-sm font-accent font-semibold text-text mb-1.5">
+        <label htmlFor={inputId} className={labelBase}>
           {label}
         </label>
       )}
       <textarea
         id={inputId}
         className={cn(
-          'w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-surface',
-          'font-body text-text-dark placeholder:text-text-light',
-          'focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary',
-          'transition-all duration-200 resize-none',
-          error && 'border-danger focus:ring-danger/30 focus:border-danger',
+          fieldBase,
+          'resize-none',
+          error && 'border-danger focus:border-danger focus:ring-danger/20',
           className,
         )}
         {...props}
       />
-      {error && <p className="mt-1 text-sm text-danger">{error}</p>}
+      {error && <p className={errorBase}>{error}</p>}
     </div>
   );
 }

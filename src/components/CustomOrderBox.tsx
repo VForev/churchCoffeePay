@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'motion/react';
 import { supabase } from '@/lib/supabase';
-import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input, { TextArea } from '@/components/ui/Input';
+import IOSSpinner from '@/components/ui/Spinner';
+import { fadeUp, springSnappy } from '@/lib/motion';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
 import {
   verifyAccessCode,
@@ -116,17 +118,23 @@ export default function CustomOrderBox({
   }
 
   return (
-    <Card className="border-2 border-warm/30 bg-warm/5">
-      <h3 className="font-heading text-lg font-bold text-text-dark">Write your own order</h3>
-      <p className="mt-1 font-body text-sm text-warm">{note}</p>
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      className="rounded-[var(--r-xl)] bg-surface p-5 shadow-sm"
+    >
+      <h3 className="text-ios-title3 text-label">Write your own order</h3>
+      <p className="text-ios-subhead mt-1 text-warm">{note}</p>
 
-      <form onSubmit={submit} className="mt-4 space-y-4">
+      <form onSubmit={submit} className="mt-5 space-y-4">
         <Input
           label="First & Last Name"
           placeholder="e.g. Sarah K"
           value={name}
           maxLength={MAX_NAME_LENGTH}
           error={nameError}
+          autoComplete="name"
           onChange={(e) => {
             setName(e.target.value);
             if (nameError) setNameError('');
@@ -143,11 +151,26 @@ export default function CustomOrderBox({
             if (error) setError('');
           }}
         />
-        {error && <p className="text-sm text-danger">{error}</p>}
+
+        <AnimatePresence>
+          {error && (
+            <motion.p
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={springSnappy}
+              className="text-ios-subhead overflow-hidden rounded-[var(--r-md)] bg-danger/12 px-4 py-3 text-danger"
+            >
+              {error}
+            </motion.p>
+          )}
+        </AnimatePresence>
+
         <Button type="submit" fullWidth size="lg" disabled={submitting || !request.trim()}>
+          {submitting && <IOSSpinner size={18} className="text-white" />}
           {submitting ? 'Sending…' : 'Send my order'}
         </Button>
       </form>
-    </Card>
+    </motion.div>
   );
 }

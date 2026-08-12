@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import Switch from '@/components/ui/Switch';
 import LabelPreview from '@/components/admin/LabelPreview';
 import PreviewComposer, {
   DEFAULT_PREVIEW_CONTENT,
@@ -20,6 +21,7 @@ import {
   type LabelSettings,
 } from '@/lib/labels';
 import { cn } from '@/lib/utils';
+import IOSSpinner from '@/components/ui/Spinner';
 
 /**
  * Cup label layout.
@@ -217,7 +219,7 @@ export default function AdminLabelsPage() {
   if (loading) {
     return (
       <div className="flex justify-center py-20">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
+        <IOSSpinner size={28} />
       </div>
     );
   }
@@ -227,8 +229,8 @@ export default function AdminLabelsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="font-heading text-2xl font-bold text-text-dark">Cup Labels</h1>
-        <p className="mt-0.5 font-body text-sm text-text-light">
+        <h1 className="text-ios-largetitle text-label">Cup Labels</h1>
+        <p className="mt-0.5 text-ios-subhead text-label-secondary">
           Changes reach the shop PC as soon as you save — no restart needed.
         </p>
       </div>
@@ -243,8 +245,8 @@ export default function AdminLabelsPage() {
         {/* ── Controls ── */}
         <div className="space-y-6">
           <Card>
-            <h2 className="mb-1 font-heading font-bold text-text-dark">Label size</h2>
-            <p className="mb-4 font-body text-xs text-text-light">
+            <h2 className="mb-1 text-ios-headline text-label">Label size</h2>
+            <p className="mb-4 text-ios-caption text-label-secondary">
               Measure the sticker itself, not the backing paper. Getting this wrong is the
               number one reason labels come out misaligned.
             </p>
@@ -285,8 +287,8 @@ export default function AdminLabelsPage() {
           </Card>
 
           <Card>
-            <h2 className="mb-1 font-heading font-bold text-text-dark">Church branding</h2>
-            <p className="mb-4 font-body text-xs text-text-light">
+            <h2 className="mb-1 text-ios-headline text-label">Church branding</h2>
+            <p className="mb-4 text-ios-caption text-label-secondary">
               The mark and church name print across the top of every cup, above the customer&apos;s
               name. On a short roll (50 × 30) this row costs about a line and a half of
               modifiers — worth a look at the preview before Sunday. Turn both off and the label
@@ -310,7 +312,7 @@ export default function AdminLabelsPage() {
 
             {settings.show_church_name && (
               <label className="mt-3 block">
-                <span className="mb-1 block font-body text-xs text-text-light">What it says</span>
+                <span className="mb-1 block text-ios-caption text-label-secondary">What it says</span>
                 <input
                   type="text"
                   value={settings.church_name}
@@ -334,8 +336,8 @@ export default function AdminLabelsPage() {
           </Card>
 
           <Card>
-            <h2 className="mb-1 font-heading font-bold text-text-dark">When to print</h2>
-            <p className="mb-4 font-body text-xs text-text-light">
+            <h2 className="mb-1 text-ios-headline text-label">When to print</h2>
+            <p className="mb-4 text-ios-caption text-label-secondary">
               Whether labels print on their own, or the barista prints each order by hand.
             </p>
             <Toggle
@@ -347,8 +349,8 @@ export default function AdminLabelsPage() {
           </Card>
 
           <Card>
-            <h2 className="mb-1 font-heading font-bold text-text-dark">What&apos;s on the label</h2>
-            <p className="mb-4 font-body text-xs text-text-light">
+            <h2 className="mb-1 text-ios-headline text-label">What&apos;s on the label</h2>
+            <p className="mb-4 text-ios-caption text-label-secondary">
               Turn something off and everything else gets its space back.
             </p>
 
@@ -405,8 +407,8 @@ export default function AdminLabelsPage() {
           </Card>
 
           <Card>
-            <h2 className="mb-1 font-heading font-bold text-text-dark">Text size</h2>
-            <p className="mb-4 font-body text-xs text-text-light">
+            <h2 className="mb-1 text-ios-headline text-label">Text size</h2>
+            <p className="mb-4 text-ios-caption text-label-secondary">
               A starting size — a long name still shrinks itself to fit rather than
               spilling over the drink.
             </p>
@@ -445,8 +447,8 @@ export default function AdminLabelsPage() {
             const orderedNames = orderGroupNames(modifierGroups, settings.modifier_group_order);
             return (
               <Card>
-                <h2 className="mb-1 font-heading font-bold text-text-dark">Modifier categories</h2>
-                <p className="mb-4 font-body text-xs text-text-light">
+                <h2 className="mb-1 text-ios-headline text-label">Modifier categories</h2>
+                <p className="mb-4 text-ios-caption text-label-secondary">
                   These print top to bottom in the order shown — use ▲/▼ to reorder. Switch one
                   off to keep it off the label, or size it on its own (on top of the overall
                   Modifiers size above). New categories added at <strong>/admin/modifiers</strong>{' '}
@@ -484,7 +486,7 @@ export default function AdminLabelsPage() {
                               onChange={(e) => patchGroupStyle(group, { show: e.target.checked })}
                               className="h-4 w-4 accent-primary"
                             />
-                            <span className="font-body text-sm font-semibold text-text-dark">{group}</span>
+                            <span className="text-sm font-semibold text-text-dark">{group}</span>
                           </label>
                         </div>
                         {style.show && (
@@ -505,8 +507,8 @@ export default function AdminLabelsPage() {
           })()}
 
           <Card>
-            <h2 className="mb-1 font-heading font-bold text-text-dark">Custom preview</h2>
-            <p className="mb-4 font-body text-xs text-text-light">
+            <h2 className="mb-1 text-ios-headline text-label">Custom preview</h2>
+            <p className="mb-4 text-ios-caption text-label-secondary">
               Build a label from your real drinks and options to see exactly how it looks — the
               preview switches to <strong>Custom</strong> as soon as you change something here.
             </p>
@@ -541,13 +543,13 @@ export default function AdminLabelsPage() {
               <span className="font-accent text-sm font-semibold text-success">Saved ✓</span>
             )}
             {testSentAt && (
-              <span className="font-body text-sm text-text-light">
+              <span className="text-ios-subhead text-label-secondary">
                 Sent to the shop PC — it prints if the agent is running.
               </span>
             )}
           </div>
 
-          <p className="font-body text-xs text-text-light">
+          <p className="text-ios-caption text-label-secondary">
             <strong>Save first, then test.</strong> The test label prints the layout that
             is <em>saved</em>, not the one on screen — the printer reads the database, not
             this page.
@@ -558,8 +560,8 @@ export default function AdminLabelsPage() {
             you scroll the controls; self-start keeps it content-height so it can move) */}
         <div className="lg:sticky lg:top-6 lg:z-10 lg:w-80 lg:self-start">
           <Card>
-            <h2 className="mb-1 font-heading font-bold text-text-dark">Preview</h2>
-            <p className="mb-3 font-body text-xs text-text-light">
+            <h2 className="mb-1 text-ios-headline text-label">Preview</h2>
+            <p className="mb-3 text-ios-caption text-label-secondary">
               Drawn from the same measurements the printer uses — shown larger than life.
             </p>
 
@@ -594,12 +596,12 @@ export default function AdminLabelsPage() {
             </div>
 
             {sampleIndex === -1 && (
-              <p className="mt-2 text-center font-body text-xs text-text-light">
+              <p className="mt-2 text-center text-ios-caption text-label-secondary">
                 Building a custom label below ↓
               </p>
             )}
 
-            <p className="mt-3 text-center font-body text-xs text-text-light">
+            <p className="mt-3 text-center text-ios-caption text-label-secondary">
               {settings.width_mm} × {settings.height_mm} mm
             </p>
           </Card>
@@ -650,7 +652,7 @@ function NumberField({
 
   return (
     <label className="block">
-      <span className="mb-1 block font-body text-xs text-text-light">{label}</span>
+      <span className="mb-1 block text-ios-caption text-label-secondary">{label}</span>
       <input
         type="number"
         value={text}
@@ -682,19 +684,16 @@ function Toggle({
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
+  // Label on the left, switch on the trailing edge — the iOS settings row,
+  // rather than a checkbox leading its own text.
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-xl px-2 py-2.5 hover:bg-gray-50">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 h-4 w-4 accent-primary"
-      />
-      <span className="min-w-0">
-        <span className="block font-body text-sm font-semibold text-text-dark">{label}</span>
-        <span className="block font-body text-xs text-text-light">{help}</span>
+    <div className="flex items-center gap-3 px-2 py-2.5">
+      <span className="min-w-0 flex-1">
+        <span className="text-ios-subhead block font-medium text-label">{label}</span>
+        <span className="text-ios-caption block text-label-secondary">{help}</span>
       </span>
-    </label>
+      <Switch checked={checked} onChange={onChange} label={label} />
+    </div>
   );
 }
 
@@ -710,7 +709,7 @@ function Slider({
   return (
     <label className="block">
       <span className="mb-1 flex items-baseline justify-between">
-        <span className="font-body text-sm text-text-dark">{label}</span>
+        <span className="text-sm text-text-dark">{label}</span>
         <span className="font-accent text-xs text-text-light">{Math.round(value * 100)}%</span>
       </span>
       <input
