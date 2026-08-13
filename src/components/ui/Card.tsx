@@ -28,7 +28,9 @@ export default function Card({ className, onClick, children, hover = false }: Ca
       transition={springSnappy}
       className={cn(
         'bg-surface rounded-2xl shadow-sm p-4',
-        interactive && 'cursor-pointer touch-manipulation',
+        // `hoverable` only does anything on a device with a real cursor, so a
+        // tappable card lifts under the mouse and stays flat on a phone.
+        interactive && 'cursor-pointer touch-manipulation hoverable',
         className,
       )}
       onClick={onClick}

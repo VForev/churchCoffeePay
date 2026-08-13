@@ -323,17 +323,72 @@ input, textarea, select {
   overscroll-behavior: contain;
 }
 
-/* The frosted navigation bar. backdrop-filter is the whole effect — if it is
-   unsupported the rgba background still keeps text legible. */
+/* ---- Frosted materials ----
+   backdrop-filter is the single most expensive thing in this stylesheet: the
+   compositor re-blurs everything behind the element on every frame it or its
+   backdrop moves. Apple hardware absorbs that; a mid-range PC or Android phone
+   does not, and it shows up as dropped frames while scrolling or while a sheet
+   springs open.
+
+   Three rules keep it cheap:
+     1. Modest radius. Perceptually 12px and 24px are nearly identical here, but
+        cost scales with the radius.
+     2. No `saturate()`. It's a second filter pass over the same pixels for an
+        effect almost nobody can see over a near-opaque background.
+     3. Own compositing layer, so scrolling content beneath it doesn't force the
+        bar itself to repaint.
+
+   Never put these on an element that is being transformed — see .material-solid. */
 .material-bar {
   background: var(--material-bar);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transform: translateZ(0);
 }
 .material-thick {
   background: var(--material-thick);
-  backdrop-filter: saturate(180%) blur(30px);
-  -webkit-backdrop-filter: saturate(180%) blur(30px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transform: translateZ(0);
+}
+
+/* Where a bar sits *inside* something that animates (a sheet footer), the blur
+   would be recomputed every frame of the spring for no visual gain — the sheet
+   is opaque behind it anyway. This is the flat stand-in: same role, no filter. */
+.material-solid {
+  background: var(--bg-plain);
+}
+
+/* Without backdrop-filter the translucent background would show raw text
+   through it, so fall back to the opaque surface instead. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .material-bar,
+  .material-thick {
+    background: var(--bg-plain);
+  }
+}
+
+/* Respect the OS "reduce transparency" accessibility setting, which is also a
+   reliable proxy for "this machine struggles with effects". */
+@media (prefers-reduced-transparency: reduce) {
+  .material-bar,
+  .material-thick {
+    background: var(--bg-plain);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* ---- Compositing hints ----
+   Promote an element to its own layer for the duration of an animation. Applied
+   deliberately and sparingly: every promoted layer costs GPU memory, and
+   `will-change` left on permanently is worse than not using it at all. */
+.gpu {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+.animating {
+  will-change: transform;
 }
 
 /* Hairlines. A 1px CSS border is ~3 device pixels on a retina screen and
@@ -385,10 +440,43 @@ input, textarea, select {
    iOS acknowledges a touch instantly. Applied to plain elements that are not
    Framer Motion components. */
 .press {
-  transition: transform 140ms var(--ease-out-ios), opacity 140ms var(--ease-out-ios);
+  transition: transform 140ms var(--ease-out-ios), opacity 140ms var(--ease-out-ios),
+    background-color 140ms var(--ease-out-ios);
 }
 .press:active { transform: scale(0.96); opacity: 0.75; }
 .press-sm:active { transform: scale(0.98); opacity: 0.85; }
+
+/* ---- Pointer affordances ----
+   An iPhone has no hover, so the touch design gives feedback only on press. On
+   a desktop that reads as a dead interface: nothing acknowledges the cursor
+   until you commit to a click.
+
+   `(hover: hover) and (pointer: fine)` is the correct gate rather than a width
+   breakpoint — it asks the device whether it actually has a hovering cursor.
+   Phones and tablets never match it, so they can't get stuck showing a hover
+   state after a tap, which is the classic bug from unguarded `:hover`. A laptop
+   with a touchscreen reports both and correctly gets hover. */
+@media (hover: hover) and (pointer: fine) {
+  .hoverable {
+    transition: transform 200ms var(--ease-out-ios), box-shadow 200ms var(--ease-out-ios),
+      background-color 160ms var(--ease-out-ios);
+  }
+  /* Lift, not grow: the shadow does most of the work and a 1.01 scale on a card
+     avoids the text reflow shimmer a larger scale causes. */
+  .hoverable:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-raised);
+  }
+  .hover-tint:hover { background-color: var(--fill-tertiary); }
+  .hover-tint-strong:hover { background-color: var(--fill-secondary); }
+  .hover-bright:hover { filter: brightness(1.08); }
+  .hover-dim:hover { opacity: 0.7; }
+  /* Rows in a grouped list highlight the way an AppKit table row does. */
+  .hover-row {
+    transition: background-color 120ms var(--ease-out-ios);
+  }
+  .hover-row:hover { background-color: var(--fill-quaternary); }
+}
 
 /* ---- Keyframes for non-JS transitions ---- */
 @keyframes ios-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -404,9 +492,17 @@ input, textarea, select {
 .animate-ios-up    { animation: ios-slide-up var(--dur-base) var(--ease-out-ios) both; }
 .animate-ios-pop   { animation: ios-pop var(--dur-fast) var(--ease-out-ios) both; }
 
-/* Honour the accessibility setting. Framer Motion reads this too. */
+/* Honour the accessibility setting.
+   This reaches CSS animation and transition only — Framer's springs are driven
+   in JS and are handled separately by MotionProvider's `reducedMotion="user"`.
+
+   Loading indicators are deliberately exempt. A spinner frozen mid-cycle reads
+   as a hung application, which is a worse outcome than the motion itself; the
+   accessibility guidance treats essential status feedback as an exception. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *:not([role='status']):not([role='status'] *),
+  *:not([role='status']):not([role='status'] *)::before,
+  *:not([role='status']):not([role='status'] *)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

@@ -28,19 +28,22 @@ interface ButtonProps extends Omit<
 }
 
 /**
- * Filled variants carry their own color; hover is left almost alone because
- * the primary target here is touch, where hover doesn't exist and a hover
- * rule just causes a stuck highlight after tapping on iOS.
+ * Filled variants carry their own color and brighten on hover; tinted and plain
+ * variants deepen their wash instead, since brightening a near-transparent fill
+ * does nothing visible.
+ *
+ * The hover rules are gated behind `(hover: hover) and (pointer: fine)` in
+ * globals.css, so a phone can't get stuck displaying one after a tap.
  */
 const variantStyles: Record<ButtonVariant, string> = {
-  primary: 'bg-primary text-white shadow-sm',
-  secondary: 'bg-secondary text-white shadow-sm',
-  success: 'bg-success text-white shadow-sm',
-  danger: 'bg-danger text-white shadow-sm',
-  warm: 'bg-warm text-white shadow-sm',
-  tinted: 'bg-primary/12 text-primary',
-  ghost: 'bg-fill-tertiary text-label',
-  plain: 'bg-transparent text-primary',
+  primary: 'bg-primary text-white shadow-sm hover-bright',
+  secondary: 'bg-secondary text-white shadow-sm hover-bright',
+  success: 'bg-success text-white shadow-sm hover-bright',
+  danger: 'bg-danger text-white shadow-sm hover-bright',
+  warm: 'bg-warm text-white shadow-sm hover-bright',
+  tinted: 'bg-primary/12 text-primary hover-tint-strong',
+  ghost: 'bg-fill-tertiary text-label hover-tint-strong',
+  plain: 'bg-transparent text-primary hover-tint',
 };
 
 /** iOS controls are pill-shaped and generously tall — 44px is the minimum
@@ -71,7 +74,9 @@ export default function Button({
         'inline-flex items-center justify-center gap-2 rounded-full',
         'font-accent font-semibold tracking-[-0.01em]',
         'cursor-pointer touch-manipulation select-none',
-        'disabled:opacity-40 disabled:cursor-not-allowed',
+        // Cancels the hover rules rather than letting a dead control light up.
+        'disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none',
+        !disabled && 'transition-[filter,background-color] duration-200 ease-[var(--ease-out-ios)]',
         variantStyles[variant],
         sizeStyles[size],
         fullWidth && 'w-full',

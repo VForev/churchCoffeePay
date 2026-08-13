@@ -867,7 +867,7 @@ function TabletInner() {
                     disabled={soldOut}
                     className={cn(
                       'relative flex flex-col rounded-[var(--r-lg)] bg-surface p-4 text-left shadow-sm touch-manipulation',
-                      soldOut ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                      soldOut ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hoverable',
                     )}
                   >
                     {item.image_url && (

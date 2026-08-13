@@ -20,7 +20,7 @@ import CartDrawer from '@/components/cart/CartDrawer';
 import ShopBanner, { ClosedNotice } from '@/components/ShopBanner';
 import CustomOrderBox from '@/components/CustomOrderBox';
 import IOSSpinner from '@/components/ui/Spinner';
-import { fadeUp, springPop, springSheet, springSnappy, staggerParent } from '@/lib/motion';
+import { fadeUp, springPop, springSheet, springSnappy, staggerCap } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import type {
   Category,
@@ -311,7 +311,9 @@ export default function MenuPage() {
           // the grid rebuilds itself rather than swapping contents in place.
           <motion.div
             key={activeCategory}
-            variants={staggerParent}
+            // Cascade on a short category, single fade on a long one — see
+            // staggerCap. A 30-drink list otherwise ripples for over a second.
+            variants={staggerCap(filteredItems.length)}
             initial="hidden"
             animate="show"
             className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3"

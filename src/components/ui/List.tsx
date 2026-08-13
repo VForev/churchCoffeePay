@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'motion/react';
 import Switch from '@/components/ui/Switch';
 import { cn } from '@/lib/utils';
 
@@ -106,12 +105,16 @@ export function ListRow({
   const interactive = !!onClick;
 
   return (
-    <motion.div
+    <div
       onClick={onClick}
-      whileTap={interactive ? { backgroundColor: 'var(--fill-tertiary)' } : undefined}
-      transition={{ duration: 0.1 }}
       className={cn(
         'relative flex items-center gap-3 px-4 py-3 min-h-[44px]',
+        // Highlight comes from CSS, not Framer. Framer cannot interpolate a
+        // `var()` colour — it can only snap to it — so driving this through
+        // `whileTap` produced a hard flash and a needless JS animation per row.
+        // A CSS transition on background-color is also compositor-friendly and
+        // costs nothing when idle.
+        interactive && 'hover-row active:bg-fill-tertiary',
         // Inset hairline via a pseudo-element on every row but the last —
         // `last:before:hidden` is why the group's bottom edge stays clean.
         'before:absolute before:bottom-0 before:right-0 before:h-px before:bg-separator',
@@ -162,6 +165,6 @@ export function ListRow({
           </svg>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }

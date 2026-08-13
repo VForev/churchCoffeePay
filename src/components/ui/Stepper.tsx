@@ -43,6 +43,7 @@ export default function Stepper({
         aria-label="Decrease"
         className={cn(
           'flex h-8 w-9 cursor-pointer items-center justify-center text-label',
+          'hover-tint-strong transition-colors duration-150',
           atMin && 'cursor-not-allowed opacity-30',
         )}
       >
@@ -62,6 +63,7 @@ export default function Stepper({
         aria-label="Increase"
         className={cn(
           'flex h-8 w-9 cursor-pointer items-center justify-center text-label',
+          'hover-tint-strong transition-colors duration-150',
           atMax && 'cursor-not-allowed opacity-30',
         )}
       >

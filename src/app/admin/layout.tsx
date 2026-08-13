@@ -99,7 +99,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               href={item.href}
               className={cn(
                 'relative flex items-center gap-3 rounded-[var(--r-md)] px-4 py-3 text-[15px]',
-                active ? 'font-semibold text-primary' : 'text-label',
+                active ? 'font-semibold text-primary' : 'text-label hover-row',
               )}
             >
               {/* One selection pill that slides between rows, rather than each
@@ -130,7 +130,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             href={item.href}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-3 rounded-[var(--r-md)] px-4 py-2.5 text-[15px] text-label-secondary"
+            className="hover-row flex items-center gap-3 rounded-[var(--r-md)] px-4 py-2.5 text-[15px] text-label-secondary"
           >
             <span className="w-5 text-center">{item.icon}</span>
             {item.label}

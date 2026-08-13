@@ -59,13 +59,35 @@ export const fadeUp: Variants = {
 
 /**
  * Parent for a list that should cascade. Children use `fadeUp`.
- * 0.04s is deliberately short: long stagger looks like a website intro,
+ *
+ * 0.03s is deliberately short: long stagger looks like a website intro, and
  * iOS uses just enough offset to imply the list assembled itself.
+ *
+ * The delay is capped by `staggerCap` below rather than left to multiply out.
+ * A 30-drink menu at 0.04s each means the last card starts 1.2s after the
+ * first — the grid is still visibly assembling well after it should be usable,
+ * and on a slower machine every one of those cards is a live animation
+ * competing for the same frame budget.
  */
 export const staggerParent: Variants = {
   hidden: { opacity: 1 },
-  show: { opacity: 1, transition: { staggerChildren: 0.04, delayChildren: 0.02 } },
+  show: { opacity: 1, transition: { staggerChildren: 0.03, delayChildren: 0.02 } },
 };
+
+/**
+ * Stagger settings for a list whose length comes from the database.
+ *
+ * Past `max` items the per-child delay collapses to zero, so a long menu fades
+ * in as one block instead of a slow ripple. Short lists keep the cascade, which
+ * is where it actually reads as intentional.
+ */
+export function staggerCap(count: number, max = 12): Variants {
+  const step = count > max ? 0 : 0.03;
+  return {
+    hidden: { opacity: 1 },
+    show: { opacity: 1, transition: { staggerChildren: step, delayChildren: 0.02 } },
+  };
+}
 
 /** Modal scrim. */
 export const scrim: Variants = {

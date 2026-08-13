@@ -72,7 +72,9 @@ export default function CartDrawer({
             animate="show"
             exit="exit"
             onClick={onClose}
-            className="absolute inset-0 bg-[var(--scrim)] backdrop-blur-[2px]"
+            // Dim, don't blur — a full-viewport backdrop-filter re-blurs the
+            // whole page on every frame the drawer moves. See Modal.tsx.
+            className="absolute inset-0 bg-[var(--scrim)]"
           />
 
           <motion.div
@@ -90,7 +92,7 @@ export default function CartDrawer({
             }}
             transition={springSheet}
             className={cn(
-              'relative flex w-full flex-col bg-plain shadow-[var(--shadow-sheet)]',
+              'gpu relative flex w-full flex-col bg-plain shadow-[var(--shadow-sheet)]',
               'max-h-[92vh] rounded-t-[var(--r-sheet)]',
               'sm:h-full sm:max-h-none sm:w-[400px] sm:rounded-none',
             )}

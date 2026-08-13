@@ -41,6 +41,8 @@ export default function Modal({
 }: ModalProps) {
   const dragControls = useDragControls();
   const [isWide, setIsWide] = useState(false);
+  /** Whether the entry spring has finished — see the `will-change` note below. */
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 640px)');
@@ -76,7 +78,12 @@ export default function Modal({
             animate="show"
             exit="exit"
             onClick={onClose}
-            className="absolute inset-0 bg-[var(--scrim)] backdrop-blur-[2px]"
+            // No backdrop blur here. It looked subtle and cost a full-viewport
+            // re-blur on every frame the sheet moved — the single biggest cause
+            // of the sheet feeling heavy on a PC or a mid-range Android. iOS
+            // dims behind a sheet rather than blurring, so this is also closer
+            // to the real thing.
+            className="absolute inset-0 bg-[var(--scrim)]"
           />
 
           <motion.div
@@ -95,8 +102,20 @@ export default function Modal({
               if (shouldDismiss(info.offset.y, info.velocity.y)) onClose();
             }}
             transition={springSheet}
+            // `will-change` promotes the sheet to its own compositor layer, so
+            // the spring moves a finished texture instead of re-rasterising the
+            // panel every frame. It's dropped once the sheet has settled: left
+            // on permanently it pins GPU memory and ends up costing more than
+            // it saves, which is the usual way this optimisation backfires.
+            style={{ willChange: settled ? 'auto' : 'transform' }}
+            // Driven off the animation lifecycle rather than an effect: the
+            // sheet is exactly the thing that knows when it started and stopped
+            // moving, and routing it through an effect on `isOpen` meant setting
+            // state during render-commit for no benefit.
+            onAnimationStart={() => setSettled(false)}
+            onAnimationComplete={() => setSettled(true)}
             className={cn(
-              'relative flex w-full max-h-[92vh] flex-col',
+              'gpu relative flex w-full max-h-[92vh] flex-col',
               'bg-plain shadow-[var(--shadow-sheet)]',
               // 38px top corners on phones matches the iPhone display radius,
               // which is what makes a sheet look inset into the device.

@@ -1020,11 +1020,9 @@ function HistoryPanel() {
                 transition={springLayout}
                 className="overflow-hidden rounded-[var(--r-lg)] bg-surface shadow-sm"
               >
-                <motion.button
-                  whileTap={{ backgroundColor: 'var(--fill-tertiary)' }}
-                  transition={{ duration: 0.1 }}
+                <button
                   onClick={() => setExpandedId(expanded ? null : order.id)}
-                  className="flex w-full cursor-pointer items-center justify-between gap-3 p-4 text-left"
+                  className="hover-row flex w-full cursor-pointer items-center justify-between gap-3 p-4 text-left active:bg-fill-tertiary"
                 >
                   <div className="min-w-0">
                     <h3 className="text-ios-headline truncate text-label">
@@ -1055,7 +1053,7 @@ function HistoryPanel() {
                       />
                     </motion.svg>
                   </div>
-                </motion.button>
+                </button>
 
                 <AnimatePresence initial={false}>
                   {expanded && (

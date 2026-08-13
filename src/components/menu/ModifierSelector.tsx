@@ -139,7 +139,11 @@ export default function ModifierSelector({
   const totalPrice = basePrice + modifierTotal;
 
   const footerContent = (
-    <div className="material-thick hairline-t flex items-center justify-between gap-4 px-5 py-4">
+    // `material-solid`, not `material-thick`: this bar rides inside the sheet,
+    // so a backdrop blur here would be recomputed on every frame of the
+    // presentation spring — and it blurs an opaque sheet, so it never showed
+    // anything anyway. This was the most expensive part of opening a drink.
+    <div className="material-solid hairline-t flex items-center justify-between gap-4 px-5 py-4">
       <div className="text-ios-title3 tnum text-label">
         {totalPrice === 0 ? (
           <span className="text-success">Free</span>
@@ -328,19 +332,17 @@ export default function ModifierSelector({
                         const soldOut = modifier.is_sold_out;
 
                         return (
-                          <motion.button
+                          <button
                             key={modifier.id}
                             type="button"
                             disabled={soldOut}
-                            whileTap={soldOut ? undefined : { backgroundColor: 'var(--fill-tertiary)' }}
-                            transition={{ duration: 0.1 }}
                             onClick={() => toggleModifier(group, modifier)}
                             className={cn(
                               'relative flex w-full touch-manipulation items-center justify-between gap-3 px-4 py-3 text-left text-[17px]',
                               'before:absolute before:bottom-0 before:left-4 before:right-0 before:h-px before:bg-separator last:before:hidden',
                               soldOut
                                 ? 'cursor-not-allowed text-label-tertiary'
-                                : 'cursor-pointer text-label',
+                                : 'cursor-pointer text-label hover-row active:bg-fill-tertiary',
                             )}
                           >
                             <span className={cn('min-w-0 truncate', soldOut && 'line-through')}>
@@ -374,7 +376,7 @@ export default function ModifierSelector({
                                 )}
                               </AnimatePresence>
                             </span>
-                          </motion.button>
+                          </button>
                         );
                       })
                     )}

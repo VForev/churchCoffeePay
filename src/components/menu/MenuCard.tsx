@@ -38,7 +38,7 @@ export default function MenuCard({
       className={cn(
         'group relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-surface p-0 text-left shadow-sm',
         'touch-manipulation',
-        disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+        disabled ? 'cursor-not-allowed' : 'cursor-pointer hoverable',
         soldOut && 'opacity-55',
       )}
     >
@@ -51,7 +51,10 @@ export default function MenuCard({
               'h-full w-full object-cover',
               // A slow, small zoom on press — the photo reacts to the touch
               // along with the card, which is what makes the tap feel physical.
-              'transition-transform duration-500 ease-[var(--ease-out-ios)] group-active:scale-[1.04]',
+              // Tailwind v4 wraps `hover:`/`group-hover:` in `(hover: hover)`
+              // itself, so the mouse version can't stick on a phone after a tap.
+              'transition-transform duration-500 ease-[var(--ease-out-ios)]',
+              'group-active:scale-[1.04] group-hover:scale-[1.03]',
               soldOut && 'grayscale',
             )}
           />

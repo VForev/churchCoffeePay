@@ -59,7 +59,9 @@ export default function SegmentedControl({
               'text-[15px] font-medium tracking-[-0.01em] whitespace-nowrap',
               'transition-colors duration-200',
               scrollable ? 'shrink-0' : 'flex-1',
-              active ? 'text-label' : 'text-label-secondary',
+              // Only the unselected segments respond to the cursor — the
+              // selected one already carries the pill.
+              active ? 'text-label' : 'text-label-secondary hover:text-label',
             )}
           >
             {active && (
