@@ -70,7 +70,21 @@ const STATUS_CONFIG = {
   },
 } as const;
 
-export default function LiveOrders({ showGiving = false }: { showGiving?: boolean }) {
+/**
+ * `twoColumn` is the lobby TV layout and nothing else.
+ *
+ * A 55" screen across the room has width to spare and no scrolling — the Ready
+ * pile is what runs off the bottom, so it gets its own column. A phone has the
+ * opposite problem, so `/yourlive` stays a single stack with Ready on top:
+ * the only question someone holding their phone has is "is mine done yet".
+ */
+export default function LiveOrders({
+  showGiving = false,
+  twoColumn = false,
+}: {
+  showGiving?: boolean;
+  twoColumn?: boolean;
+}) {
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => Date.now());
@@ -131,6 +145,22 @@ export default function LiveOrders({ showGiving = false }: { showGiving?: boolea
     return queueOrders.indexOf(order) + 1;
   }
 
+  // Built once and placed by whichever layout is active below, so the TV and the
+  // phone can't drift into rendering a card differently.
+  const queueCards = queueOrders.map((order) => (
+    <OrderCard
+      key={order.id}
+      order={order}
+      waitMinutes={calculateWaitMinutes(orders, order)}
+      position={queuePosition(order)}
+      now={now}
+    />
+  ));
+
+  const readyCards = readyOrders.map((order) => (
+    <OrderCard key={order.id} order={order} waitMinutes={null} position={null} now={now} />
+  ));
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-bg">
@@ -144,7 +174,7 @@ export default function LiveOrders({ showGiving = false }: { showGiving?: boolea
 
   return (
     <div className="min-h-screen bg-bg">
-      <div className="mx-auto max-w-2xl px-4 pt-3">
+      <div className={`mx-auto max-w-2xl px-4 pt-3 ${twoColumn ? 'lg:max-w-[1500px]' : ''}`}>
         <ShopBanner settings={settings} status={status} compact />
 
         <div className="mt-2.5 flex items-center justify-between px-1">
@@ -158,7 +188,9 @@ export default function LiveOrders({ showGiving = false }: { showGiving?: boolea
         </div>
       </div>
 
-      <main className="mx-auto max-w-2xl space-y-3 px-4 pb-6 pt-3">
+      <main
+        className={`mx-auto max-w-2xl space-y-3 px-4 pb-6 pt-3 ${twoColumn ? 'lg:max-w-[1500px]' : ''}`}
+      >
         {orders.length === 0 && (
           <div className="py-16 text-center">
             <p className="mb-4 text-6xl">&#9749;</p>
@@ -171,34 +203,55 @@ export default function LiveOrders({ showGiving = false }: { showGiving?: boolea
           </div>
         )}
 
-        {readyOrders.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="px-1 font-accent text-sm font-bold uppercase tracking-wide text-success">
-              Ready for pickup
-            </h2>
-            {readyOrders.map((order) => (
-              <OrderCard key={order.id} order={order} waitMinutes={null} position={null} now={now} />
-            ))}
-          </div>
-        )}
-
-        {queueOrders.length > 0 && (
-          <div className="space-y-3">
-            {readyOrders.length > 0 && (
-              <h2 className="px-1 pt-2 font-accent text-sm font-bold uppercase tracking-wide text-text-light">
-                In queue
-              </h2>
+        {twoColumn ? (
+          /* Lobby TV. Left: everything still coming (Up Next + Being Made).
+             Right: Ready. Ready is the column that piles up — nobody clears a
+             card the second it's called — so its own full-height column is what
+             lets the big screen show a dozen finished drinks instead of two.
+             Columns are pinned with col-start so a lone Ready list stays right
+             instead of sliding into the empty left cell. */
+          <div className="grid items-start gap-x-6 gap-y-3 lg:grid-cols-2">
+            {queueOrders.length > 0 && (
+              <section className="space-y-3 lg:col-start-1">
+                <h2 className="px-1 font-accent text-sm font-bold uppercase tracking-wide text-text-light lg:text-base">
+                  In queue
+                </h2>
+                {queueCards}
+              </section>
             )}
-            {queueOrders.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                waitMinutes={calculateWaitMinutes(orders, order)}
-                position={queuePosition(order)}
-                now={now}
-              />
-            ))}
+
+            {readyOrders.length > 0 && (
+              <section className="space-y-3 lg:col-start-2">
+                <h2 className="px-1 font-accent text-sm font-bold uppercase tracking-wide text-success lg:text-base">
+                  Ready for pickup
+                </h2>
+                {readyCards}
+              </section>
+            )}
           </div>
+        ) : (
+          /* Phone (/yourlive) — one stack, Ready on top. Unchanged. */
+          <>
+            {readyOrders.length > 0 && (
+              <div className="space-y-3">
+                <h2 className="px-1 font-accent text-sm font-bold uppercase tracking-wide text-success">
+                  Ready for pickup
+                </h2>
+                {readyCards}
+              </div>
+            )}
+
+            {queueOrders.length > 0 && (
+              <div className="space-y-3">
+                {readyOrders.length > 0 && (
+                  <h2 className="px-1 pt-2 font-accent text-sm font-bold uppercase tracking-wide text-text-light">
+                    In queue
+                  </h2>
+                )}
+                {queueCards}
+              </div>
+            )}
+          </>
         )}
 
         {orders.length > 0 && (
