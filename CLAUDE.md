@@ -105,6 +105,12 @@ but the toggles at `/admin/labels` have nowhere to save.
 
 Until this migration runs, the app falls back to sensible defaults (nothing sold out, always open, donations on) rather than erroring.
 
+**`supabase-order-issues.sql`** — Required for **flagging problem orders** on the barista
+board. Adds `orders.issue_flagged_at` / `orders.issue_note`, and puts
+`order_item_modifiers` on the realtime publication so every barista screen refreshes on
+any part of an order changing. Until it runs, the board works normally but flagging an
+issue fails with a message naming this file.
+
 ### Seed data
 `supabase-seed.sql` — Loads sample categories, modifier groups, modifiers, and menu items to get started.
 
@@ -125,7 +131,7 @@ Until this migration runs, the app falls back to sensible defaults (nothing sold
 | Route | Description | Who uses it |
 |-------|-------------|-------------|
 | `/tablet` | Counter POS — two-panel layout: menu left, cart right. Barista builds order, customer pays on same device | Barista at counter |
-| `/barista` | Barista dashboard — two tabs: **Orders** (real-time kanban with back buttons + undo) and **Sold Out / 86** (mark drinks and add-ins out of stock) | Barista making drinks |
+| `/barista` | Barista dashboard — three tabs: **Orders** (real-time kanban with search, back buttons, undo and issue flagging), **Sold Out / 86** (mark drinks and add-ins out of stock) and **History** (past orders, reprint labels, issues-only filter) | Barista making drinks |
 | `/live` | Public live orders screen — queue position, status and wait time for all active orders. **No giving box** | The lobby TV (share the URL / QR code) |
 | `/yourlive` | The same board, plus the Pushpay giving box under the queue | A customer on their own phone — where "Track Order" and the confirmation screen send them |
 
@@ -167,6 +173,7 @@ src/
 ├── lib/
 │   ├── cart-store.ts                # Client-side cart state (observer pattern)
 │   ├── shop.ts                      # Open/closed/locked logic — canOrderNow() lives here
+│   ├── order-issues.ts              # Problem-order flag: reasons, hasIssue(), error copy
 │   ├── logo.ts                      # Church mark as base64; shared with the print agent
 │   ├── giving.ts                    # Pushpay handle, token and link
 │   ├── supabase.ts                  # Supabase client
@@ -293,9 +300,9 @@ the same fetched set — nothing on the page can disagree with anything else.
 - **Reset to today** — puts both controls back to the default
 
 It reports orders, revenue, drinks made, average order, donations, discounts, busiest
-hours, hot vs cold split, phone vs counter, top drinks, top add-ins, and a per-event
-comparison table (click a row to filter the whole page to that event). Cancelled orders
-are excluded everywhere.
+hours, hot vs cold split, phone vs counter, top drinks, top add-ins, a **Problem orders**
+panel (see *Problem-order stats* below), and a per-event comparison table (click a row to
+filter the whole page to that event). Cancelled orders are excluded everywhere.
 
 **Event tagging:** orders now save `event_id` — whatever event was active when the order
 was placed. Orders taken **before this change have `event_id = NULL`** and show up under
@@ -385,6 +392,99 @@ chip rather than a wrong one.
 
 Cards are also tinted and striped in their column's color — amber pending, navy making,
 green ready — so status reads from across the bar.
+
+The chips are deliberately oversized — `text-2xl` on the card summary, `text-lg` per drink.
+They're read from the other end of the bar by someone who is already reaching for a cup,
+so they outrank the customer's name in size. Shrinking them to "fit more on screen" is the
+change that quietly puts a hot drink in a cold cup.
+
+## Searching the Live Board
+
+The Orders tab has a search box above the columns. It matches the customer name, the drink
+name, any add-in and any special instruction — every word typed has to appear somewhere, so
+"iced sarah" finds Sarah's iced drink.
+
+It filters **what's shown, never what's counted**: wait times still come from the whole
+queue (`calcWaitMinutes` is always passed the unfiltered `orders`), and the header still
+reports the real totals. A filtered board quoting a shorter wait than the real one would be
+worse than no search at all.
+
+## Multiple Barista Screens
+
+More than one person works the board at once — a phone at the bar, the till, the tablet by
+the till. `/barista` is built for that:
+
+- **Every table an order lives in is subscribed** — `orders`, `order_items` and
+  `order_item_modifiers` — so a screen that loaded an order in the split second before its
+  drinks were inserted fills itself in instead of showing an empty card.
+- **Realtime bursts are coalesced.** One order arriving is a row per drink and a row per
+  add-in, all in the same instant. They're debounced (120ms) into a single refetch.
+- **A poll runs underneath the websocket** — every 15s while connected, every 4s while not —
+  plus a refetch on tab focus, visibility and `online`. A tablet that slept or dropped
+  church wifi comes back with a socket that *looks* connected; the poll is what saves it.
+- **The header says which state it's in.** A green pulsing "Live" or a red "Reconnecting…".
+  A dead feed must never look like a quiet morning.
+- **Taps apply locally first**, before the round trip, so a card never feels stuck.
+- **Status writes are conditional**: `.eq('status', <what this screen was showing>)`. If
+  another screen already moved the order, the write matches no row and a bar says so,
+  rather than one barista silently dragging a drink back out of Ready.
+- **Stale responses are dropped.** Refetches carry a sequence number, so a slow early query
+  can't land on top of a newer one and rewind the board.
+- The **Sold Out / 86** tab subscribes to `menu_items` and `modifiers` too, so whoever runs
+  out of oat milk can flip it on whatever screen is nearest.
+
+## Flagging Problem Orders
+
+Anything that goes wrong gets flagged from the board — wrong drink, a remake, a card that
+wouldn't read — and the flag stays on the order permanently. The point is being able to pull
+up every problem order after service instead of trying to remember them.
+
+- **Flag it:** any order card → **⚠ Flag an issue**. Tap one of the quick reasons (wrong
+  drink, remade/spilled, missing item, machine problem, payment problem, complaint, long
+  wait), add free text if useful, save. Two taps at most — anything longer doesn't get used
+  mid-rush, which makes the record worthless.
+- **A flagged card outranks its column color** — red strip, red ring and a red banner with
+  the note, so the one card with a problem is the one you spot first.
+- **Find them later:** `/barista` → History → **⚠ Issues only** (includes orders still on
+  the board, which is usually the one you want), or `/admin/orders` → **⚠ Issues only** pill,
+  which also has a *Flagged issues* summary card and shows the note on each row.
+- **Clear it** from the card banner, from History, or from the admin row when it's dealt
+  with. On a flagged card the **Clear issue** button and the delete **×** sit side by side
+  in the banner — the × is normally absolutely positioned in that exact corner, so on a
+  flagged card it moves into the banner row rather than sitting on top of Clear.
+
+`issue_flagged_at` is a timestamp rather than a boolean so a report can say *when* it
+happened. The shared helpers live in `src/lib/order-issues.ts` — the quick reasons,
+`hasIssue()`, `issueReasons()` (used by the dashboard tally), and the "run the migration"
+error message every page shows.
+
+### Problem-order stats — `/admin`
+
+A **Problem orders** panel on the dashboard, under the same time-range and event filters as
+everything else. It answers the three questions that change what you'd actually do:
+
+- **What went wrong** — flagged orders grouped by reason. An order counts once per reason
+  on it. Notes are built from the quick-reason chips, so they usually quote them verbatim;
+  `issueReasons()` matches those and drops anything hand-typed into "Written in by hand"
+  rather than losing it from the tally.
+- **When it went wrong** — by hour flagged, so you can see the 10am rush in the data.
+- **Drinks in flagged orders** — the same drink turning up repeatedly is worth a look.
+- **Every flagged order** — name, time and note, newest first, with a link to Order History.
+
+Plus four tiles: flagged orders, issue rate as a % of orders, drinks involved, clean orders.
+
+Two things keep the numbers honest:
+
+- **The issue query is separate from the main analytics query.** The columns come from a
+  migration, so if a shop hasn't run it that one query fails and the panel says *run
+  supabase-order-issues.sql* — the rest of the dashboard is untouched. It never shows a
+  zero it can't stand behind.
+- **It excludes cancelled orders, exactly like the rest of the page**, so "issue rate"
+  divides two numbers counted the same way. A flag on a cancelled order is still visible at
+  `/admin/orders`, which lists every status.
+
+Red bars mean a problem, navy bars mean trade — `BarList` and `HourChart` take a `tone`
+prop and nothing else changes between them.
 
 ## Ordering of Modifier Groups
 
@@ -558,7 +658,12 @@ const channel = supabase
   .subscribe();
 ```
 
-Realtime is enabled on the `orders` and `order_items` tables (configured in `supabase-schema.sql`).
+Realtime is enabled on the `orders` and `order_items` tables (configured in `supabase-schema.sql`)
+and on `order_item_modifiers` (`supabase-order-issues.sql`).
+
+`/barista` does more than this — several screens run it at once, so it also polls, coalesces
+event bursts, and guards against stale responses. See **Multiple Barista Screens** above
+before changing its subscription.
 
 ---
 
@@ -603,6 +708,17 @@ For Netlify:
 1. On the tablet, open `/barista` → **Sold Out / 86** tab
 2. Tap the drink or add-in you ran out of — customers see it as Sold Out instantly
 3. Tap again to restock
+
+**Find one order on a busy board:**
+1. `/barista` → Orders tab → type into the search box
+2. Search a name, a drink or a note — "oat" finds every oat milk order on the board
+3. Clear it when you're done; wait times were never affected by the filter
+
+**Track an order that went wrong:**
+1. On the order's card, tap **⚠ Flag an issue**
+2. Tap a reason (wrong drink, remade, machine problem…), add a note if it helps, save
+3. Review them all afterwards at `/barista` → History → **⚠ Issues only**, or
+   `/admin/orders` → **⚠ Issues only**
 
 **Stop all ordering immediately, including access codes:**
 1. Go to `/admin/settings` → **Ordering Availability**

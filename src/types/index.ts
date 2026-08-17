@@ -135,6 +135,13 @@ export interface Order {
    * agent on the shop PC watches this, so setting it back to NULL reprints.
    */
   label_printed_at: string | null;
+  /**
+   * When a barista flagged something as having gone wrong with this order. NULL = fine.
+   * Set from the barista board; see src/lib/order-issues.ts.
+   */
+  issue_flagged_at?: string | null;
+  /** What went wrong, in the barista's words. */
+  issue_note?: string | null;
   order_items?: OrderItem[];
 }
 

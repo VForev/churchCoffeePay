@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import { OrderStatusBadge, PaymentBadge } from '@/components/ui/Badge';
+import { hasIssue, issueSaveError, formatIssueTime } from '@/lib/order-issues';
 import type { Order, OrderItem, OrderItemModifier, Modifier, OrderStatus } from '@/types';
 
 interface FullOrder extends Order {
@@ -30,6 +31,8 @@ export default function AdminOrdersPage() {
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'free' | 'paid'>('all');
+  /** Only orders a barista flagged as having gone wrong — see src/lib/order-issues.ts. */
+  const [issuesOnly, setIssuesOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -194,7 +197,21 @@ export default function AdminOrdersPage() {
     }
   }
 
+  /** Clears a flag once the problem has been dealt with (refund given, note read). */
+  async function clearIssue(order: FullOrder) {
+    const { error } = await supabase
+      .from('orders')
+      .update({ issue_flagged_at: null, issue_note: null })
+      .eq('id', order.id);
+    if (error) {
+      setActionError(issueSaveError(error));
+      return;
+    }
+    fetchOrders();
+  }
+
   const filtered = orders.filter((o) => {
+    if (issuesOnly && !hasIssue(o)) return false;
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
     if (paymentFilter === 'free' && o.payment_status !== 'free' && o.total !== 0) return false;
     if (paymentFilter === 'paid' && (o.payment_status === 'free' || o.total === 0)) return false;
@@ -204,6 +221,9 @@ export default function AdminOrdersPage() {
 
   const totalRevenue = filtered.reduce((sum, o) => sum + o.total, 0);
   const totalDonations = filtered.reduce((sum, o) => sum + o.tip_amount, 0);
+  /** On the pill: how many flagged orders exist at all. On the card: how many are in view. */
+  const issueCount = orders.filter(hasIssue).length;
+  const filteredIssueCount = filtered.filter(hasIssue).length;
 
   // ─── Bulk selection ───────────────────────────────────────────────────────────
   const filteredIds = filtered.map((o) => o.id);
@@ -373,10 +393,22 @@ export default function AdminOrdersPage() {
             {f.label}
           </button>
         ))}
+
+        {/* Problem orders — what a barista flagged from the board during service */}
+        <button
+          onClick={() => setIssuesOnly(!issuesOnly)}
+          className={`px-3 py-1.5 rounded-full text-sm font-accent transition-colors cursor-pointer ml-auto ${
+            issuesOnly
+              ? 'bg-danger text-white'
+              : 'bg-surface border border-gray-200 text-text-light hover:border-danger/40 hover:text-danger'
+          }`}
+        >
+          ⚠ Issues only{issueCount > 0 ? ` (${issueCount})` : ''}
+        </button>
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Card>
           <p className="text-sm text-text-light">Orders</p>
           <p className="text-2xl font-heading font-bold">{filtered.length}</p>
@@ -388,6 +420,14 @@ export default function AdminOrdersPage() {
         <Card>
           <p className="text-sm text-text-light">Donations</p>
           <p className="text-2xl font-heading font-bold">${totalDonations.toFixed(2)}</p>
+        </Card>
+        <Card className={filteredIssueCount > 0 ? 'border border-danger/30 bg-danger/5' : ''}>
+          <p className="text-sm text-text-light">Flagged issues</p>
+          <p
+            className={`text-2xl font-heading font-bold ${filteredIssueCount > 0 ? 'text-danger' : ''}`}
+          >
+            {filteredIssueCount}
+          </p>
         </Card>
       </div>
 
@@ -447,7 +487,12 @@ export default function AdminOrdersPage() {
           const isExpanded = expandedId === order.id;
           const isSelected = selected.has(order.id);
           return (
-            <Card key={order.id} className={`${showArchived ? 'opacity-75' : ''} ${isSelected ? 'ring-2 ring-primary/40' : ''}`}>
+            <Card
+              key={order.id}
+              className={`${showArchived ? 'opacity-75' : ''} ${isSelected ? 'ring-2 ring-primary/40' : ''} ${
+                hasIssue(order) ? 'border border-danger/30 bg-danger/5' : ''
+              }`}
+            >
               <div className="flex items-start gap-3">
                 <input
                   type="checkbox"
@@ -470,7 +515,15 @@ export default function AdminOrdersPage() {
                       </h3>
                       <OrderStatusBadge status={order.status} />
                       <PaymentBadge status={order.payment_status} />
+                      {hasIssue(order) && (
+                        <span className="rounded-full bg-danger px-2 py-0.5 font-accent text-[11px] font-bold uppercase text-white">
+                          ⚠ Issue
+                        </span>
+                      )}
                     </div>
+                    {hasIssue(order) && order.issue_note && (
+                      <p className="text-xs font-semibold text-danger mt-0.5">{order.issue_note}</p>
+                    )}
                     <p className="text-xs text-text-light mt-0.5">
                       {new Date(order.created_at).toLocaleString()}
                       {' · '}{order.order_source}
@@ -491,6 +544,31 @@ export default function AdminOrdersPage() {
               {/* Expanded detail */}
               {isExpanded && (
                 <div className="mt-3 pt-3 border-t border-gray-100">
+                  {/* What the barista said went wrong, and a way to sign it off */}
+                  {hasIssue(order) && (
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-xl bg-danger/10 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="font-accent text-xs font-bold uppercase tracking-wide text-danger">
+                          ⚠ Issue flagged
+                          {order.issue_flagged_at
+                            ? ` · ${formatIssueTime(order.issue_flagged_at)}`
+                            : ''}
+                        </p>
+                        <p className="mt-0.5 font-body text-sm text-text-dark">
+                          {order.issue_note || 'No note was left.'}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="border border-danger/30 text-danger hover:bg-danger/10"
+                        onClick={() => clearIssue(order)}
+                      >
+                        Clear flag
+                      </Button>
+                    </div>
+                  )}
+
                   {/* Order items */}
                   {order.order_items && order.order_items.length > 0 ? (
                     <div className="space-y-2 mb-4">

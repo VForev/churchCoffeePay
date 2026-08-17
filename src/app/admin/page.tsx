@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import Card from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
 import { drinkTemperature } from '@/lib/temperature';
+import { issueReasons, formatIssueTime } from '@/lib/order-issues';
 import type { Event } from '@/types';
 
 /**
@@ -48,6 +49,21 @@ interface AnalyticsOrder {
     menu_item: { name: string } | null;
     order_item_modifiers: { modifier: { name: string } | null }[];
   }[];
+}
+
+/**
+ * A flagged order. Fetched on its own rather than as columns on AnalyticsOrder, because
+ * the issue columns arrive in a migration — if a shop hasn't run it, this one query fails
+ * and the rest of the dashboard carries on as normal.
+ */
+interface IssueOrder {
+  id: string;
+  customer_name: string;
+  created_at: string;
+  event_id: string | null;
+  issue_flagged_at: string | null;
+  issue_note: string | null;
+  order_items: { quantity: number; menu_item: { name: string } | null }[];
 }
 
 function startOfDay(d: Date): Date {
@@ -105,6 +121,9 @@ export default function AdminDashboard() {
 
   const [events, setEvents] = useState<Event[]>([]);
   const [orders, setOrders] = useState<AnalyticsOrder[]>([]);
+  const [issues, setIssues] = useState<IssueOrder[]>([]);
+  /** False until supabase-order-issues.sql has been run — the panel says so instead of lying with a zero. */
+  const [issuesReady, setIssuesReady] = useState(true);
   const [lowStock, setLowStock] = useState<
     { name: string; current_stock: number; unit: string }[]
   >([]);
@@ -134,12 +153,31 @@ export default function AdminDashboard() {
     if (fromISO) query = query.gte('created_at', fromISO);
     if (toISO) query = query.lte('created_at', toISO);
 
-    const [ordersRes, eventsRes, inventoryRes] = await Promise.all([
+    // Same window, same exclusion of cancelled orders, so "issue rate" divides two
+    // numbers counted the same way. A flag on a cancelled order is still visible at
+    // /admin/orders, which shows every status.
+    let issueQuery = supabase
+      .from('orders')
+      .select(
+        `id, customer_name, created_at, event_id, issue_flagged_at, issue_note,
+         order_items ( quantity, menu_item:menu_items (name) )`,
+      )
+      .not('issue_flagged_at', 'is', null)
+      .neq('status', 'cancelled')
+      .order('issue_flagged_at', { ascending: false });
+
+    if (fromISO) issueQuery = issueQuery.gte('created_at', fromISO);
+    if (toISO) issueQuery = issueQuery.lte('created_at', toISO);
+
+    const [ordersRes, eventsRes, inventoryRes, issuesRes] = await Promise.all([
       query,
       supabase.from('events').select('*').order('created_at', { ascending: false }),
       supabase.from('inventory_items').select('*'),
+      issueQuery,
     ]);
 
+    setIssuesReady(!issuesRes.error);
+    setIssues((issuesRes.data ?? []) as unknown as IssueOrder[]);
     setOrders((ordersRes.data ?? []) as unknown as AnalyticsOrder[]);
     setEvents((eventsRes.data ?? []) as Event[]);
     setLowStock(
@@ -164,6 +202,52 @@ export default function AdminDashboard() {
   }, [orders, eventFilter]);
 
   const stats = useMemo(() => summarize(filtered), [filtered]);
+
+  /**
+   * What went wrong, grouped the three ways that actually change what you'd do about it:
+   * by reason (fix the process), by drink (fix the recipe or the training), and by hour
+   * (staff the rush differently).
+   */
+  const issueStats = useMemo(() => {
+    const scoped =
+      eventFilter === ALL_EVENTS
+        ? issues
+        : eventFilter === NO_EVENT
+          ? issues.filter((i) => !i.event_id)
+          : issues.filter((i) => i.event_id === eventFilter);
+
+    const reasonCounts = new Map<string, number>();
+    const drinkCounts = new Map<string, number>();
+    const hourCounts = new Map<number, number>();
+    let drinksAffected = 0;
+
+    for (const order of scoped) {
+      // One order can carry several reasons; each counts once for that order.
+      for (const reason of issueReasons(order.issue_note)) {
+        reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+      }
+
+      const when = new Date(order.issue_flagged_at ?? order.created_at).getHours();
+      hourCounts.set(when, (hourCounts.get(when) ?? 0) + 1);
+
+      for (const item of order.order_items ?? []) {
+        const qty = item.quantity ?? 1;
+        drinksAffected += qty;
+        const name = item.menu_item?.name ?? 'Unknown';
+        drinkCounts.set(name, (drinkCounts.get(name) ?? 0) + qty);
+      }
+    }
+
+    return {
+      list: scoped,
+      drinksAffected,
+      reasons: rankCounts(reasonCounts, 8),
+      drinks: rankCounts(drinkCounts, 8),
+      byHour: [...hourCounts.entries()]
+        .map(([hour, count]) => ({ hour, count }))
+        .sort((a, b) => a.hour - b.hour),
+    };
+  }, [issues, eventFilter]);
 
   const eventRows = useMemo(() => {
     const rows = events.map((e) => ({
@@ -347,6 +431,97 @@ export default function AdminDashboard() {
             </Card>
           </div>
 
+          {/* Problem orders — the whole reason baristas flag them from the board */}
+          <Card className="mb-6">
+            <ChartHeading
+              title="Problem orders"
+              subtitle="Flagged by a barista while making them — what went wrong, and when"
+            />
+
+            {!issuesReady ? (
+              <p className="rounded-xl bg-warning/10 px-4 py-3 font-body text-sm text-text">
+                Issue tracking isn&apos;t set up yet. Run{' '}
+                <strong className="font-accent">supabase-order-issues.sql</strong> in the Supabase
+                SQL editor, then refresh this page.
+              </p>
+            ) : issueStats.list.length === 0 ? (
+              <p className="py-6 text-center font-body text-sm text-text-light">
+                Nothing was flagged in this window — every order went out clean. 🎉
+              </p>
+            ) : (
+              <>
+                <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <MiniStat label="Flagged orders" value={issueStats.list.length.toString()} alert />
+                  <MiniStat
+                    label="Of all orders"
+                    value={
+                      stats.orderCount
+                        ? `${((issueStats.list.length / stats.orderCount) * 100).toFixed(1)}%`
+                        : '—'
+                    }
+                    alert
+                  />
+                  <MiniStat label="Drinks involved" value={issueStats.drinksAffected.toString()} />
+                  <MiniStat
+                    label="Clean orders"
+                    value={Math.max(stats.orderCount - issueStats.list.length, 0).toString()}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <div>
+                    <ChartHeading
+                      title="What went wrong"
+                      subtitle="An order counts once per reason on it"
+                    />
+                    <BarList rows={issueStats.reasons} unit="orders" tone="danger" />
+                  </div>
+
+                  <div>
+                    <ChartHeading title="When it went wrong" subtitle="By hour flagged" />
+                    <HourChart hours={issueStats.byHour} tone="danger" />
+                  </div>
+
+                  <div>
+                    <ChartHeading
+                      title="Drinks in flagged orders"
+                      subtitle="Not proof of blame — but worth a look if one keeps appearing"
+                    />
+                    <BarList rows={issueStats.drinks} unit="cups" tone="danger" />
+                  </div>
+
+                  <div>
+                    <ChartHeading title="Every flagged order" subtitle="Newest first" />
+                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                      {issueStats.list.map((order) => (
+                        <div key={order.id} className="rounded-xl bg-danger/5 px-3 py-2">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <span className="truncate font-heading text-sm font-bold text-text-dark">
+                              {order.customer_name}
+                            </span>
+                            <span className="shrink-0 font-accent text-xs text-text-light">
+                              {formatIssueTime(order.issue_flagged_at ?? order.created_at)}
+                            </span>
+                          </div>
+                          <p className="font-body text-sm text-text">
+                            {order.issue_note || 'No note was left.'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-3 font-body text-xs text-text-light">
+                      Read the drinks on any of these, or clear a flag, at{' '}
+                      <a href="/admin/orders" className="text-primary underline">
+                        Order History
+                      </a>
+                      .
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+          </Card>
+
           {/* Event comparison — the reason event_id gets stamped on every order */}
           <Card className="mb-6">
             <ChartHeading
@@ -491,12 +666,6 @@ function summarize(orders: AnalyticsOrder[]): Summary {
     }
   }
 
-  const rank = (counts: Map<string, number>, limit: number) =>
-    [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-      .slice(0, limit);
-
   return {
     orderCount: orders.length,
     revenue,
@@ -512,9 +681,17 @@ function summarize(orders: AnalyticsOrder[]): Summary {
     byHour: [...hourCounts.entries()]
       .map(([hour, count]) => ({ hour, count }))
       .sort((a, b) => a.hour - b.hour),
-    topItems: rank(itemCounts, 8),
-    topModifiers: rank(modCounts, 8),
+    topItems: rankCounts(itemCounts, 8),
+    topModifiers: rankCounts(modCounts, 8),
   };
+}
+
+/** Biggest first, ties broken alphabetically so the order is stable between refreshes. */
+function rankCounts(counts: Map<string, number>, limit: number) {
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, limit);
 }
 
 // ─── Presentation ─────────────────────────────────────────────────────────────
@@ -535,6 +712,26 @@ function StatCard({ label, value, big }: { label: string; value: string; big?: b
   );
 }
 
+/**
+ * A number inside a card, where a full StatCard would nest one card in another.
+ * `alert` colors it red — used for the counts that mean something went wrong.
+ */
+function MiniStat({ label, value, alert }: { label: string; value: string; alert?: boolean }) {
+  return (
+    <div className={cn('rounded-xl px-3 py-2.5', alert ? 'bg-danger/10' : 'bg-bg')}>
+      <p className="font-body text-xs text-text-light">{label}</p>
+      <p
+        className={cn(
+          'mt-0.5 font-heading text-2xl font-bold',
+          alert ? 'text-danger' : 'text-text-dark',
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function ChartHeading({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="mb-3">
@@ -544,8 +741,23 @@ function ChartHeading({ title, subtitle }: { title: string; subtitle: string }) 
   );
 }
 
+/**
+ * The two charts share one tone switch: navy for how trade went, red for what went wrong.
+ * Colour is doing the same job in both, so a red bar always means a problem.
+ */
+type ChartTone = 'primary' | 'danger';
+const TONE_BAR: Record<ChartTone, string> = { primary: 'bg-primary', danger: 'bg-danger' };
+
 /** Horizontal magnitude bars — one hue, longest first, value labelled on every row. */
-function BarList({ rows, unit }: { rows: { name: string; count: number }[]; unit: string }) {
+function BarList({
+  rows,
+  unit,
+  tone = 'primary',
+}: {
+  rows: { name: string; count: number }[];
+  unit: string;
+  tone?: ChartTone;
+}) {
   if (rows.length === 0) {
     return <p className="font-body text-sm text-text-light">Nothing yet</p>;
   }
@@ -564,7 +776,7 @@ function BarList({ rows, unit }: { rows: { name: string; count: number }[]; unit
           </div>
           <div className="h-2 w-full rounded-full bg-bg">
             <div
-              className="h-2 rounded-full bg-primary transition-all"
+              className={cn('h-2 rounded-full transition-all', TONE_BAR[tone])}
               style={{ width: `${Math.max((row.count / max) * 100, 2)}%` }}
             />
           </div>
@@ -575,7 +787,13 @@ function BarList({ rows, unit }: { rows: { name: string; count: number }[]; unit
 }
 
 /** Vertical bars, one per hour that actually saw an order. */
-function HourChart({ hours }: { hours: { hour: number; count: number }[] }) {
+function HourChart({
+  hours,
+  tone = 'primary',
+}: {
+  hours: { hour: number; count: number }[];
+  tone?: ChartTone;
+}) {
   if (hours.length === 0) {
     return <p className="font-body text-sm text-text-light">Nothing yet</p>;
   }
@@ -594,7 +812,7 @@ function HourChart({ hours }: { hours: { hour: number; count: number }[] }) {
           {/* The bar scales against the plot area only — the two labels sit outside it. */}
           <div className="flex w-full flex-1 items-end">
             <div
-              className="w-full rounded-t-md bg-primary transition-all"
+              className={cn('w-full rounded-t-md transition-all', TONE_BAR[tone])}
               style={{ height: `${Math.max((count / max) * 100, 4)}%` }}
             />
           </div>
