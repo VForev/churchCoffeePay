@@ -24,6 +24,26 @@ const LOGO_PNG = Buffer.from(LOGO_PNG_BASE64, 'base64');
 const MM_TO_PT = 2.834645669;
 
 /**
+ * Passed as `height` to every single-line text() call, and it is load-bearing.
+ *
+ * PDFKit starts a NEW PAGE the moment text would run past the bottom of the current
+ * one — and on a label roll a new page is a NEW LABEL. A single line drawn within one
+ * line-height of the bottom edge is enough to do it (measured: a footer 9pt from the
+ * bottom of a 30mm label yields two pages, 10pt yields one), and the extra sticker
+ * carries one stray line of text. Nothing warns you; the roll just runs short.
+ *
+ * A height caps PDFKit's "max Y" instead of paginating (LineWrapper.nextSection
+ * returns false rather than calling continueOnNewPage), and Infinity is PDFKit's own
+ * idiom for it — heightOfString() uses exactly this. The first line of a text() call
+ * is always drawn before that check runs, so nothing is ever lost by capping it.
+ *
+ * Every text() call in this file must pass a height. The ones that lay out a real
+ * block (the modifier lines, the note) pass their true available height so they clip
+ * with an ellipsis; the single-line ones pass this.
+ */
+const NO_PAGE_BREAK = Infinity;
+
+/**
  * Fits one line of text to the label width.
  *
  * "Bartholomew Vandersteen" ordering an Americano is the case that matters: at the
@@ -56,7 +76,30 @@ function fitOneLine(
   return { text: `${clipped}…`, size };
 }
 
-export async function renderLabelPdf(data: LabelData, settings: LabelSettings): Promise<string> {
+/**
+ * The PDF page one label is drawn on.
+ *
+ * This printer prints PORTRAIT pages upright. A tall label (e.g. 50×80) is already
+ * portrait, so its page goes out as-is and reads the right way up. A wide label
+ * (e.g. 40×30) would be auto-turned sideways by the printer, so when "flip" is on we
+ * lay the design onto a PORTRAIT page (height × width) and spin it 90° — it then comes
+ * off the roll upright, matching the preview. That is the whole job of the flip toggle.
+ */
+function pageSize(settings: LabelSettings): { pageW: number; pageH: number } {
+  const m = labelMetrics(settings);
+  const width = m.widthMm * MM_TO_PT;
+  const height = m.heightMm * MM_TO_PT;
+  const rotate = effectiveRotate(settings);
+  return { pageW: rotate ? height : width, pageH: rotate ? width : height };
+}
+
+/**
+ * Draws one label onto the document's CURRENT page.
+ *
+ * It must never call addPage() itself, directly or through PDFKit's text pagination
+ * (see NO_PAGE_BREAK) — the caller owns the pages, because one page is one cup.
+ */
+function drawLabel(doc: PDFKit.PDFDocument, data: LabelData, settings: LabelSettings): void {
   const pt = (mm: number) => mm * MM_TO_PT;
   const rotate = effectiveRotate(settings);
 
@@ -79,21 +122,10 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   const logoHeight = pt(m.logoMm);
   const churchSize = pt(m.churchMm);
 
-  // This printer prints PORTRAIT pages upright. A tall label (e.g. 50×80) is already
-  // portrait, so its page goes out as-is and reads the right way up. A wide label
-  // (e.g. 40×30) would be auto-turned sideways by the printer, so when "flip" is on we
-  // lay the design onto a PORTRAIT page (height × width) and spin it 90° — it then comes
-  // off the roll upright, matching the preview. That is the whole job of the flip toggle.
-  const pageW = rotate ? height : width;
-  const pageH = rotate ? width : height;
-
-  const doc = new PDFDocument({ size: [pageW, pageH], margin: 0 });
-  const file = join(tmpdir(), `lotg-label-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`);
-  const stream = createWriteStream(file);
-  doc.pipe(stream);
-
   // Spin the design onto the portrait page; all drawing below stays in label coords
   // (width across, height down), so nothing else has to know about the rotation.
+  // Re-applied per label because a new page resets the transform.
+  const { pageW } = pageSize(settings);
   if (rotate) doc.transform(0, 1, -1, 0, pageW, 0);
 
   // Keep everything clear of the right edge the print head can't reach.
@@ -111,6 +143,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
       .fontSize(bandHeight * 0.62)
       .text(TEMP_TEXT[data.temp], margin, bandHeight * 0.2, {
         width: contentWidth,
+        height: NO_PAGE_BREAK,
         align: 'center',
         lineBreak: false,
       });
@@ -144,6 +177,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
         .fontSize(fitted.size)
         .text(fitted.text, textX, rowTop + (rowHeight - fitted.size) / 2, {
           width: textWidth,
+          height: NO_PAGE_BREAK,
           align: settings.show_logo ? 'left' : align,
           lineBreak: false,
         });
@@ -166,6 +200,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
       .fontSize(footerSize)
       .text(`CUP ${data.cupIndex} OF ${data.cupTotal}`, margin, y, {
         width: contentWidth,
+        height: NO_PAGE_BREAK,
         align: 'right',
         lineBreak: false,
       });
@@ -179,7 +214,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
     .fillColor('#000')
     .font('Helvetica-Bold')
     .fontSize(name.size)
-    .text(name.text, margin, y, { width: contentWidth, align, lineBreak: false });
+    .text(name.text, margin, y, { width: contentWidth, height: NO_PAGE_BREAK, align, lineBreak: false });
   y += name.size * 1.15;
 
   // A very long name shrinks a long way to fit, and can end up SMALLER than the drink
@@ -190,7 +225,7 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   doc
     .font('Helvetica-Bold')
     .fontSize(drink.size)
-    .text(drink.text, margin, y, { width: contentWidth, align, lineBreak: false });
+    .text(drink.text, margin, y, { width: contentWidth, height: NO_PAGE_BREAK, align, lineBreak: false });
   y += drink.size * 1.3;
 
   // Modifiers: one line per category, each at its own size, and only the groups the admin
@@ -267,6 +302,9 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
       .fontSize(footerSize)
       .text(`#${data.orderCode}  ·  ${data.timeText}`, margin, footerY, {
         width: contentWidth,
+        // The footer is pinned to the very bottom of the label — the one line most
+        // likely to tip PDFKit onto a second page, i.e. onto a second cup.
+        height: NO_PAGE_BREAK,
         lineBreak: false,
       });
   };
@@ -289,6 +327,41 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
 
     if (settings.show_footer) drawFooter(footerY);
   }
+}
+
+/**
+ * A whole order's cups as ONE multi-page PDF: one page per cup, one print job.
+ *
+ * Why: a multi-cup order used to go out as a burst of separate back-to-back jobs, one
+ * per cup, and the roll stopped advancing cleanly between them — the first cup came out
+ * right and the next printed across the gap. Each job re-initialises the media, and the
+ * printer was still feeding the previous label when the next arrived. A single job with
+ * N pages is exactly what the driver does when you print N copies from any normal
+ * program, so the inter-label feed is its problem again rather than ours.
+ *
+ * That leaves the printer's own gap sensing, which no code here can set — if cups after
+ * the first are still wrong, `npm run test-feed` and the README's calibration steps.
+ *
+ * It also means an order's labels can no longer be interleaved with another order's
+ * by the Windows spooler: the cups of one order arrive together, in order.
+ */
+export async function renderLabelsPdf(
+  labels: LabelData[],
+  settings: LabelSettings,
+): Promise<string> {
+  const { pageW, pageH } = pageSize(settings);
+
+  // autoFirstPage:false so the page count is exactly the cup count — an empty first
+  // page would feed a blank label and put every cup after it on the wrong sticker.
+  const doc = new PDFDocument({ size: [pageW, pageH], margin: 0, autoFirstPage: false });
+  const file = join(tmpdir(), `lotg-label-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`);
+  const stream = createWriteStream(file);
+  doc.pipe(stream);
+
+  for (const label of labels) {
+    doc.addPage({ size: [pageW, pageH], margin: 0 });
+    drawLabel(doc, label, settings);
+  }
 
   doc.end();
 
@@ -298,6 +371,11 @@ export async function renderLabelPdf(data: LabelData, settings: LabelSettings): 
   });
 
   return file;
+}
+
+/** One cup — the test label, and the one-cup-at-a-time reprint from the barista board. */
+export async function renderLabelPdf(data: LabelData, settings: LabelSettings): Promise<string> {
+  return renderLabelsPdf([data], settings);
 }
 
 /**

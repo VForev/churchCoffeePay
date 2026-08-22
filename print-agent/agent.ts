@@ -43,7 +43,7 @@ import {
   type LabelSettings,
 } from '../src/lib/labels';
 import { orderCups, cupsToPrint, type CupModifierSource } from '../src/lib/cups';
-import { renderLabelPdf, renderDiagnosticPdf } from './label';
+import { renderLabelPdf, renderLabelsPdf, renderDiagnosticPdf } from './label';
 import { printPdf, listPrinterNames, listPaperSizes, listPaperSizesDetailed, resolveMedia, type PaperSize } from './printer';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
@@ -290,8 +290,25 @@ function resolvePaperSize(): string | undefined {
   return resolveMedia(printerPaperSizes, width_mm, height_mm);
 }
 
-async function printLabel(label: LabelData) {
-  const file = await renderLabelPdf(label, labelSettings);
+/**
+ * One print job per ORDER, not per cup — set PRINT_SEPARATE_JOBS=1 to go back.
+ *
+ * A cup per job is what made the roll stop feeding properly: the printer took a burst
+ * of back-to-back jobs, each re-initialising the media, and stopped advancing cleanly
+ * between them — cup 1 came out right and cup 2 printed across the gap. One job with a
+ * page per cup is exactly what happens when you print N copies from any normal program.
+ *
+ * The fallback exists because this is a physical printer and we can't test every one of
+ * them: PRINT_SEPARATE_JOBS=1 restores a job per cup, with PRINT_JOB_DELAY_MS (default
+ * 1.5s) between them to give the roll time to finish feeding.
+ */
+const SEPARATE_JOBS = process.env.PRINT_SEPARATE_JOBS === '1';
+const JOB_DELAY_MS = Number(process.env.PRINT_JOB_DELAY_MS ?? 1500);
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Sends one already-rendered PDF to the printer and cleans it up. */
+async function printFile(file: string) {
   if (KEEP_PDF) console.log(`   PDF kept for inspection: ${file}`);
   try {
     // Name the label size so the printer formats for it. Without this the printer
@@ -305,6 +322,21 @@ async function printLabel(label: LabelData) {
     });
   } finally {
     if (!KEEP_PDF) await unlink(file).catch(() => {});
+  }
+}
+
+/** Prints a set of cups: one multi-page job, or one job each if that's been forced. */
+async function printLabels(labels: LabelData[]) {
+  if (labels.length === 0) return;
+
+  if (!SEPARATE_JOBS) {
+    await printFile(await renderLabelsPdf(labels, labelSettings));
+    return;
+  }
+
+  for (const [i, label] of labels.entries()) {
+    if (i > 0) await sleep(JOB_DELAY_MS);
+    await printFile(await renderLabelPdf(label, labelSettings));
   }
 }
 
@@ -406,18 +438,17 @@ async function handleOrder(orderId: string) {
     const requested = order.label_print_cups ?? null;
     const labels = buildLabels(order, requested);
     const cupTotal = labels[0]?.cupTotal ?? labels.length;
+
+    // Which cups, logged BEFORE the job goes: if the roll jams halfway through, this
+    // line is what tells you which cups to reprint.
     const which =
-      requested && requested.length > 0 && labels.length < cupTotal
-        ? `cup${labels.length !== 1 ? 's' : ''} ${labels.map((l) => l.cupIndex).join(', ')} of ${cupTotal}`
-        : `${labels.length} label${labels.length !== 1 ? 's' : ''}`;
+      labels.length === cupTotal
+        ? `${labels.length} cup${labels.length !== 1 ? 's' : ''}`
+        : `cup${labels.length !== 1 ? 's' : ''} ${labels.map((l) => l.cupIndex).join(', ')} of ${cupTotal}`;
     console.log(`🖨  ${order.customer_name} — ${which}`);
 
-    // One at a time, and each one logged: if the roll jams halfway through an order,
-    // the log says exactly which cup to reprint.
-    for (const [i, label] of labels.entries()) {
-      await printLabel(label);
-      console.log(`    ✓ cup ${label.cupIndex} of ${label.cupTotal} (${i + 1}/${labels.length})`);
-    }
+    await printLabels(labels);
+    console.log(`    ✓ sent${SEPARATE_JOBS ? ` as ${labels.length} jobs` : ''}`);
 
     // Printed. Clear the cup selection too, so the next print is the whole order again.
     const printedAt = { label_printed_at: new Date().toISOString() };
@@ -492,8 +523,43 @@ async function testLabel() {
   console.log(
     `🖨  Test label at ${labelSettings.width_mm}×${labelSettings.height_mm}mm...`,
   );
-  await printLabel(data);
+  await printLabels([data]);
   console.log('   Sent. If nothing came out, check the printer in Windows Settings → Printers.');
+}
+
+/**
+ * `npm run test-feed` — a pretend 3-cup order, printed exactly the way a real one is.
+ *
+ * This is the test for the roll not advancing between cups. One cup printing correctly
+ * proves nothing about it, and waiting for a real 3-drink order to find out is not a
+ * test. If cup 1 is fine and cup 2 prints across the gap, the labels are right and the
+ * printer's media/gap setting is wrong — see the README's calibration steps.
+ */
+async function testFeed() {
+  const printerNote = resolvePrinterName(await listPrinterNames());
+  if (printerNote) console.log(printerNote);
+
+  const base = testLabelData ?? SAMPLE_LABELS[0].data;
+  const time = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const labels: LabelData[] = [1, 2, 3].map((n) => ({
+    ...base,
+    customerName: `Feed Test ${n}`,
+    cupIndex: n,
+    cupTotal: 3,
+    orderCode: 'FEED',
+    timeText: time,
+  }));
+
+  console.log(`🖨  Three test cups at ${labelSettings.width_mm}×${labelSettings.height_mm}mm...`);
+  await printLabels(labels);
+  console.log('');
+  console.log('   Check the roll: THREE labels, each reading "CUP n OF 3", each sitting');
+  console.log('   squarely on its own sticker.');
+  console.log('     - Only one came out, or later ones print across the gap → the printer');
+  console.log('       is not finding the gap between labels. Run its calibration and set');
+  console.log('       the media type to Gap/Label (see README → "cups after the first").');
+  console.log('     - A blank label between each → the label size in Printing Preferences');
+  console.log('       is taller than the actual sticker.');
 }
 
 /** Opens a file in the OS default app, so the diagnostic PDF pops up on screen. */
@@ -585,6 +651,12 @@ async function main() {
     return;
   }
 
+  if (process.argv.includes('--test-feed')) {
+    await loadLabelSettings();
+    await testFeed();
+    return;
+  }
+
   const printers = await listPrinterNames();
   const printerNote = resolvePrinterName(printers);
   await loadLabelSettings();
@@ -598,6 +670,13 @@ async function main() {
   console.log(`  Available:  ${printers.join(', ') || 'none found'}`);
   console.log(
     `  Printing:   ${labelSettings.auto_print ? 'automatic — prints when an order comes in' : 'manual — barista prints from /barista'}`,
+  );
+  console.log(
+    `  Cups:       ${
+      SEPARATE_JOBS
+        ? `one print job each, ${JOB_DELAY_MS}ms apart (PRINT_SEPARATE_JOBS=1)`
+        : "one job per order, a page per cup — the printer's own page feed"
+    }`,
   );
   if (printerNote) console.log(printerNote);
   console.log('');

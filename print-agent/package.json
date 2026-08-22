@@ -7,6 +7,7 @@
   "scripts": {
     "start": "tsx agent.ts",
     "test-label": "tsx agent.ts --test",
+    "test-feed": "tsx agent.ts --test-feed",
     "doctor": "tsx agent.ts --doctor"
   },
   "dependencies": {

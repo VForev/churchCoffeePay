@@ -363,6 +363,30 @@ Two guards, and the agent needs neither to be perfect:
 
 Orders older than a minute skip the wait entirely; they finished arriving long ago.
 
+### One print job per order — the feed
+
+An order's cups go to the printer as **one job with a page per cup**, rendered by
+`renderLabelsPdf()` in `print-agent/label.ts`. A job per cup is what made the roll stop
+advancing cleanly: the printer took a burst of back-to-back jobs, each re-initialising the
+media, and the second label printed across the gap. One multi-page job is exactly what the
+driver does when you print N copies from any normal program, so the feed is its problem
+again rather than ours. `PRINT_SEPARATE_JOBS=1` in the agent's `.env` restores a job per
+cup, spaced by `PRINT_JOB_DELAY_MS`, for a printer that handles multi-page badly.
+
+**Every `text()` call in `label.ts` must pass a `height`.** PDFKit starts a new page when
+text would run past the bottom of the current one — and here a new page is a new *label*,
+so an unbounded line sitting within one line-height of the bottom silently feeds an extra
+sticker with one stray line on it. `NO_PAGE_BREAK` (PDFKit's own `height: Infinity` idiom,
+the one `heightOfString` uses) is what the single-line draws pass; the blocks that lay out
+real content pass their true available height so they clip with an ellipsis instead. The
+first line of any `text()` call is always drawn before that check runs, so capping the
+height never loses anything.
+
+If cups after the first still come out wrong, it's the printer, not the labels: run
+`npm run test-feed` in `print-agent/` (a pretend 3-cup order, printed the real way) and
+follow the calibration steps in `print-agent/README.md`. Gap sensing and media type live
+in Windows' Printing Preferences and nothing in this repo can set them.
+
 ### Printing one cup — remakes
 
 Every order card has **🖨 Print/Reprint all cups**, and on multi-cup orders a **🖨 Print one

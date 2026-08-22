@@ -189,6 +189,28 @@ The app inserts an order's drinks one at a time, so without that migration the a
 start printing when only the first drink had arrived. With it, the app says how many drinks
 to expect and the agent waits for all of them.
 
+**The cups after the first come out wrong — the roll doesn't advance, or a label prints
+across the gap.** Run **`npm run test-feed`**: it prints a pretend 3-cup order exactly the
+way a real one is sent, so you can see the problem on demand instead of waiting for a busy
+Sunday. Three labels should come out, each reading *CUP n OF 3*, each squarely on its own
+sticker.
+
+If they don't, the printer isn't finding the gaps between labels, and no change on this
+side can fix that — it's a printer setting:
+
+1. **Calibrate the roll.** With labels loaded, hold the printer's feed button until it
+   feeds a couple of blank labels and stops. That's it measuring the gap.
+2. **Windows → Settings → Printers & scanners → your printer → Printing preferences.**
+   Set the media/paper type to **Gap** (or *Label*), not *Continuous*, and check the label
+   size matches the roll you actually have.
+3. Print **2 copies** of anything from Notepad to confirm — if copy 2 is wrong there too,
+   it's definitely the printer, not the agent.
+
+The agent sends a whole order as **one print job with a page per cup**, which is exactly
+what "print 2 copies" does, so a printer that feeds copies correctly will feed cups
+correctly. If yours is the exception, put `PRINT_SEPARATE_JOBS=1` in `.env` to go back to
+one job per cup, spaced out by `PRINT_JOB_DELAY_MS` (1.5s by default).
+
 **The agent was off for the first half of service.** Just start it — on startup it prints
 every unprinted order from the last 6 hours, in order. Nothing is lost, and nothing that
 already printed prints twice.
