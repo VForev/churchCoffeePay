@@ -7,6 +7,8 @@ import Modal from '@/components/ui/Modal';
 import { OrderStatusBadge, PaymentBadge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import { drinkTemperature, TEMP_LABEL, TEMP_EMOJI, type DrinkTemp } from '@/lib/temperature';
+import { orderCups } from '@/lib/cups';
+import { requestLabelPrint } from '@/lib/label-print';
 import {
   ISSUE_REASONS,
   hasIssue,
@@ -332,16 +334,15 @@ export default function BaristaPage() {
 
   /**
    * Send an order to the printer by hand — the first print in manual mode, or a reprint
-   * after a jam, a bad peel, or a dropped cup. Stamping label_print_requested_at is the
-   * explicit "print now" signal the agent waits for; clearing label_printed_at lets it
-   * print (and re-stamp) and flips the button back to "Reprint" once it's done.
+   * after a jam, a bad peel, or a dropped cup.
+   *
+   * `cups` is null for every cup on the order, or a single cup number when one drink is
+   * being remade — reprinting five labels to replace one dropped cup wastes the roll and
+   * puts four stray labels on the bar for the barista to bin.
    */
-  async function reprintLabels(orderId: string) {
-    const { error } = await supabase
-      .from('orders')
-      .update({ label_print_requested_at: new Date().toISOString(), label_printed_at: null })
-      .eq('id', orderId);
-    if (error) alert(`Could not send to the printer: ${error.message}`);
+  async function printLabels(orderId: string, cups: number[] | null) {
+    const error = await requestLabelPrint(orderId, cups);
+    if (error) alert(error);
     fetchOrders();
   }
 
@@ -433,7 +434,7 @@ export default function BaristaPage() {
     const shared = {
       key: order.id,
       order,
-      onReprint: () => reprintLabels(order.id),
+      onPrint: (cups: number[] | null) => printLabels(order.id, cups),
       onDelete: () => deleteOrder(order),
       onFlagIssue: () => setIssueFor(order),
       onClearIssue: () => clearIssue(order),
@@ -746,7 +747,7 @@ function OrderCard({
   waitMinutes,
   onBack,
   backLabel,
-  onReprint,
+  onPrint,
   onDelete,
   onFlagIssue,
   onClearIssue,
@@ -758,7 +759,8 @@ function OrderCard({
   waitMinutes: number | null;
   onBack?: () => void;
   backLabel?: string;
-  onReprint?: () => void;
+  /** Print labels: null = every cup on the order, or a list of cup numbers. */
+  onPrint?: (cups: number[] | null) => void;
   /** Quick-remove a junk/offensive order from the board entirely. */
   onDelete?: () => void;
   /** Mark something as having gone wrong with this order. */
@@ -770,6 +772,9 @@ function OrderCard({
   const style = COLUMN_STYLES[color];
   const cups = cupSummary(order);
   const flagged = hasIssue(order);
+  /** The individual cups, numbered exactly as the labels are. */
+  const cupList = orderCups(order.order_items);
+  const [showCups, setShowCups] = useState(false);
 
   // One definition, two homes: the card corner normally, the issue banner when flagged.
   const deleteButton = onDelete ? (
@@ -947,12 +952,12 @@ function OrderCard({
                 ← {backLabel}
               </button>
             )}
-            {onReprint && (
+            {onPrint && (
               <button
-                onClick={onReprint}
+                onClick={() => onPrint(null)}
                 title={
                   order.label_printed_at
-                    ? 'Print the cup labels again'
+                    ? `Print ${cupList.length > 1 ? `all ${cupList.length} cup labels` : 'the cup label'} again`
                     : 'Labels have not printed yet — is the shop PC on?'
                 }
                 className={cn(
@@ -963,10 +968,57 @@ function OrderCard({
                     : 'border-warning bg-warning/10 text-warning',
                 )}
               >
-                🖨 {order.label_printed_at ? 'Reprint' : 'Print labels'}
+                {/* Next to a Back button there isn't room for the cup count, and the
+                    per-cup list right below spells it out anyway. */}
+                🖨 {order.label_printed_at ? 'Reprint' : 'Print'} all
+                {!onBack && cupList.length > 1 ? ` ${cupList.length} cups` : ''}
               </button>
             )}
           </div>
+
+          {/* One cup at a time — for a remade drink or a label that peeled off, where
+              reprinting the whole order would spit out labels nobody needs. */}
+          {onPrint && cupList.length > 1 && (
+            <div>
+              <button
+                onClick={() => setShowCups(!showCups)}
+                className="w-full cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface py-2.5 font-accent text-sm font-bold text-text-light transition-colors hover:bg-gray-50"
+              >
+                🖨 Print one cup {showCups ? '▲' : '▼'}
+              </button>
+
+              {showCups && (
+                <ul className="mt-2 space-y-1.5">
+                  {cupList.map((cup) => (
+                    <li
+                      key={cup.cupIndex}
+                      className="flex items-center gap-2 rounded-xl bg-surface p-2 pl-3 shadow-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-accent text-xs font-extrabold uppercase tracking-wide text-text-light">
+                          Cup {cup.cupIndex} of {cup.cupTotal}
+                        </p>
+                        <p className="truncate font-heading text-base font-bold text-text-dark">
+                          {cup.drinkName}
+                        </p>
+                        {cup.modifierNames.length > 0 && (
+                          <p className="truncate font-body text-xs text-text">
+                            {cup.modifierNames.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => onPrint([cup.cupIndex])}
+                        className="shrink-0 cursor-pointer touch-manipulation rounded-full border border-gray-300 px-4 py-2 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
+                      >
+                        🖨 Print
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {onFlagIssue && (
             <button
               onClick={onFlagIssue}
@@ -1327,12 +1379,10 @@ function HistoryPanel() {
     else fetchHistory(query, issuesOnly);
   }
 
-  async function reprint(orderId: string) {
-    const { error } = await supabase
-      .from('orders')
-      .update({ label_print_requested_at: new Date().toISOString(), label_printed_at: null })
-      .eq('id', orderId);
-    if (error) alert(`Could not send to the printer: ${error.message}`);
+  /** null = every cup on the order; a cup number = just that drink, for a remake. */
+  async function reprint(orderId: string, cups: number[] | null) {
+    const error = await requestLabelPrint(orderId, cups);
+    if (error) alert(error);
     else fetchHistory(query, issuesOnly);
   }
 
@@ -1424,6 +1474,39 @@ function HistoryPanel() {
 
                 {expanded && (
                   <div className="border-t border-gray-100 p-4">
+                    {/* One cup at a time — someone came back with a spilled drink and it
+                        needs remaking, not the other four cups reprinting with it. */}
+                    {orderCups(order.order_items).length > 1 && (
+                      <div className="mb-3 rounded-xl border border-gray-100 bg-bg p-2">
+                        <p className="mb-1.5 px-1 font-accent text-xs font-extrabold uppercase tracking-wide text-text-light">
+                          Reprint one cup
+                        </p>
+                        <ul className="space-y-1.5">
+                          {orderCups(order.order_items).map((cup) => (
+                            <li
+                              key={cup.cupIndex}
+                              className="flex items-center gap-2 rounded-lg bg-surface p-2 pl-3"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="font-accent text-xs font-bold uppercase text-text-light">
+                                  Cup {cup.cupIndex} of {cup.cupTotal}
+                                </p>
+                                <p className="truncate font-heading text-sm font-bold text-text-dark">
+                                  {cup.drinkName}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => reprint(order.id, [cup.cupIndex])}
+                                className="shrink-0 cursor-pointer touch-manipulation rounded-full border border-gray-300 px-3 py-1.5 font-accent text-xs font-bold text-text transition-colors hover:bg-gray-50"
+                              >
+                                🖨 Print
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
                     <div className="mb-3 space-y-2">
                       {order.order_items?.map((item) => (
                         <div key={item.id} className="rounded-xl bg-bg p-3">
@@ -1470,10 +1553,10 @@ function HistoryPanel() {
                           </button>
                         )}
                         <button
-                          onClick={() => reprint(order.id)}
+                          onClick={() => reprint(order.id, null)}
                           className="cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface px-4 py-2 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
                         >
-                          🖨 Reprint labels
+                          🖨 Reprint all cups
                         </button>
                       </div>
                     </div>

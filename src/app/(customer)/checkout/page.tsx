@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
+import { markOrderItemsComplete } from '@/lib/label-print';
 import { cartStore } from '@/lib/cart-store';
 import { useCart } from '@/lib/hooks';
 import {
@@ -281,6 +282,10 @@ function CheckoutForm() {
           );
         }
       }
+
+      // Every drink is in — the print agent waits for this before printing, so a
+      // three-drink order can't print one cup and stamp itself done.
+      await markOrderItemsComplete(order.id, orderItems.length);
 
       if (cart.coupon) {
         await supabase

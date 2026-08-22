@@ -30,10 +30,12 @@ time — but the printer/driver has to be installed and working first.
 ### 2. Run the database migrations
 
 In the [Supabase SQL Editor](https://supabase.com/dashboard/project/errkudkpnrjzyjboemwy/sql),
-run these two files from the project root:
+run these files from the project root:
 
 - `supabase-label-printing.sql` — adds one column to orders
 - `supabase-label-settings.sql` — adds the label layout that `/admin/labels` edits
+- `supabase-label-cups.sql` — makes multi-drink orders print **every** cup, and adds
+  the per-cup reprint buttons on the barista board
 
 ### 3. Install the agent
 
@@ -177,8 +179,15 @@ the sticker again, and correct the width and height. Save, then send a test labe
 that's *saved* — if you didn't press **Save layout** first, the printer is still using the
 old one. The page warns about this.
 
-**A label jammed, or someone dropped a cup.** On the barista board, tap **🖨 Reprint** on
-that order's card. The agent prints it again within a second or two.
+**A label jammed, or someone dropped a cup.** On the barista board, tap **🖨 Reprint all
+cups** on that order's card, or **🖨 Print one cup** to pick just the drink being remade —
+a five-cup order shouldn't spit out four labels nobody needs. The agent prints within a
+second or two.
+
+**A multi-drink order only printed one cup.** Run `supabase-label-cups.sql` (see step 2).
+The app inserts an order's drinks one at a time, so without that migration the agent could
+start printing when only the first drink had arrived. With it, the app says how many drinks
+to expect and the agent waits for all of them.
 
 **The agent was off for the first half of service.** Just start it — on startup it prints
 every unprinted order from the last 6 hours, in order. Nothing is lost, and nothing that

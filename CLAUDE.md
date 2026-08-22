@@ -111,6 +111,13 @@ board. Adds `orders.issue_flagged_at` / `orders.issue_note`, and puts
 any part of an order changing. Until it runs, the board works normally but flagging an
 issue fails with a message naming this file.
 
+**`supabase-label-cups.sql`** — Required for **every cup of a multi-drink order to print**,
+and for the per-cup 🖨 buttons on `/barista`. Adds `orders.item_count` (how many drinks the
+order has, stamped once they're all inserted) and `orders.label_print_cups` (which cups a
+print request is for). Until it runs, ordering and whole-order printing work as before, but
+the agent has to guess when an order has finished arriving and per-cup printing says to run
+this file.
+
 ### Seed data
 `supabase-seed.sql` — Loads sample categories, modifier groups, modifiers, and menu items to get started.
 
@@ -321,14 +328,59 @@ to the same Supabase Realtime `orders` feed the barista board uses and prints th
 normal Windows printer driver. If the PC is off or the printer jams, orders still flow —
 nothing about ordering depends on the printer.
 
-- **Migrations:** run `supabase-label-printing.sql` (adds `orders.label_printed_at`) and
-  `supabase-label-settings.sql` (adds the `label_settings` table behind `/admin/labels`).
+- **Migrations:** run `supabase-label-printing.sql` (adds `orders.label_printed_at`),
+  `supabase-label-settings.sql` (adds the `label_settings` table behind `/admin/labels`)
+  and `supabase-label-cups.sql` (see *One label per cup* below).
 - **`label_printed_at` is the whole state machine.** NULL = not printed. The agent only
   prints NULL rows and stamps them when done, so it can crash, restart, or be switched on
   halfway through service and catch up without double-printing.
-- **Reprint** = set it back to NULL. That's what the 🖨 button on the barista card does.
+- **Reprint** = set it back to NULL. That's what the 🖨 buttons on the barista card do.
 - **Hot/cold on the label** comes from the same `src/lib/temperature.ts` the barista board
   uses — the agent imports it directly, so the cup band and the screen can never disagree.
+
+### One label per cup — and why a 3-drink order used to print 1
+
+A quantity of 3 is three separate labels, not "x3" on one. **The cups are numbered in one
+place, `orderCups()` in `src/lib/cups.ts`**, which both the agent and the barista board
+import — so `CUP 2 OF 5` on the roll and the board's **Print cup 2** button always mean the
+same drink. (Cups sort by `order_items.id`: that table has no `created_at` and PostgREST
+promises no row order, so insertion order isn't available to either side. Arbitrary but
+*identical everywhere* is the property that matters.)
+
+The bug this fixes: the app inserts the order row first, then its drinks **one at a time**,
+each a separate round trip. The agent's realtime event routinely arrived when only the first
+drink existed — so it printed one `CUP 1 OF 1` label, stamped the order printed, and the
+rest never came out. Worst on `/tablet`, where orders are biggest.
+
+Two guards, and the agent needs neither to be perfect:
+
+- The app stamps **`orders.item_count`** once every drink row is in (`markOrderItemsComplete`
+  in `src/lib/label-print.ts`). The agent waits for that many drinks. Best-effort on the app
+  side — an order must still go through on a database that's a migration behind.
+- Failing that (no migration, or a browser that died mid-insert) the agent waits for the
+  drink count to **stop growing** — 2s of no new rows — and gives up after 15s and prints
+  what's there. A late cup beats no cup.
+
+Orders older than a minute skip the wait entirely; they finished arriving long ago.
+
+### Printing one cup — remakes
+
+Every order card has **🖨 Print/Reprint all cups**, and on multi-cup orders a **🖨 Print one
+cup** list underneath — one row per cup, with the drink and its add-ins, and its own Print
+button. Same thing in **History** (expand any order), for a drink someone brings back after
+pickup. Reprinting five labels to replace one dropped cup wastes the roll and leaves four
+stray labels on the bar.
+
+Both go through `requestLabelPrint(orderId, cups)` in `src/lib/label-print.ts`: `null` cups
+means the whole order, `[2]` means cup 2. It writes `label_print_requested_at`, clears
+`label_printed_at`, and sets `orders.label_print_cups`; the agent prints just those cups
+(the label still says which cup of the **whole** order it is) and clears the column when
+done. Whole-order printing falls back to the old two-column write if `label_print_cups`
+doesn't exist yet, so a shop that hasn't run the migration keeps its Reprint button.
+
+Prints for one order are **chained** in the agent, not dropped: tapping "print cup 3" while
+cup 1 is still spooling queues it, and each run re-reads `label_printed_at` afterwards, so a
+duplicate realtime event still can't print twice.
 
 ### Editing the layout — `/admin/labels`
 
@@ -713,6 +765,11 @@ For Netlify:
 1. `/barista` → Orders tab → type into the search box
 2. Search a name, a drink or a note — "oat" finds every oat milk order on the board
 3. Clear it when you're done; wait times were never affected by the filter
+
+**Reprint a cup that was dropped or remade:**
+1. `/barista` → the order's card → **🖨 Print one cup** → **Print** next to that drink
+   (or **Print/Reprint all cups** for the whole order)
+2. Already picked up? Same buttons under History → expand the order
 
 **Track an order that went wrong:**
 1. On the order's card, tap **⚠ Flag an issue**

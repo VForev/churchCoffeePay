@@ -109,8 +109,8 @@ export default function PrintSetupPage() {
           <ExternalLink href="https://supabase.com/dashboard/project/errkudkpnrjzyjboemwy/sql">
             Supabase SQL Editor
           </ExternalLink>{' '}
-          and run these two files from the project, one at a time. They add the bits of the
-          database the printer needs. Nothing happens to your existing orders.
+          and run these files from the project, one at a time. They add the bits of the database
+          the printer needs. Nothing happens to your existing orders.
         </p>
         <ul className="ml-5 mt-2 list-disc space-y-1 font-body text-sm text-text">
           <li>
@@ -122,6 +122,12 @@ export default function PrintSetupPage() {
             <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">
               supabase-label-settings.sql
             </code>
+          </li>
+          <li>
+            <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">
+              supabase-label-cups.sql
+            </code>{' '}
+            — without this one, an order with several drinks can print only its first cup
           </li>
         </ul>
         <p className="mt-2 text-text-light">

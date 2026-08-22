@@ -7,8 +7,8 @@
  * the current source — it can never go stale, and the zip is never committed.
  *
  * The agent imports a few files from the website's own source (`src/lib/labels.ts`,
- * `src/lib/temperature.ts` and `src/lib/logo.ts`) so its layout math can't drift from
- * the admin preview. Those are bundled at their real relative path, so once unzipped the
+ * `src/lib/temperature.ts`, `src/lib/cups.ts` and `src/lib/logo.ts`) so its layout math
+ * and cup numbering can't drift from the admin preview or the barista board. Those are bundled at their real relative path, so once unzipped the
  * `../src/lib/...` imports still resolve. Structure of the zip:
  *
  *   print-agent/     <- everything the user runs; `cd` in here
@@ -38,6 +38,9 @@ const FILES = [
   'print-agent/start-printer.command',
   'src/lib/labels.ts',
   'src/lib/temperature.ts',
+  // Cup numbering — shared so "CUP 2 OF 5" on the roll and the board's "Print cup 2"
+  // button always mean the same drink.
+  'src/lib/cups.ts',
   // The church mark, embedded as base64 so the agent and the admin preview print the
   // identical artwork without a shared image file.
   'src/lib/logo.ts',

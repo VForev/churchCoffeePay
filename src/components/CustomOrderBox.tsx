@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { markOrderItemsComplete } from '@/lib/label-print';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input, { TextArea } from '@/components/ui/Input';
@@ -110,6 +111,10 @@ export default function CustomOrderBox({
       setError('Something went wrong sending your order. Please try again.');
       return;
     }
+
+    // One drink, and it's now safely in — lets the printer print immediately
+    // instead of waiting to see whether more drinks are still arriving.
+    await markOrderItemsComplete(order.id, 1);
 
     const waitParam = queueWait !== null ? `&wait=${queueWait + 1}` : '';
     router.push(`/checkout/confirmation?name=${encodeURIComponent(name.trim())}${waitParam}`);

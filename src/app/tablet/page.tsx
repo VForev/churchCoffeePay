@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
+import { markOrderItemsComplete } from '@/lib/label-print';
 import ModifierSelector from '@/components/menu/ModifierSelector';
 import { fetchItemModifierGroups } from '@/lib/menu';
 import { fetchShopConfig, parseDonationPresets, DEFAULT_SETTINGS } from '@/lib/shop';
@@ -292,6 +293,10 @@ function TabletInner() {
           );
         }
       }
+
+      // Every drink is in — the print agent waits for this before printing, so a
+      // three-drink order can't print one cup and stamp itself done.
+      await markOrderItemsComplete(order.id, orderItems.length);
 
       if (coupon) {
         await supabase.from('coupons').update({ times_used: coupon.times_used + 1 }).eq('id', coupon.id);

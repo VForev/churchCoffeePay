@@ -11,17 +11,19 @@
  *
  * Three things this has to survive, because all three WILL happen on a Sunday:
  *
- *   1. The order row appears BEFORE its items do. The web app inserts the order,
- *      then inserts order_items one by one, so a realtime event can arrive when
- *      the order still has zero drinks on it. We poll briefly for the items.
+ *   1. The order row appears BEFORE its items do, and the items arrive one at a time.
+ *      A realtime event routinely lands when only the first drink of a three-drink
+ *      order exists — print then and the other two cups never come out. See
+ *      fetchOrderWhenReady(): it waits for the order to be complete, not just non-empty.
  *   2. The agent gets started late, or crashes and restarts mid-service. On boot
  *      it catches up on every unprinted order from the last few hours.
  *   3. The same order arrives twice (realtime redelivery, a reprint, a race).
- *      `label_printed_at` in the database is the guard, plus an in-flight set for
- *      the seconds before that column is written.
+ *      `label_printed_at` in the database is the guard, and prints for one order are
+ *      chained so the next one only starts once that column has been written.
  *
- * Reprinting: the barista board's "Print label" button sets label_printed_at back
- * to NULL, which lands here as an UPDATE and prints the order again.
+ * Reprinting: the barista board's print buttons set label_printed_at back to NULL and
+ * stamp label_print_requested_at, which lands here as an UPDATE. "Print all cups" leaves
+ * label_print_cups NULL; a single-cup reprint puts that cup's number in it.
  */
 
 import 'dotenv/config';
@@ -38,9 +40,9 @@ import {
   normalizeLabelSettings,
   SAMPLE_LABELS,
   type LabelData,
-  type LabelModifierLine,
   type LabelSettings,
 } from '../src/lib/labels';
+import { orderCups, cupsToPrint, type CupModifierSource } from '../src/lib/cups';
 import { renderLabelPdf, renderDiagnosticPdf } from './label';
 import { printPdf, listPrinterNames, listPaperSizes, listPaperSizesDetailed, resolveMedia, type PaperSize } from './printer';
 
@@ -124,8 +126,16 @@ async function loadLabelSettings(): Promise<void> {
   testLabelData = (data?.test_label_data as LabelData | null) ?? null;
 }
 
+/**
+ * Everything about the order, plus its drinks.
+ *
+ * `*` rather than a column list on purpose: item_count and label_print_cups come from
+ * a migration a given shop may not have run yet (supabase-label-cups.sql). Naming them
+ * explicitly would make the whole query fail there and nothing would print at all;
+ * with `*` they simply come back undefined and the agent uses the old behaviour.
+ */
 const ORDER_QUERY = `
-  id, customer_name, created_at, status, label_printed_at,
+  *,
   order_items (
     id, quantity, special_instructions,
     menu_item:menu_items ( name ),
@@ -138,52 +148,23 @@ const ORDER_QUERY = `
   )
 `;
 
-interface FetchedModifier {
-  name: string;
-  display_order: number | null;
-  group: { name: string; display_order: number | null } | null;
-}
-
 interface FetchedOrder {
   id: string;
   customer_name: string;
   created_at: string;
   status: string;
   label_printed_at: string | null;
+  /** How many drink lines the order has, stamped by the app once they're all inserted. */
+  item_count?: number | null;
+  /** Which cups to print; null/empty = all of them. */
+  label_print_cups?: number[] | null;
   order_items: {
     id: string;
     quantity: number;
     special_instructions: string | null;
     menu_item: { name: string } | null;
-    order_item_modifiers: { modifier: FetchedModifier | null }[];
+    order_item_modifiers: { modifier: CupModifierSource | null }[];
   }[];
-}
-
-/**
- * Groups an order item's modifiers by their category so each prints on its own line,
- * ordered by the group order set at /admin/modifiers (and options by their own order).
- */
-function groupModifiers(rows: { modifier: FetchedModifier | null }[]): LabelModifierLine[] {
-  const groups = new Map<string, { order: number; options: { name: string; order: number }[] }>();
-
-  for (const row of rows) {
-    const name = row.modifier?.name;
-    if (!name) continue;
-    const groupName = row.modifier?.group?.name ?? '';
-    const groupOrder = row.modifier?.group?.display_order ?? 9999;
-    const optionOrder = row.modifier?.display_order ?? 0;
-
-    const entry = groups.get(groupName) ?? { order: groupOrder, options: [] };
-    entry.options.push({ name, order: optionOrder });
-    groups.set(groupName, entry);
-  }
-
-  return [...groups.entries()]
-    .sort((a, b) => a[1].order - b[1].order)
-    .map(([group, v]) => ({
-      group,
-      options: v.options.sort((a, b) => a.order - b.order).map((o) => o.name),
-    }));
 }
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
@@ -200,47 +181,58 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   realtime: { transport: NodeWebSocket as unknown as RealtimeTransport },
 });
 
-/** Orders currently being printed — guards the gap before label_printed_at is written. */
-const inFlight = new Set<string>();
+/**
+ * Print jobs, serialized per order.
+ *
+ * Two things arrive at once on a busy morning: realtime redelivery of the same order,
+ * and a barista tapping "print cup 3" while the order's other cups are still spooling.
+ * Dropping the second one loses a print the barista asked for; running both at once
+ * prints the order twice. So they're CHAINED — each run re-reads the row after the one
+ * before it finished, and label_printed_at then tells a duplicate apart from a genuine
+ * new request.
+ */
+const printChains = new Map<string, Promise<void>>();
+
+function queueOrder(orderId: string) {
+  const previous = printChains.get(orderId) ?? Promise.resolve();
+  const next = previous.then(() => handleOrder(orderId)).catch((err) => {
+    console.error(`  print failed for ${orderId}:`, err instanceof Error ? err.message : err);
+  });
+  printChains.set(orderId, next);
+  next.finally(() => {
+    if (printChains.get(orderId) === next) printChains.delete(orderId);
+  });
+}
 
 // ─── Turning an order into labels ─────────────────────────────────────────────
 
-/** One label per cup: a quantity of 3 is three separate labels, not "x3" on one. */
-function buildLabels(order: FetchedOrder): LabelData[] {
-  const cupTotal = order.order_items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
+/**
+ * One label per cup: a quantity of 3 is three separate labels, not "x3" on one.
+ *
+ * The cups themselves come from orderCups() in src/lib/cups.ts, which the barista
+ * board also uses — so "CUP 2 OF 5" on the roll is the same cup as the board's
+ * "Print cup 2" button. `only` narrows it to the cups that were asked for, while
+ * every label still says which cup of the WHOLE order it is.
+ */
+function buildLabels(order: FetchedOrder, only?: number[] | null): LabelData[] {
   const time = new Date(order.created_at).toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
   });
 
-  const labels: LabelData[] = [];
-  let cupIndex = 0;
-
-  for (const item of order.order_items) {
-    const modifierLines = groupModifiers(item.order_item_modifiers);
-    const flatModifiers = modifierLines.flatMap((line) => line.options);
-
-    const drinkName = item.menu_item?.name ?? 'Drink';
-
-    for (let i = 0; i < (item.quantity ?? 1); i++) {
-      cupIndex++;
-      labels.push({
-        temp: drinkTemperature(drinkName, flatModifiers),
-        customerName: order.customer_name,
-        cupIndex,
-        cupTotal,
-        drinkName,
-        modifiers: modifierLines,
-        note: item.special_instructions?.trim() || null,
-        // The full uuid is useless on a cup. The last 4 characters are enough to
-        // match a label back to an order on the board.
-        orderCode: order.id.slice(-4).toUpperCase(),
-        timeText: time,
-      });
-    }
-  }
-
-  return labels;
+  return cupsToPrint(orderCups(order.order_items), only).map((cup) => ({
+    temp: drinkTemperature(cup.drinkName, cup.modifierNames),
+    customerName: order.customer_name,
+    cupIndex: cup.cupIndex,
+    cupTotal: cup.cupTotal,
+    drinkName: cup.drinkName,
+    modifiers: cup.modifierLines,
+    note: cup.note,
+    // The full uuid is useless on a cup. The last 4 characters are enough to
+    // match a label back to an order on the board.
+    orderCode: order.id.slice(-4).toUpperCase(),
+    timeText: time,
+  }));
 }
 
 /**
@@ -319,12 +311,35 @@ async function printLabel(label: LabelData) {
 // ─── The one path every print goes through ────────────────────────────────────
 
 /**
- * Waits for the order's items to exist. The web app inserts the order row first
- * and its items immediately after, so a realtime event can beat the drinks by a
- * few hundred milliseconds — printing then would produce a blank label.
+ * Waits for the order to be COMPLETE, not merely non-empty.
+ *
+ * This is the fix for a three-drink order printing one cup. The web app inserts the
+ * order row, then its items one at a time — each a separate round trip — so the
+ * realtime event routinely lands when the order has one drink on it. Printing then
+ * produced a single "CUP 1 OF 1" label and stamped the order printed, and the other
+ * two drinks never came out of the printer at all.
+ *
+ * Two signals, in order of trust:
+ *
+ *   1. `orders.item_count` — stamped by the app once every item row is in. Definitive.
+ *      Absent on orders placed before supabase-label-cups.sql, and on any order whose
+ *      browser died halfway, so it can't be the only signal.
+ *   2. Otherwise the count has to STOP GROWING: unchanged across SETTLE_POLLS polls.
+ *      A slow phone inserting its third drink is the thing this waits out.
+ *
+ * Either way it gives up after ~15s and prints what's there — a late cup is worth more
+ * than no cup, and the barista can reprint the rest.
  */
+const POLL_MS = 400;
+const SETTLE_POLLS = 5; // 2s of no new drinks = the order is done arriving
+const MAX_POLLS = 38; // ~15s
+const SETTLED_AGE_MS = 60_000; // older than this and the order finished arriving long ago
+
 async function fetchOrderWhenReady(orderId: string): Promise<FetchedOrder | null> {
-  for (let attempt = 0; attempt < 20; attempt++) {
+  let lastCount = -1;
+  let stable = 0;
+
+  for (let attempt = 0; attempt < MAX_POLLS; attempt++) {
     const { data, error } = await supabase
       .from('orders')
       .select(ORDER_QUERY)
@@ -337,19 +352,47 @@ async function fetchOrderWhenReady(orderId: string): Promise<FetchedOrder | null
     }
 
     const order = data as unknown as FetchedOrder;
-    if (order.order_items?.length > 0) return order;
+    const count = order.order_items?.length ?? 0;
 
-    await new Promise((r) => setTimeout(r, 500));
+    // Nothing to print yet — keep waiting, and don't let "0 twice" look settled.
+    if (count === 0) {
+      lastCount = 0;
+      stable = 0;
+      await new Promise((r) => setTimeout(r, POLL_MS));
+      continue;
+    }
+
+    // A reprint of an order placed a minute ago has nothing left to wait for — its
+    // drinks stopped arriving long ago. Only a brand-new order is still filling in.
+    if (Date.now() - new Date(order.created_at).getTime() > SETTLED_AGE_MS) return order;
+
+    // The app told us how many drinks to expect.
+    if (typeof order.item_count === 'number' && order.item_count > 0) {
+      if (count >= order.item_count) return order;
+    } else {
+      stable = count === lastCount ? stable + 1 : 0;
+      if (stable >= SETTLE_POLLS) return order;
+    }
+
+    lastCount = count;
+    await new Promise((r) => setTimeout(r, POLL_MS));
   }
 
-  console.error(`  order ${orderId} still has no items after 10s — skipping`);
-  return null;
+  // Timed out. Print whatever the order does have rather than nothing at all.
+  const { data } = await supabase.from('orders').select(ORDER_QUERY).eq('id', orderId).single();
+  const order = data as unknown as FetchedOrder | null;
+  if (!order || !(order.order_items?.length > 0)) {
+    console.error(`  order ${orderId} still has no drinks on it after 15s — skipping`);
+    return null;
+  }
+  console.error(
+    `  ⚠ order ${orderId} never finished arriving (${order.order_items.length} of ` +
+      `${order.item_count ?? '?'} drinks) — printing what's there.`,
+  );
+  return order;
 }
 
 async function handleOrder(orderId: string) {
-  if (inFlight.has(orderId)) return;
-  inFlight.add(orderId);
-
   try {
     const order = await fetchOrderWhenReady(orderId);
     if (!order) return;
@@ -359,25 +402,38 @@ async function handleOrder(orderId: string) {
     if (order.label_printed_at) return;
     if (order.status === 'cancelled') return;
 
-    const labels = buildLabels(order);
-    console.log(`🖨  ${order.customer_name} — ${labels.length} label${labels.length !== 1 ? 's' : ''}`);
+    // Which cups were asked for — one cup for a remake, all of them otherwise.
+    const requested = order.label_print_cups ?? null;
+    const labels = buildLabels(order, requested);
+    const cupTotal = labels[0]?.cupTotal ?? labels.length;
+    const which =
+      requested && requested.length > 0 && labels.length < cupTotal
+        ? `cup${labels.length !== 1 ? 's' : ''} ${labels.map((l) => l.cupIndex).join(', ')} of ${cupTotal}`
+        : `${labels.length} label${labels.length !== 1 ? 's' : ''}`;
+    console.log(`🖨  ${order.customer_name} — ${which}`);
 
-    for (const label of labels) {
+    // One at a time, and each one logged: if the roll jams halfway through an order,
+    // the log says exactly which cup to reprint.
+    for (const [i, label] of labels.entries()) {
       await printLabel(label);
+      console.log(`    ✓ cup ${label.cupIndex} of ${label.cupTotal} (${i + 1}/${labels.length})`);
     }
 
-    const { error } = await supabase
+    // Printed. Clear the cup selection too, so the next print is the whole order again.
+    const printedAt = { label_printed_at: new Date().toISOString() };
+    let { error } = await supabase
       .from('orders')
-      .update({ label_printed_at: new Date().toISOString() })
+      .update({ ...printedAt, label_print_cups: null })
       .eq('id', orderId);
+
+    // No label_print_cups column here (migration not run) — stamp the rest anyway.
+    if (error) ({ error } = await supabase.from('orders').update(printedAt).eq('id', orderId));
 
     // If this write fails the label is already on the roll, so say so loudly —
     // the next restart would otherwise print the whole order again.
     if (error) console.error(`  printed, but could not mark as printed: ${error.message}`);
   } catch (err) {
     console.error(`  print failed for ${orderId}:`, err instanceof Error ? err.message : err);
-  } finally {
-    inFlight.delete(orderId);
   }
 }
 
@@ -556,7 +612,7 @@ async function main() {
       (payload) => {
         // Auto-print mode only: print the moment the order lands. In manual mode nothing
         // prints until the barista asks (which arrives as an UPDATE below).
-        if (labelSettings.auto_print) handleOrder((payload.new as { id: string }).id);
+        if (labelSettings.auto_print) queueOrder((payload.new as { id: string }).id);
       },
     )
     .on(
@@ -572,7 +628,7 @@ async function main() {
           label_printed_at: string | null;
           label_print_requested_at: string | null;
         };
-        if (row.label_print_requested_at && !row.label_printed_at) handleOrder(row.id);
+        if (row.label_print_requested_at && !row.label_printed_at) queueOrder(row.id);
       },
     )
     .subscribe((status) => {
