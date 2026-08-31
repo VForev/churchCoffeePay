@@ -235,18 +235,57 @@ function drawLabel(doc: PDFKit.PDFDocument, data: LabelData, settings: LabelSett
   const modLines = orderModifierLines(data.modifiers, settings.modifier_group_order)
     .map((line) => ({ style: groupStyle(settings, line.group), text: line.options.join(', ') }))
     .filter((l) => l.style.show && l.text.length > 0)
-    .map((l) => ({ text: l.text, size: modSize * l.style.scale }));
+    .map((l) => ({ text: l.text, size: modSize * l.style.scale, emphasis: l.style.emphasis }));
   const hasMods = settings.show_modifiers && modLines.length > 0;
 
   // Draws the visible modifier lines from startY down, each at its own size, stopping
   // before maxY. Returns where it ended so the note/footer can flow below.
+  //
+  // Emphasis is why this isn't one text() call per line and nothing else. Milk defaults
+  // to bold and can be set to 'boxed' — white out of a black chip, the only emphasis a
+  // 1-bit thermal printer really has. The chip is drawn to the TEXT's width, not the
+  // label's, so "Oat Milk" gets a chip the size of "Oat Milk" rather than a black bar
+  // across the whole sticker.
   const drawModifierLines = (startY: number, maxY: number): number => {
     let yy = startY;
     for (const line of modLines) {
       if (yy + line.size > maxY) break;
+
+      const bold = line.emphasis !== 'normal';
+      const font = bold ? 'Helvetica-Bold' : 'Helvetica';
+      doc.font(font).fontSize(line.size);
+
+      if (line.emphasis === 'boxed') {
+        const padX = line.size * 0.28;
+        const padY = line.size * 0.16;
+        const lineH = doc.currentLineHeight();
+        // A chip that would run past the printable width falls back to bold: half a
+        // black block with the milk name cut out of it is worse than no block at all.
+        const chipW = Math.min(doc.widthOfString(line.text) + padX * 2, contentWidth);
+        const chipH = lineH + padY * 2;
+
+        if (yy + chipH <= maxY && doc.widthOfString(line.text) + padX * 2 <= contentWidth) {
+          const chipX = align === 'center' ? margin + (contentWidth - chipW) / 2 : margin;
+          doc.rect(chipX, yy, chipW, chipH).fill('#000');
+          doc
+            .fillColor('#fff')
+            .font(font)
+            .fontSize(line.size)
+            .text(line.text, chipX + padX, yy + padY, {
+              width: chipW - padX * 2,
+              height: NO_PAGE_BREAK,
+              lineBreak: false,
+              ellipsis: true,
+            });
+          doc.fillColor('#000');
+          yy += chipH + line.size * 0.12;
+          continue;
+        }
+      }
+
       doc
         .fillColor('#000')
-        .font('Helvetica')
+        .font(font)
         .fontSize(line.size)
         .text(line.text, margin, yy, {
           width: contentWidth,

@@ -149,15 +149,36 @@ export default function LabelPreview({
           // category with lots of options (e.g. every syrup) WRAPS onto more lines so all
           // of them stay visible, rather than being cut off at one line.
           <div style={{ marginTop: px(m.gapMm) }}>
-            {modLines.map((l, i) => (
-              <div
-                key={i}
-                className="leading-snug"
-                style={{ fontSize: px(m.modifierMm * l.style.scale), textAlign: align, overflowWrap: 'break-word' }}
-              >
-                {l.text}
-              </div>
-            ))}
+            {modLines.map((l, i) => {
+              const size = m.modifierMm * l.style.scale;
+              // Boxed draws an inline chip sized to its own text, matching the PDF —
+              // an inline-block, so it never stretches across the whole label.
+              if (l.style.emphasis === 'boxed') {
+                return (
+                  <div key={i} style={{ textAlign: align, lineHeight: 1.35 }}>
+                    <span
+                      className="inline-block bg-black font-bold text-white"
+                      style={{
+                        fontSize: px(size),
+                        padding: `${px(size * 0.16)} ${px(size * 0.28)}`,
+                        lineHeight: 1.15,
+                      }}
+                    >
+                      {l.text}
+                    </span>
+                  </div>
+                );
+              }
+              return (
+                <div
+                  key={i}
+                  className={l.style.emphasis === 'bold' ? 'font-bold leading-snug' : 'leading-snug'}
+                  style={{ fontSize: px(size), textAlign: align, overflowWrap: 'break-word' }}
+                >
+                  {l.text}
+                </div>
+              );
+            })}
           </div>
         )}
 

@@ -77,6 +77,15 @@ export interface ShopSettings {
   coupons_enabled: boolean;
   ordering_override: OrderingOverride;
   closed_message: string;
+  /**
+   * Spam-order limit. Enforced by a database trigger, not by the app — see
+   * src/lib/rate-limit.ts and supabase-order-rate-limit.sql. More than
+   * `spam_max_orders` orders from one phone (or one name) inside
+   * `spam_window_minutes` is refused. Counter orders are always exempt.
+   */
+  spam_limit_enabled: boolean;
+  spam_max_orders: number;
+  spam_window_minutes: number;
 }
 
 /**
@@ -129,12 +138,33 @@ export interface Order {
   order_source: OrderSource;
   event_id: string | null;
   created_at: string;
+  /**
+   * When the barista tapped "Start Making" / "Mark Ready" / "Order Picked Up".
+   * Added by supabase-order-timing.sql, so they're optional: orders taken before it
+   * have none. Read them through src/lib/order-timing.ts, never by subtracting dates
+   * inline — the "how long did it take" numbers have to agree across three screens.
+   */
+  started_at?: string | null;
+  ready_at?: string | null;
+  completed_at?: string | null;
+  /**
+   * Which browser placed the order — a random localStorage id, not a person. Only
+   * used by the spam-order limit (supabase-order-rate-limit.sql).
+   */
+  device_id?: string | null;
   archived_at: string | null;
   /**
    * When the cup labels were printed. NULL means "not printed yet" — the print
    * agent on the shop PC watches this, so setting it back to NULL reprints.
    */
   label_printed_at: string | null;
+  /**
+   * Which cups have actually come off the roll, by the numbering in src/lib/cups.ts.
+   * Accumulated by the print agent and never cleared by a reprint — it answers the
+   * barista's "have I printed cup 3 yet?" on a multi-drink order. Optional: added by
+   * supabase-manual-printing.sql.
+   */
+  label_printed_cups?: number[] | null;
   /**
    * When a barista flagged something as having gone wrong with this order. NULL = fine.
    * Set from the barista board; see src/lib/order-issues.ts.

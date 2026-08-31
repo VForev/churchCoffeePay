@@ -158,6 +158,8 @@ interface FetchedOrder {
   item_count?: number | null;
   /** Which cups to print; null/empty = all of them. */
   label_print_cups?: number[] | null;
+  /** Which cups have already come off the roll, so /barista can show it. */
+  label_printed_cups?: number[] | null;
   order_items: {
     id: string;
     quantity: number;
@@ -452,12 +454,20 @@ async function handleOrder(orderId: string) {
 
     // Printed. Clear the cup selection too, so the next print is the whole order again.
     const printedAt = { label_printed_at: new Date().toISOString() };
+
+    // Accumulated, never replaced: the barista board reads this to show which cups it
+    // still has to print, and a single-cup remake must not wipe the other four.
+    const printedCups = [
+      ...new Set([...(order.label_printed_cups ?? []), ...labels.map((l) => l.cupIndex)]),
+    ].sort((a, b) => a - b);
+
     let { error } = await supabase
       .from('orders')
-      .update({ ...printedAt, label_print_cups: null })
+      .update({ ...printedAt, label_print_cups: null, label_printed_cups: printedCups })
       .eq('id', orderId);
 
-    // No label_print_cups column here (migration not run) — stamp the rest anyway.
+    // No label_print_cups / label_printed_cups column here (migration not run) — stamp
+    // the rest anyway, so the agent still can't reprint the order on its next restart.
     if (error) ({ error } = await supabase.from('orders').update(printedAt).eq('id', orderId));
 
     // If this write fails the label is already on the roll, so say so loudly —
@@ -669,7 +679,7 @@ async function main() {
   console.log(`  Paper size: ${paperSize ? `"${paperSize}"` : '(none matched — run `npm run doctor` to list sizes)'}`);
   console.log(`  Available:  ${printers.join(', ') || 'none found'}`);
   console.log(
-    `  Printing:   ${labelSettings.auto_print ? 'automatic — prints when an order comes in' : 'manual — barista prints from /barista'}`,
+    `  Printing:   ${labelSettings.auto_print ? 'automatic — prints every cup when an order comes in' : 'manual (normal) — the barista prints each cup from /barista'}`,
   );
   console.log(
     `  Cups:       ${

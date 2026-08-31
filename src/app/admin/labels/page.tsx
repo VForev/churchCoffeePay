@@ -11,6 +11,7 @@ import PreviewComposer, {
 } from '@/components/admin/PreviewComposer';
 import {
   DEFAULT_LABEL_SETTINGS,
+  groupStyle,
   normalizeLabelSettings,
   orderGroupNames,
   SAMPLE_LABELS,
@@ -18,6 +19,8 @@ import {
   SCALE_MIN,
   type LabelData,
   type LabelSettings,
+  type ModifierEmphasis,
+  type ModifierGroupStyle,
 } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +31,17 @@ import { cn } from '@/lib/utils';
  * what you see is what comes off the roll — but a screen can't tell you whether the
  * label is physically aligned in the printer, which is what "Send test label" is for.
  */
+/** The three ways a modifier category can be made to stand out on the roll. */
+const EMPHASIS_OPTIONS: { value: ModifierEmphasis; label: string; help: string }[] = [
+  { value: 'normal', label: 'Normal', help: 'Same as every other add-in line' },
+  { value: 'bold', label: 'Bold', help: 'Heavier type — the default for Milk' },
+  {
+    value: 'boxed',
+    label: 'Black box',
+    help: 'White text on a black chip, like the HOT/COLD band. The loudest a thermal printer gets — it costs a little more height.',
+  },
+];
+
 export default function AdminLabelsPage() {
   const [settings, setSettings] = useState<LabelSettings>(DEFAULT_LABEL_SETTINGS);
   // The shop's real groups with their options — drives the per-group controls AND the
@@ -128,9 +142,11 @@ export default function AdminLabelsPage() {
   }
 
   /** Update one modifier group's per-label style, leaving the others untouched. */
-  function patchGroupStyle(group: string, changes: Partial<{ show: boolean; scale: number }>) {
+  function patchGroupStyle(group: string, changes: Partial<ModifierGroupStyle>) {
     setSettings((prev) => {
-      const current = prev.modifier_group_styles[group] ?? { show: true, scale: 1 };
+      // groupStyle() supplies the name-based default (milk is bold), so switching a
+      // group's size doesn't silently reset its emphasis to normal on first touch.
+      const current = prev.modifier_group_styles[group] ?? groupStyle(prev, group);
       return {
         ...prev,
         modifier_group_styles: {
@@ -336,11 +352,12 @@ export default function AdminLabelsPage() {
           <Card>
             <h2 className="mb-1 font-heading font-bold text-text-dark">When to print</h2>
             <p className="mb-4 font-body text-xs text-text-light">
-              Whether labels print on their own, or the barista prints each order by hand.
+              Normally off: the barista prints each cup as they make it, from the list on the
+              order card in <strong>/barista</strong>.
             </p>
             <Toggle
               label="Print automatically when an order comes in"
-              help="On: a label prints for every cup the moment an order is placed. Off: nothing prints on its own — the barista taps 🖨 on the order in /barista to print it. The 🖨 button works either way."
+              help="Off (recommended): nothing prints on its own — every label comes off the roll when the barista taps 🖨 next to that cup. On: every cup on an order prints the moment it's placed, including the ones nobody has started, and a single remake costs a whole fresh set."
               checked={settings.auto_print}
               onChange={(auto_print) => patch({ auto_print })}
             />
@@ -455,7 +472,7 @@ export default function AdminLabelsPage() {
 
                 <div className="space-y-4">
                   {orderedNames.map((group, i) => {
-                    const style = settings.modifier_group_styles[group] ?? { show: true, scale: 1 };
+                    const style = groupStyle(settings, group);
                     return (
                       <div key={group} className="border-t border-gray-100 pt-3 first:border-t-0 first:pt-0">
                         <div className="flex items-center gap-3">
@@ -488,12 +505,36 @@ export default function AdminLabelsPage() {
                           </label>
                         </div>
                         {style.show && (
-                          <div className="mt-2 pl-9">
+                          <div className="mt-2 space-y-2 pl-9">
                             <Slider
                               label="Size"
                               value={style.scale}
                               onChange={(scale) => patchGroupStyle(group, { scale })}
                             />
+                            {/* Milk starts on Bold with nothing configured — it's the add-in
+                                where being wrong is a problem rather than a preference. */}
+                            <div>
+                              <p className="mb-1 font-accent text-xs font-semibold text-text-light">
+                                Stand out
+                              </p>
+                              <div className="flex gap-1.5">
+                                {EMPHASIS_OPTIONS.map((opt) => (
+                                  <button
+                                    key={opt.value}
+                                    onClick={() => patchGroupStyle(group, { emphasis: opt.value })}
+                                    title={opt.help}
+                                    className={cn(
+                                      'cursor-pointer rounded-full px-3 py-1 font-accent text-xs font-semibold transition-colors',
+                                      style.emphasis === opt.value
+                                        ? 'bg-primary text-white'
+                                        : 'bg-bg text-text-light hover:bg-gray-100 hover:text-text',
+                                    )}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>

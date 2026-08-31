@@ -1,6 +1,12 @@
 # Cup Label Printer
 
-Prints a label for every cup, automatically, the moment an order comes in.
+Prints cup labels for the barista, one cup at a time.
+
+**Nothing prints on its own.** The barista taps 🖨 next to a cup on the order card at
+`/barista` and this agent prints that one label. (There's still an "print automatically
+when an order comes in" switch at `/admin/labels` if a shop wants it — it's off by
+default, because auto-printing puts stickers on the bar for drinks nobody has started,
+and one dropped cup then costs a fresh set of five.)
 
 This runs on the **shop computer** with the label printer plugged into it — **Windows or
 Mac**, either works. It's not on Netlify or the iPad. The website doesn't talk to the
@@ -34,8 +40,9 @@ run these files from the project root:
 
 - `supabase-label-printing.sql` — adds one column to orders
 - `supabase-label-settings.sql` — adds the label layout that `/admin/labels` edits
-- `supabase-label-cups.sql` — makes multi-drink orders print **every** cup, and adds
-  the per-cup reprint buttons on the barista board
+- `supabase-label-cups.sql` — numbers the cups, so each one can be printed on its own
+- `supabase-manual-printing.sql` — turns off auto-printing and lets the barista board show
+  which cups have already been printed
 
 ### 3. Install the agent
 

@@ -23,6 +23,11 @@ export const DEFAULT_SETTINGS: ShopSettings = {
   coupons_enabled: true,
   ordering_override: 'auto',
   closed_message: 'Ordering is closed right now. Come see us during service!',
+  // Matches the trigger's own defaults in supabase-order-rate-limit.sql: three orders
+  // from one phone in ten minutes is fine, the fourth isn't a coffee order.
+  spam_limit_enabled: true,
+  spam_max_orders: 3,
+  spam_window_minutes: 10,
 };
 
 export interface ShopStatus {
@@ -179,7 +184,10 @@ export async function fetchShopConfig(): Promise<{
   ]);
 
   return {
-    settings: (settingsRes.data as ShopSettings) ?? DEFAULT_SETTINGS,
+    // Merged over the defaults, not cast onto them: the spam-limit columns arrive in a
+    // migration, so a database that's behind returns a row with those keys missing and
+    // the settings page would render blank number boxes.
+    settings: { ...DEFAULT_SETTINGS, ...((settingsRes.data as Partial<ShopSettings>) ?? {}) },
     hours: (hoursRes.data as OrderingHours[]) ?? [],
   };
 }

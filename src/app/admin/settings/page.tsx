@@ -21,6 +21,16 @@ const OVERRIDE_OPTIONS: { value: OrderingOverride; label: string; help: string }
   },
 ];
 
+/** Postgres/PostgREST for "supabase-order-rate-limit.sql hasn't been run here". */
+function isMissingSpamColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    /spam_limit_enabled|spam_max_orders|spam_window_minutes/.test(error.message ?? '')
+  );
+}
+
 /** Postgres hands back "09:00:00"; <input type="time"> wants "09:00". */
 function toTimeInput(time: string): string {
   return time.slice(0, 5);
@@ -33,6 +43,8 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState('');
+  /** True once a save came back without the spam-limit columns — see supabase-order-rate-limit.sql. */
+  const [spamMissing, setSpamMissing] = useState(false);
 
   useEffect(() => {
     fetchShopConfig().then((config) => {
@@ -52,19 +64,40 @@ export default function AdminSettingsPage() {
     setSaving(true);
     setError('');
 
-    const { error: settingsError } = await supabase
+    const core = {
+      id: 1,
+      service_title: settings.service_title.trim() || 'LOTG Coffee',
+      service_subtitle: settings.service_subtitle.trim(),
+      donations_enabled: settings.donations_enabled,
+      donation_label: settings.donation_label.trim() || 'Donation',
+      donation_presets: settings.donation_presets.trim(),
+      coupons_enabled: settings.coupons_enabled,
+      ordering_override: settings.ordering_override,
+      closed_message: settings.closed_message.trim(),
+    };
+
+    const spam = {
+      spam_limit_enabled: settings.spam_limit_enabled,
+      // Clamped here as well as in the trigger: a blank number input reads as 0, and a
+      // max of 0 would refuse every single order on the site.
+      spam_max_orders: Math.min(Math.max(Math.round(settings.spam_max_orders) || 3, 1), 50),
+      spam_window_minutes: Math.min(
+        Math.max(Math.round(settings.spam_window_minutes) || 10, 1),
+        240,
+      ),
+    };
+
+    let { error: settingsError } = await supabase
       .from('shop_settings')
-      .upsert({
-        id: 1,
-        service_title: settings.service_title.trim() || 'LOTG Coffee',
-        service_subtitle: settings.service_subtitle.trim(),
-        donations_enabled: settings.donations_enabled,
-        donation_label: settings.donation_label.trim() || 'Donation',
-        donation_presets: settings.donation_presets.trim(),
-        coupons_enabled: settings.coupons_enabled,
-        ordering_override: settings.ordering_override,
-        closed_message: settings.closed_message.trim(),
-      });
+      .upsert({ ...core, ...spam });
+
+    // The spam columns come from a migration. Without it the whole save would fail and
+    // the admin would lose their opening hours over a feature they weren't editing — so
+    // fall back to saving everything else and say which file adds the rest.
+    if (settingsError && isMissingSpamColumn(settingsError)) {
+      ({ error: settingsError } = await supabase.from('shop_settings').upsert(core));
+      if (!settingsError) setSpamMissing(true);
+    }
 
     const { error: hoursError } = await supabase.from('ordering_hours').upsert(
       hours.map((h) => ({
@@ -364,6 +397,85 @@ export default function AdminSettingsPage() {
             </p>
           </div>
         </label>
+      </Card>
+
+      {/* Spam ordering */}
+      <Card className="mb-6">
+        <h2 className="mb-1 font-heading font-bold text-text-dark">Stopping spam orders</h2>
+        <p className="mb-4 font-body text-sm text-text-light">
+          Someone hammering the order button — a bored kid, a stuck finger, a joke — puts junk
+          on the barista board mid-service. Past this many orders from the same phone (or the
+          same name) inside the window, the next one is refused with a message asking them to
+          wait. <strong>Counter orders on the tablet are never limited</strong>, so the barista
+          can keep serving the queue in front of them.
+        </p>
+
+        <label className="mb-4 flex cursor-pointer items-center gap-3 rounded-xl border-2 border-gray-100 p-3 transition-colors hover:border-gray-200">
+          <input
+            type="checkbox"
+            checked={settings.spam_limit_enabled}
+            onChange={(e) => setSettings({ ...settings, spam_limit_enabled: e.target.checked })}
+            className="h-5 w-5 accent-primary"
+          />
+          <div>
+            <span className="font-accent text-sm font-semibold text-text-dark">
+              Limit how fast one person can order
+            </span>
+            <p className="font-body text-xs text-text-light">
+              {settings.spam_limit_enabled
+                ? `More than ${settings.spam_max_orders} order${
+                    settings.spam_max_orders === 1 ? '' : 's'
+                  } in ${settings.spam_window_minutes} minutes is refused.`
+                : 'Anyone can place as many orders as they like, as fast as they like.'}
+            </p>
+          </div>
+        </label>
+
+        {settings.spam_limit_enabled && (
+          <div className="flex flex-wrap gap-4">
+            <label className="font-body text-xs text-text-light">
+              Orders allowed
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={settings.spam_max_orders}
+                onChange={(e) =>
+                  setSettings({ ...settings, spam_max_orders: Number(e.target.value) })
+                }
+                className="mt-1 block w-28 rounded-xl border-2 border-gray-200 px-3 py-2 font-body text-sm text-text-dark focus:border-primary focus:outline-none"
+              />
+            </label>
+            <label className="font-body text-xs text-text-light">
+              Within (minutes)
+              <input
+                type="number"
+                min={1}
+                max={240}
+                value={settings.spam_window_minutes}
+                onChange={(e) =>
+                  setSettings({ ...settings, spam_window_minutes: Number(e.target.value) })
+                }
+                className="mt-1 block w-28 rounded-xl border-2 border-gray-200 px-3 py-2 font-body text-sm text-text-dark focus:border-primary focus:outline-none"
+              />
+            </label>
+          </div>
+        )}
+
+        {spamMissing ? (
+          <p className="mt-4 rounded-xl bg-warning/10 px-4 py-3 font-body text-sm text-text">
+            These limits weren&apos;t saved — the database doesn&apos;t have them yet. Run{' '}
+            <strong className="font-accent">supabase-order-rate-limit.sql</strong> in the Supabase
+            SQL editor, then save again. Everything else on this page saved fine.
+          </p>
+        ) : (
+          <p className="mt-4 font-body text-xs text-text-light">
+            Enforced inside the database, not in the browser, so clearing site data or opening a
+            private tab doesn&apos;t get round it. Needs{' '}
+            <strong className="font-accent">supabase-order-rate-limit.sql</strong> to have been
+            run.
+          </p>
+        )}
       </Card>
 
       <div className="flex justify-end pb-6">

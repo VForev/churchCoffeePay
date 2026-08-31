@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
+import { getDeviceId } from '@/lib/device';
+import { fetchSpamSettings, isSpamLimitError, orderInsertError } from '@/lib/rate-limit';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input, { TextArea } from '@/components/ui/Input';
@@ -86,13 +88,21 @@ export default function CustomOrderBox({
         total: 0,
         payment_status: 'free',
         order_source: 'mobile',
+        device_id: getDeviceId(),
       })
       .select()
       .single();
 
     if (orderError || !order) {
       setSubmitting(false);
-      setError('Something went wrong sending your order. Please try again.');
+      // Write-ins are free and take no card, which makes them the easiest thing on the
+      // site to hammer — so the spam limit's own words go straight to the customer here
+      // rather than a generic "something went wrong" they'd just retry through.
+      setError(
+        isSpamLimitError(orderError)
+          ? orderInsertError(orderError, await fetchSpamSettings())
+          : 'Something went wrong sending your order. Please try again.',
+      );
       return;
     }
 

@@ -6,6 +6,19 @@ import Card from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
 import { drinkTemperature } from '@/lib/temperature';
 import { issueReasons, formatIssueTime } from '@/lib/order-issues';
+import {
+  makeSeconds,
+  waitSeconds,
+  durationStats,
+  bucketDurations,
+  formatDuration,
+  formatMinutes,
+  missingReason,
+  formatClock,
+  isSaneDuration,
+  MAX_SANE_MINUTES,
+  EMPTY_STATS,
+} from '@/lib/order-timing';
 import type { Event } from '@/types';
 
 /**
@@ -35,6 +48,7 @@ const ALL_EVENTS = 'all';
 
 interface AnalyticsOrder {
   id: string;
+  customer_name: string;
   total: number;
   subtotal: number;
   tip_amount: number;
@@ -44,6 +58,10 @@ interface AnalyticsOrder {
   order_source: string;
   event_id: string | null;
   created_at: string;
+  /** From supabase-order-timing.sql — absent on a database that hasn't run it. */
+  started_at?: string | null;
+  ready_at?: string | null;
+  completed_at?: string | null;
   order_items: {
     quantity: number;
     menu_item: { name: string } | null;
@@ -124,6 +142,8 @@ export default function AdminDashboard() {
   const [issues, setIssues] = useState<IssueOrder[]>([]);
   /** False until supabase-order-issues.sql has been run — the panel says so instead of lying with a zero. */
   const [issuesReady, setIssuesReady] = useState(true);
+  /** False until supabase-order-timing.sql has been run — the timing panel says so. */
+  const [timingReady, setTimingReady] = useState(true);
   const [lowStock, setLowStock] = useState<
     { name: string; current_stock: number; unit: string }[]
   >([]);
@@ -136,22 +156,31 @@ export default function AdminDashboard() {
   const fetchData = useCallback(async () => {
     setLoading(true);
 
-    let query = supabase
-      .from('orders')
-      .select(
-        `id, total, subtotal, tip_amount, discount_amount, status, payment_status,
-         order_source, event_id, created_at,
-         order_items (
+    // The timing columns come from a migration, so they're asked for separately from the
+    // rest of the column list: if they're missing the query is re-run without them and
+    // only the "How long orders took" panel goes quiet. Everything else on the page is
+    // computed from the same fetched set and must not fall over with it.
+    const BASE_COLUMNS = `id, customer_name, total, subtotal, tip_amount, discount_amount,
+         status, payment_status, order_source, event_id, created_at`;
+    const TIMING_COLUMNS = `started_at, ready_at, completed_at`;
+    const ITEM_COLUMNS = `order_items (
            quantity,
            menu_item:menu_items (name),
            order_item_modifiers ( modifier:modifiers (name) )
-         )`,
-      )
-      .neq('status', 'cancelled')
-      .order('created_at', { ascending: true });
+         )`;
 
-    if (fromISO) query = query.gte('created_at', fromISO);
-    if (toISO) query = query.lte('created_at', toISO);
+    const ordersQuery = (columns: string) => {
+      let q = supabase
+        .from('orders')
+        .select(columns)
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: true });
+      if (fromISO) q = q.gte('created_at', fromISO);
+      if (toISO) q = q.lte('created_at', toISO);
+      return q;
+    };
+
+    const query = ordersQuery(`${BASE_COLUMNS}, ${TIMING_COLUMNS}, ${ITEM_COLUMNS}`);
 
     // Same window, same exclusion of cancelled orders, so "issue rate" divides two
     // numbers counted the same way. A flag on a cancelled order is still visible at
@@ -178,7 +207,18 @@ export default function AdminDashboard() {
 
     setIssuesReady(!issuesRes.error);
     setIssues((issuesRes.data ?? []) as unknown as IssueOrder[]);
-    setOrders((ordersRes.data ?? []) as unknown as AnalyticsOrder[]);
+
+    // No timing columns here yet — fetch the same window without them so the dashboard
+    // is fully working, and let the timing panel say which migration is missing.
+    if (ordersRes.error) {
+      const fallback = await ordersQuery(`${BASE_COLUMNS}, ${ITEM_COLUMNS}`);
+      setTimingReady(false);
+      setOrders((fallback.data ?? []) as unknown as AnalyticsOrder[]);
+    } else {
+      setTimingReady(true);
+      setOrders((ordersRes.data ?? []) as unknown as AnalyticsOrder[]);
+    }
+
     setEvents((eventsRes.data ?? []) as Event[]);
     setLowStock(
       (inventoryRes.data ?? [])
@@ -248,6 +288,49 @@ export default function AdminDashboard() {
         .sort((a, b) => a.hour - b.hour),
     };
   }, [issues, eventFilter]);
+
+  /**
+   * How long orders took.
+   *
+   * Two different durations, reported side by side because they answer different
+   * questions: MAKE time (Start Making → Mark Ready) says how fast the bar is, WAIT time
+   * (ordered → ready) says what the customer actually experienced, queue included. A bar
+   * can be quick and the wait still be long, which is a staffing answer rather than a
+   * training one — reporting only one of the two hides which.
+   *
+   * Orders with no usable stamps are counted separately rather than dropped silently:
+   * "12 orders weren't timed" is itself worth knowing, and an average quietly computed
+   * over half the morning is worse than one that says how much it covers.
+   */
+  const timingStats = useMemo(() => {
+    const timed = filtered
+      .map((order) => ({ order, make: makeSeconds(order), wait: waitSeconds(order) }))
+      .filter((row) => isSaneDuration(row.make));
+
+    const untimed = filtered.filter((o) => !isSaneDuration(makeSeconds(o)));
+
+    // Average make time by hour of day — the rush shows up here as a taller bar. Rounded
+    // to whole minutes because HourChart draws counts, and half a minute isn't a bar.
+    const byHourTotals = new Map<number, { total: number; n: number }>();
+    for (const { order, make } of timed) {
+      const hour = new Date(order.created_at).getHours();
+      const entry = byHourTotals.get(hour) ?? { total: 0, n: 0 };
+      byHourTotals.set(hour, { total: entry.total + (make ?? 0), n: entry.n + 1 });
+    }
+
+    return {
+      rows: timed,
+      untimed,
+      make: durationStats(timed.map((r) => r.make)),
+      wait: filtered.length ? durationStats(filtered.map(waitSeconds)) : EMPTY_STATS,
+      buckets: bucketDurations(timed.map((r) => r.make)),
+      byHour: [...byHourTotals.entries()]
+        .map(([hour, v]) => ({ hour, count: Math.round(v.total / v.n / 60) }))
+        .sort((a, b) => a.hour - b.hour),
+      /** Slowest first — the orders worth asking about are at the top. */
+      slowest: [...timed].sort((a, b) => (b.make ?? 0) - (a.make ?? 0)),
+    };
+  }, [filtered]);
 
   const eventRows = useMemo(() => {
     const rows = events.map((e) => ({
@@ -430,6 +513,137 @@ export default function AdminDashboard() {
               <BarList rows={stats.topModifiers} unit="times" />
             </Card>
           </div>
+
+          {/* How long orders took — the make-time record the board now stamps */}
+          <Card className="mb-6">
+            <ChartHeading
+              title="How long orders took"
+              subtitle="Timed from the barista board: Start Making → Mark Ready"
+            />
+
+            {!timingReady ? (
+              <p className="rounded-xl bg-warning/10 px-4 py-3 font-body text-sm text-text">
+                Order times aren&apos;t being recorded yet. Run{' '}
+                <strong className="font-accent">supabase-order-timing.sql</strong> in the Supabase
+                SQL editor — from then on, every order the barista starts and marks ready is
+                timed. Orders placed before that can&apos;t be back-filled.
+              </p>
+            ) : timingStats.rows.length === 0 ? (
+              <p className="py-6 text-center font-body text-sm text-text-light">
+                No orders in this window were timed. An order is only timed when the barista taps
+                <strong> Start Making</strong> and then <strong>Mark Ready</strong> on its card.
+              </p>
+            ) : (
+              <>
+                <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                  <MiniStat
+                    label="Average to make"
+                    value={formatMinutes(timingStats.make.averageSeconds)}
+                  />
+                  <MiniStat
+                    label="Typical (median)"
+                    value={formatDuration(timingStats.make.medianSeconds)}
+                  />
+                  <MiniStat label="Fastest" value={formatDuration(timingStats.make.fastestSeconds)} />
+                  <MiniStat label="Slowest" value={formatDuration(timingStats.make.slowestSeconds)} />
+                  <MiniStat
+                    label="Ordered → ready"
+                    value={formatMinutes(timingStats.wait.averageSeconds)}
+                  />
+                </div>
+
+                <p className="mb-5 font-body text-xs text-text-light">
+                  Based on <strong>{timingStats.rows.length}</strong> of {stats.orderCount} orders
+                  {timingStats.untimed.length > 0 && (
+                    <>
+                      {' '}— {timingStats.untimed.length} weren&apos;t timed (never started on the
+                      board, still being made, or left open longer than {MAX_SANE_MINUTES} minutes)
+                    </>
+                  )}
+                  . <strong>Average to make</strong> is hands-on time; <strong>ordered → ready</strong>{' '}
+                  includes the queue, which is what the customer felt.
+                </p>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <div>
+                    <ChartHeading title="How long each one took" subtitle="Orders, by make time" />
+                    <BarList rows={timingStats.buckets} unit="orders" />
+                  </div>
+
+                  <div>
+                    <ChartHeading
+                      title="Slower when busy?"
+                      subtitle="Average minutes to make, by hour ordered"
+                    />
+                    <HourChart hours={timingStats.byHour} />
+                  </div>
+
+                  <div className="lg:col-span-2">
+                    <ChartHeading
+                      title="Every order and its time"
+                      subtitle="Slowest first — the long ones are the ones worth asking about"
+                    />
+                    <div className="max-h-80 overflow-y-auto pr-1">
+                      <table className="w-full min-w-[420px] text-left">
+                        <thead className="sticky top-0 bg-surface">
+                          <tr className="border-b border-gray-100 font-accent text-xs uppercase tracking-wide text-text-light">
+                            <th className="py-2 pr-4 font-semibold">Customer</th>
+                            <th className="py-2 pr-4 font-semibold">Ordered</th>
+                            <th className="py-2 pr-4 text-right font-semibold">Drinks</th>
+                            <th className="py-2 pr-4 text-right font-semibold">Made in</th>
+                            <th className="py-2 text-right font-semibold">Ordered → ready</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {timingStats.slowest.map(({ order, make, wait }) => (
+                            <tr
+                              key={order.id}
+                              className="border-b border-gray-50 font-body text-sm"
+                            >
+                              <td className="py-2 pr-4 font-semibold text-text-dark">
+                                {order.customer_name}
+                              </td>
+                              <td className="py-2 pr-4 text-text-light">
+                                {formatClock(order.created_at)}
+                              </td>
+                              <td className="py-2 pr-4 text-right text-text-light">
+                                {order.order_items?.reduce((n, i) => n + (i.quantity ?? 1), 0) ?? 0}
+                              </td>
+                              <td className="py-2 pr-4 text-right font-accent font-bold text-text-dark">
+                                {formatDuration(make)}
+                              </td>
+                              <td className="py-2 text-right text-text-light">
+                                {formatDuration(wait)}
+                              </td>
+                            </tr>
+                          ))}
+
+                          {/* Listed, not hidden: an order with no time is a gap in the record,
+                              and pretending the list is complete is how the average stops
+                              being trusted. */}
+                          {timingStats.untimed.map((order) => (
+                            <tr
+                              key={order.id}
+                              className="border-b border-gray-50 font-body text-sm text-text-light"
+                            >
+                              <td className="py-2 pr-4 font-semibold">{order.customer_name}</td>
+                              <td className="py-2 pr-4">{formatClock(order.created_at)}</td>
+                              <td className="py-2 pr-4 text-right">
+                                {order.order_items?.reduce((n, i) => n + (i.quantity ?? 1), 0) ?? 0}
+                              </td>
+                              <td className="py-2 pr-4 text-right italic" colSpan={2}>
+                                {missingReason(order)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </Card>
 
           {/* Problem orders — the whole reason baristas flag them from the board */}
           <Card className="mb-6">

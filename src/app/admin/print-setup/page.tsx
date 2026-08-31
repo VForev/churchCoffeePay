@@ -127,7 +127,14 @@ export default function PrintSetupPage() {
             <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">
               supabase-label-cups.sql
             </code>{' '}
-            — without this one, an order with several drinks can print only its first cup
+            — numbers the cups, so each one can be printed on its own
+          </li>
+          <li>
+            <code className="rounded bg-bg px-1.5 py-0.5 text-text-dark">
+              supabase-manual-printing.sql
+            </code>{' '}
+            — turns off automatic printing, and lets the barista board tick off the cups
+            it has already printed
           </li>
         </ul>
         <p className="mt-2 text-text-light">

@@ -6,6 +6,14 @@ import { Elements, CardElement, useStripe, useElements } from '@stripe/react-str
 import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
+import { getDeviceId } from '@/lib/device';
+import {
+  checkSpamLimit,
+  fetchSpamSettings,
+  isSpamLimitError,
+  orderInsertError,
+  spamBlockMessage,
+} from '@/lib/rate-limit';
 import { cartStore } from '@/lib/cart-store';
 import { useCart } from '@/lib/hooks';
 import {
@@ -197,6 +205,16 @@ function CheckoutForm() {
       }
     }
 
+    // Spam limit, checked BEFORE the card is charged. The database trigger is what
+    // actually enforces it (see src/lib/rate-limit.ts), but it fires on the insert —
+    // which happens after Stripe has taken the money. Being refused at that point would
+    // leave a charged customer with no order, so the count is read here first.
+    const spamBlock = await checkSpamLimit(cart.customer_name);
+    if (spamBlock) {
+      setError(spamBlock);
+      return;
+    }
+
     setProcessing(true);
     setError('');
 
@@ -253,11 +271,25 @@ function CheckoutForm() {
           coupon_id: cart.coupon?.id || null,
           order_source: 'mobile',
           event_id: activeEventId,
+          device_id: getDeviceId(),
         })
         .select()
         .single();
 
-      if (orderError || !order) throw new Error('Failed to create order');
+      // The trigger can still refuse this if two tabs were submitted together and raced
+      // past the pre-check above. Its Postgres error must never reach the screen raw —
+      // and if the card was already charged, saying so is the only honest thing to do.
+      if (orderError || !order) {
+        if (isSpamLimitError(orderError)) {
+          const spam = await fetchSpamSettings();
+          throw new Error(
+            stripePaymentId
+              ? `${spamBlockMessage(spam)} Your card was charged — please show this to the barista at the counter.`
+              : spamBlockMessage(spam),
+          );
+        }
+        throw new Error(orderInsertError(orderError));
+      }
 
       for (const item of orderItems) {
         const { data: orderItem } = await supabase

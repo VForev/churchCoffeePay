@@ -72,22 +72,54 @@ export interface LabelSettings {
   /** Set to now() by the admin's "Send test label" button; the agent watches it. */
   test_print_requested_at: string | null;
   /**
-   * When true (default), the agent prints a label the moment an order comes in. When false,
-   * nothing prints automatically — the barista prints each order by hand with the 🖨 button
-   * on /barista. Either way the 🖨 button always works; this only decides whether the FIRST
-   * print happens on its own.
+   * When true, the agent prints an order's labels the moment it comes in.
+   *
+   * OFF by default. Auto-printing spits out a sticker for every drink the second an order
+   * lands — including the four nobody has started — and a remade cup then costs a whole
+   * fresh set. The barista prints the cup they're about to make, from the per-cup list on
+   * /barista. Switch this back on at /admin/labels if a shop wants the old behaviour.
    */
   auto_print: boolean;
 }
+
+/**
+ * How much a modifier category shouts on the label.
+ *
+ * 'boxed' is the loud one: white text reversed out of a black chip, the same trick the
+ * HOT/COLD band uses. Thermal printers are 1-bit, so a black block is the only genuinely
+ * strong emphasis available — there is no colour and no grey to reach for.
+ */
+export type ModifierEmphasis = 'normal' | 'bold' | 'boxed';
 
 /** How one modifier category is shown on the label. See modifier_group_styles. */
 export interface ModifierGroupStyle {
   show: boolean;
   /** Size multiplier, 0.6–1.6, applied on top of the global modifier size. */
   scale: number;
+  /** Normal, bold, or reversed out of a black chip. */
+  emphasis: ModifierEmphasis;
 }
 
-export const DEFAULT_MODIFIER_GROUP_STYLE: ModifierGroupStyle = { show: true, scale: 1 };
+export const DEFAULT_MODIFIER_GROUP_STYLE: ModifierGroupStyle = {
+  show: true,
+  scale: 1,
+  emphasis: 'normal',
+};
+
+/**
+ * Milk is bold unless the admin says otherwise.
+ *
+ * It's the one add-in where getting it wrong is not a preference but a problem — oat and
+ * almond are on the label because somebody can't drink dairy — and it's also the line a
+ * barista scans for while steaming. On a 30mm label every modifier is the same small grey
+ * line, so the milk gets weight by default and doesn't have to be found.
+ *
+ * Matched on the group NAME, so a shop that calls the group "Milk Options" or "Milks"
+ * still gets it, and nothing has to be configured for it to work on Sunday.
+ */
+export function defaultEmphasisFor(group: string): ModifierEmphasis {
+  return /\bmilks?\b/i.test(group) ? 'bold' : 'normal';
+}
 
 export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   id: 1,
@@ -115,7 +147,7 @@ export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   modifier_group_styles: {},
   modifier_group_order: [],
   test_print_requested_at: null,
-  auto_print: true,
+  auto_print: false,
 };
 
 export const SCALE_MIN = 0.6;
@@ -154,9 +186,10 @@ export function normalizeLabelSettings(row: Partial<LabelSettings> | null | unde
     show_church_name: merged.show_church_name !== false,
     // An empty name would print an empty gap rather than nothing, so fall back.
     church_name: (merged.church_name ?? '').trim() || DEFAULT_CHURCH_NAME,
-    // Defaults ON: a missing column (before the migration) means print-on-order, the
-    // behaviour that shipped first, rather than silently printing nothing.
-    auto_print: merged.auto_print !== false,
+    // Defaults OFF: labels are printed per cup by the barista. A missing column (a
+    // database behind on migrations) means manual too — an unexpected auto-print burns
+    // through a roll unattended, where an unexpected manual mode is one visible button.
+    auto_print: merged.auto_print === true,
     name_scale: clamp(Number(merged.name_scale) || 1, SCALE_MIN, SCALE_MAX),
     drink_scale: clamp(Number(merged.drink_scale) || 1, SCALE_MIN, SCALE_MAX),
     modifier_scale: clamp(Number(merged.modifier_scale) || 1, SCALE_MIN, SCALE_MAX),
@@ -185,6 +218,8 @@ export function orderModifierLines(
   return [...lines].sort((a, b) => (rank.get(a.group) ?? Infinity) - (rank.get(b.group) ?? Infinity));
 }
 
+const EMPHASES: ModifierEmphasis[] = ['normal', 'bold', 'boxed'];
+
 /** Sanitises the per-group style map: coerces types, clamps scale, drops junk. */
 function normalizeGroupStyles(v: unknown): Record<string, ModifierGroupStyle> {
   if (!v || typeof v !== 'object') return {};
@@ -195,6 +230,12 @@ function normalizeGroupStyles(v: unknown): Record<string, ModifierGroupStyle> {
     out[group] = {
       show: s.show !== false, // default shown
       scale: clamp(Number(s.scale) || 1, SCALE_MIN, SCALE_MAX),
+      // A row saved before emphasis existed has none — fall back to the name-based
+      // default (milk bold) rather than to 'normal', or an existing shop would lose
+      // the emphasis simply for having touched the group's size once.
+      emphasis: EMPHASES.includes(s.emphasis as ModifierEmphasis)
+        ? (s.emphasis as ModifierEmphasis)
+        : defaultEmphasisFor(group),
     };
   }
   return out;
@@ -203,10 +244,11 @@ function normalizeGroupStyles(v: unknown): Record<string, ModifierGroupStyle> {
 /** The style for one modifier group, falling back to the defaults for unlisted groups. */
 export function groupStyle(settings: LabelSettings, group: string): ModifierGroupStyle {
   const s = settings.modifier_group_styles[group];
-  if (!s) return DEFAULT_MODIFIER_GROUP_STYLE;
+  if (!s) return { ...DEFAULT_MODIFIER_GROUP_STYLE, emphasis: defaultEmphasisFor(group) };
   return {
     show: s.show !== false,
     scale: clamp(Number(s.scale) || 1, SCALE_MIN, SCALE_MAX),
+    emphasis: EMPHASES.includes(s.emphasis) ? s.emphasis : defaultEmphasisFor(group),
   };
 }
 

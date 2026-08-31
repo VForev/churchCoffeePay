@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { drinkTemperature, TEMP_LABEL, TEMP_EMOJI, type DrinkTemp } from '@/lib/temperature';
 import { orderCups } from '@/lib/cups';
 import { requestLabelPrint } from '@/lib/label-print';
+import { makeSeconds, formatDuration } from '@/lib/order-timing';
 import {
   ISSUE_REASONS,
   hasIssue,
@@ -42,6 +43,54 @@ const PREVIOUS_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
 
 function orderItemCount(order: FullOrder): number {
   return order.order_items?.reduce((s, i) => s + i.quantity, 0) ?? 1;
+}
+
+/** The timing columns, written by every status tap. See supabase-order-timing.sql. */
+type StatusStamps = Partial<Pick<Order, 'started_at' | 'ready_at' | 'completed_at'>>;
+
+/**
+ * Which timestamps a status tap writes.
+ *
+ * The back buttons matter as much as the forward ones: a card tapped into Making by
+ * mistake and sent back to Pending must lose its started_at, or it reports a make
+ * time measured from the mis-tap. A card sent back from Ready keeps its started_at
+ * (the barista really is still making it) and loses ready_at, so the final make time
+ * covers the whole job including the remake.
+ *
+ * Nothing here ever invents a stamp it didn't witness. An order marked Ready without
+ * ever being Started keeps a NULL started_at and is reported as untimed rather than
+ * as a drink that took zero seconds — see missingReason() in src/lib/order-timing.ts.
+ */
+function statusStamps(from: OrderStatus, to: OrderStatus): StatusStamps {
+  const now = new Date().toISOString();
+
+  switch (to) {
+    case 'pending':
+      return { started_at: null, ready_at: null, completed_at: null };
+    case 'in_progress':
+      return from === 'pending'
+        ? { started_at: now, ready_at: null, completed_at: null }
+        : { ready_at: null, completed_at: null };
+    case 'ready':
+      // Coming back from 'completed' is the Undo bar, not a second finish — keep the
+      // original ready_at, or a mis-tapped pickup would pad the make time by however
+      // long it took someone to hit Undo.
+      return from === 'completed' ? { completed_at: null } : { ready_at: now, completed_at: null };
+    case 'completed':
+      return { completed_at: now };
+    default:
+      return {};
+  }
+}
+
+/** Postgres/PostgREST for "supabase-order-timing.sql hasn't been run here". */
+function isMissingTimingColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    /started_at|ready_at|completed_at/.test(error.message ?? '')
+  );
 }
 
 // Wait time for a given order: items in orders placed before it + items in this order
@@ -172,6 +221,9 @@ export default function BaristaPage() {
   const [issueFor, setIssueFor] = useState<FullOrder | null>(null);
   /** Lets a barista undo a "Picked Up" tap that closed the wrong order. */
   const [justCompleted, setJustCompleted] = useState<FullOrder | null>(null);
+  /** True once a status write came back missing the timing columns — the board keeps
+      working, but it can't record how long anything took until the migration is run. */
+  const [timingMissing, setTimingMissing] = useState(false);
   const prevCountRef = useRef(0);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const conflictTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -297,19 +349,36 @@ export default function BaristaPage() {
    */
   async function updateStatus(order: FullOrder, newStatus: OrderStatus, expected?: OrderStatus) {
     const from = expected ?? order.status;
+    const stamps = statusStamps(from, newStatus);
 
     setOrders((prev) =>
       prev
-        .map((o) => (o.id === order.id ? { ...o, status: newStatus } : o))
+        .map((o) => (o.id === order.id ? { ...o, status: newStatus, ...stamps } : o))
         .filter((o) => LIVE_STATUSES.includes(o.status)),
     );
 
     const { data, error } = await supabase
       .from('orders')
-      .update({ status: newStatus })
+      .update({ status: newStatus, ...stamps })
       .eq('id', order.id)
       .eq('status', from)
       .select('id');
+
+    if (error && isMissingTimingColumn(error)) {
+      // The timing columns come from a migration. A board that hasn't had it run must
+      // still be able to move cards — it just won't be able to report make times.
+      setTimingMissing(true);
+      const { data: retry, error: retryError } = await supabase
+        .from('orders')
+        .update({ status: newStatus })
+        .eq('id', order.id)
+        .eq('status', from)
+        .select('id');
+      if (retryError) showConflict(`Could not update ${order.customer_name}'s order: ${retryError.message}`);
+      else if (!retry || retry.length === 0) showConflict(`${order.customer_name}'s order was already moved on another screen.`);
+      fetchOrders();
+      return;
+    }
 
     if (error) {
       showConflict(`Could not update ${order.customer_name}'s order: ${error.message}`);
@@ -678,6 +747,18 @@ export default function BaristaPage() {
         </main>
       )}
 
+      {/* The board still works without the timing migration; it just can't record how
+          long anything took, and silently losing that data is worse than one line of text. */}
+      {timingMissing && (
+        <div className="fixed bottom-4 left-1/2 z-30 w-[min(92vw,32rem)] -translate-x-1/2 rounded-2xl bg-text-dark px-5 py-3 text-white shadow-xl">
+          <p className="font-body text-sm">
+            Order times aren&apos;t being recorded. Run{' '}
+            <strong className="font-accent">supabase-order-timing.sql</strong> in Supabase to see
+            how long orders take on the dashboard.
+          </p>
+        </div>
+      )}
+
       {/* Two screens, one order — tell whoever lost the race what happened */}
       {conflict && (
         <div className="fixed bottom-20 left-1/2 z-40 w-[min(92vw,28rem)] -translate-x-1/2 rounded-2xl bg-warning px-5 py-3 text-white shadow-xl">
@@ -774,7 +855,6 @@ function OrderCard({
   const flagged = hasIssue(order);
   /** The individual cups, numbered exactly as the labels are. */
   const cupList = orderCups(order.order_items);
-  const [showCups, setShowCups] = useState(false);
 
   // One definition, two homes: the card corner normally, the issue banner when flagged.
   const deleteButton = onDelete ? (
@@ -943,82 +1023,21 @@ function OrderCard({
         {/* Actions — big enough to hit with a wet hand */}
         <div className="space-y-2">
           {actions}
-          <div className="flex gap-2">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="flex-1 cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface py-2.5 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
-              >
-                ← {backLabel}
-              </button>
-            )}
-            {onPrint && (
-              <button
-                onClick={() => onPrint(null)}
-                title={
-                  order.label_printed_at
-                    ? `Print ${cupList.length > 1 ? `all ${cupList.length} cup labels` : 'the cup label'} again`
-                    : 'Labels have not printed yet — is the shop PC on?'
-                }
-                className={cn(
-                  'cursor-pointer touch-manipulation rounded-full border py-2.5 font-accent text-sm font-bold transition-colors hover:bg-gray-50',
-                  onBack ? 'shrink-0 px-4' : 'w-full',
-                  order.label_printed_at
-                    ? 'border-gray-300 bg-surface text-text'
-                    : 'border-warning bg-warning/10 text-warning',
-                )}
-              >
-                {/* Next to a Back button there isn't room for the cup count, and the
-                    per-cup list right below spells it out anyway. */}
-                🖨 {order.label_printed_at ? 'Reprint' : 'Print'} all
-                {!onBack && cupList.length > 1 ? ` ${cupList.length} cups` : ''}
-              </button>
-            )}
-          </div>
-
-          {/* One cup at a time — for a remade drink or a label that peeled off, where
-              reprinting the whole order would spit out labels nobody needs. */}
-          {onPrint && cupList.length > 1 && (
-            <div>
-              <button
-                onClick={() => setShowCups(!showCups)}
-                className="w-full cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface py-2.5 font-accent text-sm font-bold text-text-light transition-colors hover:bg-gray-50"
-              >
-                🖨 Print one cup {showCups ? '▲' : '▼'}
-              </button>
-
-              {showCups && (
-                <ul className="mt-2 space-y-1.5">
-                  {cupList.map((cup) => (
-                    <li
-                      key={cup.cupIndex}
-                      className="flex items-center gap-2 rounded-xl bg-surface p-2 pl-3 shadow-sm"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-accent text-xs font-extrabold uppercase tracking-wide text-text-light">
-                          Cup {cup.cupIndex} of {cup.cupTotal}
-                        </p>
-                        <p className="truncate font-heading text-base font-bold text-text-dark">
-                          {cup.drinkName}
-                        </p>
-                        {cup.modifierNames.length > 0 && (
-                          <p className="truncate font-body text-xs text-text">
-                            {cup.modifierNames.join(', ')}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => onPrint([cup.cupIndex])}
-                        className="shrink-0 cursor-pointer touch-manipulation rounded-full border border-gray-300 px-4 py-2 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
-                      >
-                        🖨 Print
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="w-full cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface py-2.5 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
+            >
+              ← {backLabel}
+            </button>
           )}
+
+          {/* One button per cup, and no "print them all" — nothing prints on its own any
+              more, so this list IS how labels get made. Printing the whole order up front
+              puts stickers on the bar for drinks nobody has started; printing the cup you
+              are about to make keeps the label and the cup in the same hand. */}
+          {onPrint && <CupPrintList order={order} cups={cupList} onPrint={onPrint} />}
+
           {onFlagIssue && (
             <button
               onClick={onFlagIssue}
@@ -1034,6 +1053,87 @@ function OrderCard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Printing cup labels ──────────────────────────────────────────────────────
+// Nothing prints automatically (label_settings.auto_print is off by default). The
+// barista prints the cup they are about to make, which is why this list is always
+// open rather than hidden behind a toggle — it is the printing UI, not a reprint
+// menu tucked away for emergencies.
+
+function CupPrintList({
+  order,
+  cups,
+  onPrint,
+  dense,
+}: {
+  order: FullOrder;
+  cups: ReturnType<typeof orderCups>;
+  onPrint: (cups: number[] | null) => void;
+  /** History rows are already inside an expanded panel and don't need the heading twice. */
+  dense?: boolean;
+}) {
+  if (cups.length === 0) return null;
+
+  // Which cups have physically come off the roll. Added by supabase-manual-printing.sql;
+  // before that migration the column is missing and every cup simply shows as unprinted,
+  // which is the safe way round — an extra label beats a drink going out unlabelled.
+  const printed = new Set(order.label_printed_cups ?? []);
+  const remaining = cups.filter((c) => !printed.has(c.cupIndex)).length;
+
+  return (
+    <div className={dense ? '' : 'rounded-xl bg-surface/70 p-2'}>
+      {!dense && (
+        <p className="mb-1.5 px-1 font-accent text-xs font-extrabold uppercase tracking-wide text-text-light">
+          {remaining === 0
+            ? `🖨 All ${cups.length} label${cups.length === 1 ? '' : 's'} printed`
+            : `🖨 Print each cup — ${remaining} to go`}
+        </p>
+      )}
+
+      <ul className="space-y-1.5">
+        {cups.map((cup) => {
+          const done = printed.has(cup.cupIndex);
+          return (
+            <li
+              key={cup.cupIndex}
+              className={cn(
+                'flex items-center gap-2 rounded-xl p-2 pl-3 shadow-sm',
+                done ? 'bg-surface' : 'bg-warning/10 ring-1 ring-warning/40',
+              )}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="font-accent text-xs font-extrabold uppercase tracking-wide text-text-light">
+                  {cup.cupTotal > 1 ? `Cup ${cup.cupIndex} of ${cup.cupTotal}` : 'Cup label'}
+                  {done && <span className="ml-1.5 text-success">✓ printed</span>}
+                </p>
+                <p className="truncate font-heading text-base font-bold text-text-dark">
+                  {cup.drinkName}
+                </p>
+                {cup.modifierNames.length > 0 && (
+                  <p className="truncate font-body text-xs text-text">
+                    {cup.modifierNames.join(', ')}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => onPrint([cup.cupIndex])}
+                title={done ? 'Print this cup\u2019s label again' : 'Print this cup\u2019s label'}
+                className={cn(
+                  'shrink-0 cursor-pointer touch-manipulation rounded-full border px-4 py-2 font-accent text-sm font-bold transition-colors hover:bg-gray-50',
+                  done
+                    ? 'border-gray-300 bg-surface text-text-light'
+                    : 'border-warning bg-surface text-warning',
+                )}
+              >
+                🖨 {done ? 'Again' : 'Print'}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -1459,6 +1559,17 @@ function HistoryPanel() {
                     <p className="mt-0.5 font-accent text-xs text-text-light">
                       {formatOrderTime(order.created_at)} · {itemCount} item
                       {itemCount !== 1 ? 's' : ''} · ${order.total.toFixed(2)}
+                      {/* How long it actually took to make, on the row itself — the same
+                          number the dashboard averages, so a barista checking one order
+                          and an admin reading the summary never see two different figures. */}
+                      {makeSeconds(order) !== null && (
+                        <>
+                          {' · '}
+                          <span className="font-bold text-primary">
+                            made in {formatDuration(makeSeconds(order))}
+                          </span>
+                        </>
+                      )}
                     </p>
                     {hasIssue(order) && order.issue_note && (
                       <p className="mt-1 font-body text-sm font-semibold text-danger">
@@ -1476,36 +1587,17 @@ function HistoryPanel() {
                   <div className="border-t border-gray-100 p-4">
                     {/* One cup at a time — someone came back with a spilled drink and it
                         needs remaking, not the other four cups reprinting with it. */}
-                    {orderCups(order.order_items).length > 1 && (
-                      <div className="mb-3 rounded-xl border border-gray-100 bg-bg p-2">
-                        <p className="mb-1.5 px-1 font-accent text-xs font-extrabold uppercase tracking-wide text-text-light">
-                          Reprint one cup
-                        </p>
-                        <ul className="space-y-1.5">
-                          {orderCups(order.order_items).map((cup) => (
-                            <li
-                              key={cup.cupIndex}
-                              className="flex items-center gap-2 rounded-lg bg-surface p-2 pl-3"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p className="font-accent text-xs font-bold uppercase text-text-light">
-                                  Cup {cup.cupIndex} of {cup.cupTotal}
-                                </p>
-                                <p className="truncate font-heading text-sm font-bold text-text-dark">
-                                  {cup.drinkName}
-                                </p>
-                              </div>
-                              <button
-                                onClick={() => reprint(order.id, [cup.cupIndex])}
-                                className="shrink-0 cursor-pointer touch-manipulation rounded-full border border-gray-300 px-3 py-1.5 font-accent text-xs font-bold text-text transition-colors hover:bg-gray-50"
-                              >
-                                🖨 Print
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                    <div className="mb-3 rounded-xl border border-gray-100 bg-bg p-2">
+                      <p className="mb-1.5 px-1 font-accent text-xs font-extrabold uppercase tracking-wide text-text-light">
+                        Reprint a cup label
+                      </p>
+                      <CupPrintList
+                        order={order}
+                        cups={orderCups(order.order_items)}
+                        onPrint={(cups) => reprint(order.id, cups)}
+                        dense
+                      />
+                    </div>
 
                     <div className="mb-3 space-y-2">
                       {order.order_items?.map((item) => (
@@ -1552,12 +1644,6 @@ function HistoryPanel() {
                             Clear issue flag
                           </button>
                         )}
-                        <button
-                          onClick={() => reprint(order.id, null)}
-                          className="cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface px-4 py-2 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
-                        >
-                          🖨 Reprint all cups
-                        </button>
                       </div>
                     </div>
                   </div>

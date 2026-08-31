@@ -118,6 +118,23 @@ print request is for). Until it runs, ordering and whole-order printing work as 
 the agent has to guess when an order has finished arriving and per-cup printing says to run
 this file.
 
+**`supabase-order-timing.sql`** — Required for the **How long orders took** panel on
+`/admin` and the "made in" time on barista History rows. Adds `orders.started_at`,
+`orders.ready_at` and `orders.completed_at`, stamped by `/barista` as the barista moves a
+card. Until it runs, the board works normally, shows a one-line notice, and the dashboard
+panel says which file to run. Orders placed before it can't be back-filled — there's no
+honest value to back-fill them with.
+
+**`supabase-manual-printing.sql`** — Flips label printing to **manual, one cup at a time**
+(`label_settings.auto_print` defaults to FALSE) and adds `orders.label_printed_cups`, so
+the board can show which cups have already come off the roll. Without it, printing still
+works per cup; every cup just always looks unprinted.
+
+**`supabase-order-rate-limit.sql`** — Required for the **spam-order limit**. Adds
+`orders.device_id`, the three `shop_settings.spam_*` columns, and the `BEFORE INSERT`
+trigger that actually enforces the limit. Until it runs there is no limit at all, and
+`/admin/settings` says so when you try to save one.
+
 ### Seed data
 `supabase-seed.sql` — Loads sample categories, modifier groups, modifiers, and menu items to get started.
 
@@ -138,7 +155,7 @@ this file.
 | Route | Description | Who uses it |
 |-------|-------------|-------------|
 | `/tablet` | Counter POS — two-panel layout: menu left, cart right. Barista builds order, customer pays on same device | Barista at counter |
-| `/barista` | Barista dashboard — three tabs: **Orders** (real-time kanban with search, back buttons, undo and issue flagging), **Sold Out / 86** (mark drinks and add-ins out of stock) and **History** (past orders, reprint labels, issues-only filter) | Barista making drinks |
+| `/barista` | Barista dashboard — three tabs: **Orders** (real-time kanban with search, back buttons, undo, issue flagging and a 🖨 print button per cup) , **Sold Out / 86** (mark drinks and add-ins out of stock) and **History** (past orders with their make time, reprint any single cup, issues-only filter) | Barista making drinks |
 | `/live` | Public live orders screen — queue position, status and wait time for all active orders. **No giving box** | The lobby TV (share the URL / QR code) |
 | `/yourlive` | The same board, plus the Pushpay giving box under the queue | A customer on their own phone — where "Track Order" and the confirmation screen send them |
 
@@ -147,7 +164,7 @@ this file.
 | Route | Description |
 |-------|-------------|
 | `/admin/login` | Admin login (Supabase email/password) |
-| `/admin` | Dashboard — analytics filtered by time range and event; low stock alerts |
+| `/admin` | Dashboard — analytics filtered by time range and event; how long orders took; problem orders; low stock alerts |
 | `/admin/menu` | Create/edit/delete categories and menu items; reorder with ▲/▼ |
 | `/admin/modifiers` | Manage modifier groups (Size, Milk, Syrups, etc.) and individual options; reorder with ▲/▼ |
 | `/admin/events` | Event pricing profiles — activate "Everything Free" mode or custom pricing |
@@ -156,7 +173,7 @@ this file.
 | `/admin/orders` | Full order history — expand rows, filter by status, search by name, archive or delete |
 | `/admin/labels` | Cup label layout — roll size, what's on the label, text sizes, live preview, test print |
 | `/admin/print-setup` | Non-technical, step-by-step guide to installing the printer software on the shop PC; downloads the agent bundle |
-| `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, **lock everything**, donation on/off, coupon box on/off |
+| `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, **lock everything**, donation on/off, coupon box on/off, **spam-order limit** |
 
 ---
 
@@ -180,6 +197,9 @@ src/
 ├── lib/
 │   ├── cart-store.ts                # Client-side cart state (observer pattern)
 │   ├── shop.ts                      # Open/closed/locked logic — canOrderNow() lives here
+│   ├── order-timing.ts              # How long an order took — the only place it's computed
+│   ├── rate-limit.ts                # Spam-order limit, around the database trigger
+│   ├── device.ts                    # Random per-browser id, used only by the spam limit
 │   ├── order-issues.ts              # Problem-order flag: reasons, hasIssue(), error copy
 │   ├── logo.ts                      # Church mark as base64; shared with the print agent
 │   ├── giving.ts                    # Pushpay handle, token and link
@@ -307,19 +327,94 @@ the same fetched set — nothing on the page can disagree with anything else.
 - **Reset to today** — puts both controls back to the default
 
 It reports orders, revenue, drinks made, average order, donations, discounts, busiest
-hours, hot vs cold split, phone vs counter, top drinks, top add-ins, a **Problem orders**
-panel (see *Problem-order stats* below), and a per-event comparison table (click a row to
-filter the whole page to that event). Cancelled orders are excluded everywhere.
+hours, hot vs cold split, phone vs counter, top drinks, top add-ins, a **How long orders
+took** panel (see below), a **Problem orders** panel (see *Problem-order stats* below), and
+a per-event comparison table (click a row to filter the whole page to that event).
+Cancelled orders are excluded everywhere.
 
 **Event tagging:** orders now save `event_id` — whatever event was active when the order
 was placed. Orders taken **before this change have `event_id = NULL`** and show up under
 "Regular service (no event)", so per-event history only goes back to when this shipped.
 
+### How long orders took — `/admin`
+
+How long each order took to make, under the same time-range and event filters as
+everything else. It reports **average**, **typical (median)**, **fastest**, **slowest**,
+a distribution of make times, average make time **by hour ordered**, and **every order
+with its own time**, slowest first.
+
+Two different durations, side by side, because they answer different questions:
+
+| | Measured | Says |
+|---|---|---|
+| **Made in** | Start Making → Mark Ready | how fast the bar is |
+| **Ordered → ready** | order placed → Mark Ready | what the customer actually felt, queue included |
+
+A bar can be quick while the wait is long — that's a staffing answer, not a training one,
+and reporting only one of the two hides which. Barista **History** rows show the same
+"made in" figure on the row itself.
+
+**The arithmetic lives in `src/lib/order-timing.ts` and nowhere else.** Three screens ask
+this question and an average that contradicts the list under it is worse than no average.
+
+Things that keep the numbers honest:
+
+- **Nothing is invented.** The stamps are written by `/barista` (`statusStamps()`) as the
+  barista moves a card, and the back buttons unwind them: a card tapped into Making by
+  mistake and sent back to Pending *loses* its `started_at`, while one sent back from Ready
+  keeps it and loses `ready_at`, so a remake is counted inside the same make time. An order
+  marked Ready without ever being started reports as untimed, not as a drink that took zero
+  seconds.
+- **Forgot-to-tap outliers are dropped, not clamped.** Past `MAX_SANE_MINUTES` (45) the
+  card was left in Making until someone cleared the board at noon. Clamping it would still
+  claim the drink took 45 minutes, which is just as untrue.
+- **Untimed orders are listed, with the reason.** The panel says how many of the window's
+  orders it actually covers. An average quietly computed over half a morning is how a number
+  stops being trusted.
+- **A missing migration doesn't take the page down.** The main query asks for the timing
+  columns and, if they aren't there, re-runs without them; only this one panel goes quiet
+  and names `supabase-order-timing.sql`.
+
+## Stopping Spam Orders
+
+Someone hammering the order button — a bored kid, a stuck finger, a joke — puts junk on the
+barista board mid-service. **More than 3 orders from the same phone (or the same name)
+inside 10 minutes is refused.** Both numbers are editable at `/admin/settings` → *Stopping
+spam orders*.
+
+**The limit is a Postgres trigger, not JavaScript** (`supabase-order-rate-limit.sql`).
+Orders are inserted straight from the customer's browser with the public anon key, so
+anything checked only in the app is bypassed by clearing site data or opening a private
+tab. The trigger is on `BEFORE INSERT ON orders` and is the enforcement; everything in
+`src/lib/rate-limit.ts` is presentation around it. **Never "fix" a failure by removing the
+trigger.**
+
+- **`/tablet` is never limited.** It's `order_source = 'counter'` and would trip the limit
+  within one busy minute. A limit is about the public, not about stopping staff serving the
+  queue in front of them.
+- **Matched on device OR name.** `orders.device_id` is a random string in localStorage
+  (`src/lib/device.ts`) — not a fingerprint, not a login, just "the same browser as five
+  seconds ago". Clearing storage doesn't hand anyone a fresh allowance, because the name
+  still matches. Nothing here catches someone with two phones, and nothing needs to.
+- **Checkout checks BEFORE charging.** The trigger fires on the insert, which in the
+  checkout flow happens *after* Stripe has taken the money — being refused there would mean
+  a charged customer with no order. So `checkSpamLimit()` reads the count up front, and
+  that's the path customers actually hit. If the two are ever raced (two tabs submitted
+  together) and the card was already charged, the message says so and sends them to the
+  barista rather than swallowing it.
+- **Write-in orders matter most.** `CustomOrderBox` takes no card at all, which makes it the
+  easiest thing on the site to hammer — the limit's own words go straight to the customer
+  there.
+- **Cancelled orders don't count** toward the limit: an order the shop threw out must not
+  lock the customer out of re-placing it.
+- **No settings row, or the limit switched off, means no limit** — refusing every order
+  because a row is missing would be far worse than letting them through.
+
 ## Cup Label Printing
 
-A label prints for **every cup**, automatically, when an order comes in. Full setup
-instructions are in **`print-agent/README.md`** — that's the file to hand to whoever
-sets up the shop PC.
+**Nothing prints automatically. The barista prints each cup as they make it**, from the
+per-cup list on the order card at `/barista`. Full setup instructions are in
+**`print-agent/README.md`** — that's the file to hand to whoever sets up the shop PC.
 
 The website never talks to the printer. It can't: Safari on iPad has no Web Bluetooth,
 and the CLABEL 221B has no documented protocol. Instead, `print-agent/` is a small Node
@@ -329,8 +424,9 @@ normal Windows printer driver. If the PC is off or the printer jams, orders stil
 nothing about ordering depends on the printer.
 
 - **Migrations:** run `supabase-label-printing.sql` (adds `orders.label_printed_at`),
-  `supabase-label-settings.sql` (adds the `label_settings` table behind `/admin/labels`)
-  and `supabase-label-cups.sql` (see *One label per cup* below).
+  `supabase-label-settings.sql` (adds the `label_settings` table behind `/admin/labels`),
+  `supabase-label-cups.sql` (see *One label per cup* below) and
+  `supabase-manual-printing.sql` (see *Printing one cup at a time* below).
 - **`label_printed_at` is the whole state machine.** NULL = not printed. The agent only
   prints NULL rows and stamps them when done, so it can crash, restart, or be switched on
   halfway through service and catch up without double-printing.
@@ -387,20 +483,34 @@ If cups after the first still come out wrong, it's the printer, not the labels: 
 follow the calibration steps in `print-agent/README.md`. Gap sensing and media type live
 in Windows' Printing Preferences and nothing in this repo can set them.
 
-### Printing one cup — remakes
+### Printing one cup at a time — there is no "print all"
 
-Every order card has **🖨 Print/Reprint all cups**, and on multi-cup orders a **🖨 Print one
-cup** list underneath — one row per cup, with the drink and its add-ins, and its own Print
-button. Same thing in **History** (expand any order), for a drink someone brings back after
-pickup. Reprinting five labels to replace one dropped cup wastes the roll and leaves four
-stray labels on the bar.
+**There is no whole-order print button, and auto-print is off by default.** Every order
+card carries a list with **one row per cup** — the drink, its add-ins, and its own 🖨
+Print button — and that list is the printing UI, not a reprint menu hidden behind a
+toggle. Same list in **History** (expand any order), for a drink someone brings back
+after pickup.
 
-Both go through `requestLabelPrint(orderId, cups)` in `src/lib/label-print.ts`: `null` cups
-means the whole order, `[2]` means cup 2. It writes `label_print_requested_at`, clears
-`label_printed_at`, and sets `orders.label_print_cups`; the agent prints just those cups
-(the label still says which cup of the **whole** order it is) and clears the column when
-done. Whole-order printing falls back to the old two-column write if `label_print_cups`
-doesn't exist yet, so a shop that hasn't run the migration keeps its Reprint button.
+Why it went this way: printing the whole order the moment it lands puts stickers on the
+bar for drinks nobody has started, and one dropped cup then costs a fresh set of five with
+four strays to bin. Printing the cup you are about to make keeps the label and the cup in
+the same hand.
+
+- **`CupPrintList` in `src/app/barista/page.tsx` is the one definition of that list**, used
+  by both the live card and History, so the two can't drift.
+- **`orders.label_printed_cups`** is which cups have physically come off the roll. The
+  agent *accumulates* into it (never replaces), so printing cup 3 doesn't wipe cups 1 and 2,
+  and a reprint never un-marks a cup — a cup that printed twice has still printed. Rows show
+  ✓ printed, and the heading counts how many are left to do.
+- Everything still goes through `requestLabelPrint(orderId, cups)` in
+  `src/lib/label-print.ts`. `cups` is `[2]` from the buttons; `null` (the whole order) is
+  kept in the API because the agent and the migration fallback still understand it, not
+  because anything in the UI sends it.
+
+`auto_print` still exists at **`/admin/labels` → When to print** for a shop that wants the
+old behaviour — it just defaults off now, including on a database that hasn't run
+`supabase-manual-printing.sql`. An unexpected auto-print burns a roll unattended; an
+unexpected manual mode is one visible button.
 
 Prints for one order are **chained** in the agent, not dropped: tapping "print cup 3" while
 cup 1 is still spooling queues it, and each run re-reads `label_printed_at` afterwards, so a
@@ -424,6 +534,28 @@ drift within a week and the preview would quietly start lying. **Change a size i
 
 The one thing the preview can't reproduce is PDFKit's shrink-to-fit on a long name, which
 it approximates with CSS. The roll is still the final word.
+
+### Making the milk stand out
+
+Every modifier category on the label has three levels of emphasis — **Normal**, **Bold**,
+**Black box** — set per category at `/admin/labels` → *Modifier categories* → **Stand out**.
+
+**Milk is Bold out of the box, with nothing configured.** It's the one add-in where getting
+it wrong isn't a preference but a problem (oat and almond are on the label because somebody
+can't drink dairy), and it's the line a barista scans for while steaming. Matched on the
+group *name* (`/\bmilks?\b/i` in `defaultEmphasisFor()`), so a shop calling the group "Milk
+Options" or "Milks" gets it too, and nothing has to be set up before Sunday.
+
+**Black box** is white text reversed out of a black chip, the same trick as the HOT/COLD
+band — on a 1-bit thermal printer a black block is the only genuinely loud emphasis there
+is, since there's no colour and no grey. The chip is drawn to the width of its own text, so
+"Oat Milk" gets a chip the size of "Oat Milk", not a bar across the sticker. It costs a
+little height; if the chip won't fit the printable width, it falls back to bold rather than
+printing half a black block with the milk name cut out of it.
+
+Like every other measurement, the emphasis is resolved once in `groupStyle()` in
+`src/lib/labels.ts` and read by both the admin preview and the PDF renderer — set it in one
+and the other follows.
 
 ### Church branding on the label
 
@@ -790,10 +922,10 @@ For Netlify:
 2. Search a name, a drink or a note — "oat" finds every oat milk order on the board
 3. Clear it when you're done; wait times were never affected by the filter
 
-**Reprint a cup that was dropped or remade:**
-1. `/barista` → the order's card → **🖨 Print one cup** → **Print** next to that drink
-   (or **Print/Reprint all cups** for the whole order)
-2. Already picked up? Same buttons under History → expand the order
+**Print a cup label (this is how every label gets printed now):**
+1. `/barista` → the order's card → the cup list → **🖨 Print** next to the drink you're
+   about to make. Printed cups show ✓; the heading counts how many are left.
+2. Already picked up? Same list under History → expand the order → **Reprint a cup label**
 
 **Track an order that went wrong:**
 1. On the order's card, tap **⚠ Flag an issue**
@@ -805,6 +937,22 @@ For Netlify:
 1. Go to `/admin/settings` → **Ordering Availability**
 2. Choose **🔒 Lock Everything** and save
 3. Put it back on **Follow Schedule** when you're ready to reopen
+
+**See how long orders are taking:**
+1. Go to `/admin` and pick a time range (and an event, if you're comparing)
+2. Read the **How long orders took** panel — average, typical, fastest, slowest, and
+   every order with its own time
+3. Only orders where the barista tapped **Start Making** and then **Mark Ready** are timed
+
+**Change how many orders one person can place:**
+1. Go to `/admin/settings` → **Stopping spam orders**
+2. Set the number of orders and the window, or untick it entirely
+3. Counter orders on `/tablet` are never limited
+
+**Make an add-in stand out on the label:**
+1. Go to `/admin/labels` → **Modifier categories** → find the category
+2. Under **Stand out**, pick Bold or Black box (Milk is already Bold)
+3. Check the preview on the right, then 🖨 **Send test label** to see it on the roll
 
 **Turn off donation requests:**
 1. Go to `/admin/settings` → **Donations**
