@@ -144,6 +144,8 @@ export default function AdminDashboard() {
   const [issuesReady, setIssuesReady] = useState(true);
   /** False until supabase-order-timing.sql has been run — the timing panel says so. */
   const [timingReady, setTimingReady] = useState(true);
+  /** Set when the orders query itself failed, so an error never reads as "no orders". */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [lowStock, setLowStock] = useState<
     { name: string; current_stock: number; unit: string }[]
   >([]);
@@ -213,9 +215,14 @@ export default function AdminDashboard() {
     if (ordersRes.error) {
       const fallback = await ordersQuery(`${BASE_COLUMNS}, ${ITEM_COLUMNS}`);
       setTimingReady(false);
+      // If even the fallback fails, an empty list would render as "no orders in this
+      // window" — a quiet Sunday and a broken query looking identical is the worst
+      // possible outcome on a page whose whole job is reporting numbers.
+      setLoadError(fallback.error ? fallback.error.message : null);
       setOrders((fallback.data ?? []) as unknown as AnalyticsOrder[]);
     } else {
       setTimingReady(true);
+      setLoadError(null);
       setOrders((ordersRes.data ?? []) as unknown as AnalyticsOrder[]);
     }
 
@@ -451,6 +458,29 @@ export default function AdminDashboard() {
           </label>
         </div>
       </Card>
+
+      {loadError && (
+        <div className="mb-6 rounded-2xl bg-danger/10 px-5 py-4 font-body text-sm text-text">
+          <strong className="font-accent text-danger">Couldn&apos;t load orders.</strong> Nothing
+          below is real — this is a failed query, not an empty day. The database said:{' '}
+          <code className="rounded bg-surface px-1 py-0.5 font-accent text-xs">{loadError}</code>
+        </div>
+      )}
+
+      {/* Hoisted out of the timing panel below, which only renders once the window has
+          orders in it — a missing migration would otherwise be invisible on exactly the
+          quiet day someone goes looking for why no times are recorded. */}
+      {!loading && !timingReady && (
+        <div className="mb-6 rounded-2xl bg-warning/10 px-5 py-4 font-body text-sm text-text">
+          <strong className="font-accent">Order times aren&apos;t being recorded yet.</strong> Run{' '}
+          <strong className="font-accent">supabase-order-timing.sql</strong> in the Supabase SQL
+          editor. From then on, every order the barista taps <strong>Start Making</strong> and
+          then <strong>Mark Ready</strong> on is timed and appears in &ldquo;How long orders
+          took&rdquo;. Orders placed before that can&apos;t be back-filled. If you&apos;ve
+          already run it, reload the API schema cache: Supabase →{' '}
+          <strong>Settings → API → Reload schema</strong>.
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">

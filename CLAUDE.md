@@ -933,6 +933,16 @@ For Netlify:
 3. Review them all afterwards at `/barista` → History → **⚠ Issues only**, or
    `/admin/orders` → **⚠ Issues only**
 
+**"Could not find the 'X' column of 'shop_settings' in the schema cache":**
+1. That column comes from a migration this database hasn't run. `/admin/settings` names it
+   and the file that adds it — usually `supabase-v2-features.sql` (safe to re-run).
+2. Already run it? PostgREST is caching an old schema: Supabase → **Settings → API →
+   Reload schema**, or `NOTIFY pgrst, 'reload schema';` in the SQL editor.
+3. The save is **column-by-column resilient** (`saveShopSettings()`): it drops whichever
+   column the database rejects and saves the rest, so Force Closed still works while a
+   migration is outstanding. An all-or-nothing write is how "stop ordering now" dies on a
+   coupon toggle nobody touched.
+
 **Stop all ordering immediately, including access codes:**
 1. Go to `/admin/settings` → **Ordering Availability**
 2. Choose **🔒 Lock Everything** and save

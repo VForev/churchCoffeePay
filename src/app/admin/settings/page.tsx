@@ -21,14 +21,71 @@ const OVERRIDE_OPTIONS: { value: OrderingOverride; label: string; help: string }
   },
 ];
 
-/** Postgres/PostgREST for "supabase-order-rate-limit.sql hasn't been run here". */
-function isMissingSpamColumn(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  return (
-    error.code === '42703' ||
+/**
+ * The column a "no such column" error is complaining about, or null for any other error.
+ *
+ * PostgREST names exactly ONE column per rejection — 'coupons_enabled' in the schema
+ * cache form, "coupons_enabled" in the raw Postgres form — so a database missing three
+ * optional columns has to be asked three times to find out.
+ */
+function missingColumnName(error: { code?: string; message?: string } | null): string | null {
+  if (!error) return null;
+  const message = error.message ?? '';
+  const isMissing =
     error.code === 'PGRST204' ||
-    /spam_limit_enabled|spam_max_orders|spam_window_minutes/.test(error.message ?? '')
-  );
+    error.code === '42703' ||
+    /in the schema cache|does not exist/i.test(message);
+  if (!isMissing) return null;
+
+  const quoted = message.match(/'([^']+)'/) ?? message.match(/"([^"]+)"/);
+  return quoted ? quoted[1] : null;
+}
+
+/** Which migration adds each optional column, so the page can name the file to run. */
+const COLUMN_MIGRATIONS: Record<string, string> = {
+  coupons_enabled: 'supabase-v2-features.sql',
+  donations_enabled: 'supabase-v2-features.sql',
+  donation_label: 'supabase-v2-features.sql',
+  donation_presets: 'supabase-v2-features.sql',
+  ordering_override: 'supabase-v2-features.sql',
+  closed_message: 'supabase-v2-features.sql',
+  service_title: 'supabase-v2-features.sql',
+  service_subtitle: 'supabase-v2-features.sql',
+  spam_limit_enabled: 'supabase-order-rate-limit.sql',
+  spam_max_orders: 'supabase-order-rate-limit.sql',
+  spam_window_minutes: 'supabase-order-rate-limit.sql',
+};
+
+/**
+ * Saves the settings row, dropping any column this database doesn't have and trying again.
+ *
+ * The alternative — one all-or-nothing write — means a database one migration behind can't
+ * save ANYTHING on this page. That is how "Force Closed" stops working: the admin needs to
+ * shut ordering down right now and the save dies on a coupon toggle they never touched.
+ * Whatever the database can store gets stored; the page then says which columns were left
+ * out and which file adds them.
+ */
+async function saveShopSettings(
+  payload: Record<string, unknown>,
+): Promise<{ error: { message?: string } | null; dropped: string[] }> {
+  const body = { ...payload };
+  const dropped: string[] = [];
+
+  // One attempt per optional column, plus one that succeeds. Bounded so a server that
+  // keeps naming a column we can't drop can never spin here.
+  for (let attempt = 0; attempt <= Object.keys(payload).length; attempt++) {
+    const { error } = await supabase.from('shop_settings').upsert(body);
+    if (!error) return { error: null, dropped };
+
+    const column = missingColumnName(error);
+    // 'id' is the primary key — without it this stops being an upsert of the one row.
+    if (!column || column === 'id' || !(column in body)) return { error, dropped };
+
+    delete body[column];
+    dropped.push(column);
+  }
+
+  return { error: null, dropped };
 }
 
 /** Postgres hands back "09:00:00"; <input type="time"> wants "09:00". */
@@ -43,8 +100,9 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState('');
-  /** True once a save came back without the spam-limit columns — see supabase-order-rate-limit.sql. */
-  const [spamMissing, setSpamMissing] = useState(false);
+  /** Columns this database doesn't have, discovered while saving. Named on the page so
+      the admin knows exactly which migration is missing rather than losing the save. */
+  const [missingColumns, setMissingColumns] = useState<string[]>([]);
 
   useEffect(() => {
     fetchShopConfig().then((config) => {
@@ -87,17 +145,8 @@ export default function AdminSettingsPage() {
       ),
     };
 
-    let { error: settingsError } = await supabase
-      .from('shop_settings')
-      .upsert({ ...core, ...spam });
-
-    // The spam columns come from a migration. Without it the whole save would fail and
-    // the admin would lose their opening hours over a feature they weren't editing — so
-    // fall back to saving everything else and say which file adds the rest.
-    if (settingsError && isMissingSpamColumn(settingsError)) {
-      ({ error: settingsError } = await supabase.from('shop_settings').upsert(core));
-      if (!settingsError) setSpamMissing(true);
-    }
+    const { error: settingsError, dropped } = await saveShopSettings({ ...core, ...spam });
+    setMissingColumns(dropped);
 
     const { error: hoursError } = await supabase.from('ordering_hours').upsert(
       hours.map((h) => ({
@@ -111,7 +160,18 @@ export default function AdminSettingsPage() {
     setSaving(false);
 
     if (settingsError || hoursError) {
-      setError(settingsError?.message || hoursError?.message || 'Could not save');
+      // "Lock Everything" on a database that predates it is a CHECK violation, not a
+      // missing column — the value is rejected, so name the file that widens the check
+      // rather than showing a constraint name nobody can act on.
+      const raw = settingsError?.message ?? hoursError?.message ?? '';
+      const lockRejected =
+        settings.ordering_override === 'locked' && /ordering_override|check constraint/i.test(raw);
+
+      setError(
+        lockRejected
+          ? 'Lock Everything isn’t allowed by this database yet. Run supabase-lock-ordering.sql in the Supabase SQL editor, then save again. Force Closed works in the meantime.'
+          : raw || 'Could not save',
+      );
       return;
     }
     setSavedAt(Date.now());
@@ -141,6 +201,42 @@ export default function AdminSettingsPage() {
 
       {error && (
         <p className="mb-4 rounded-xl bg-danger/5 px-4 py-3 text-sm text-danger">{error}</p>
+      )}
+
+      {/* Saved, but not all of it. Says exactly what didn't fit and which file adds it —
+          the settings that DID save are already live, which is the point. */}
+      {missingColumns.length > 0 && (
+        <div className="mb-4 rounded-xl bg-warning/10 px-4 py-3 font-body text-sm text-text">
+          <p>
+            Saved — but this database doesn&apos;t have{' '}
+            {missingColumns.map((c, i) => (
+              <span key={c}>
+                {i > 0 && (i === missingColumns.length - 1 ? ' and ' : ', ')}
+                <code className="rounded bg-surface px-1 py-0.5 font-accent text-xs">{c}</code>
+              </span>
+            ))}
+            , so {missingColumns.length === 1 ? 'that setting was' : 'those settings were'} left
+            out. Everything else is live now.
+          </p>
+          <p className="mt-2">
+            To fix it, run{' '}
+            {[...new Set(missingColumns.map((c) => COLUMN_MIGRATIONS[c] ?? 'the matching migration'))].map(
+              (file, i, all) => (
+                <span key={file}>
+                  {i > 0 && (i === all.length - 1 ? ' and ' : ', ')}
+                  <strong className="font-accent">{file}</strong>
+                </span>
+              ),
+            )}{' '}
+            in the Supabase SQL editor, then save again. If you&apos;ve already run{' '}
+            {missingColumns.length === 1 ? 'it' : 'them'}, reload the API schema cache: Supabase
+            → <strong>Settings → API → Reload schema</strong> (or run{' '}
+            <code className="rounded bg-surface px-1 py-0.5 font-accent text-xs">
+              NOTIFY pgrst, &apos;reload schema&apos;;
+            </code>
+            ).
+          </p>
+        </div>
       )}
 
       {/* Live status readout */}
@@ -462,7 +558,7 @@ export default function AdminSettingsPage() {
           </div>
         )}
 
-        {spamMissing ? (
+        {missingColumns.some((c) => c.startsWith('spam_')) ? (
           <p className="mt-4 rounded-xl bg-warning/10 px-4 py-3 font-body text-sm text-text">
             These limits weren&apos;t saved — the database doesn&apos;t have them yet. Run{' '}
             <strong className="font-accent">supabase-order-rate-limit.sql</strong> in the Supabase
