@@ -48,7 +48,27 @@ export function pushpayLinkWithReturn(origin: string): string {
  *
  * **The $3 goes through Pushpay, not Stripe.** Stripe only ever charges for the drinks;
  * `orders.tip_amount` is always 0 on this path. The gift lands in the church's Coffee &
- * Tea fund, and we never see it — same as the giving box on /yourlive.
+ * Tea fund, and we never see it.
+ *
+ * It is the PUSHPAY_LINK short link above with one parameter added. That link is already
+ * preconfigured on Pushpay's side and expands to:
+ *
+ *     fnd=J2nNkYPMQkzlcuDvwZIcdw   the Coffee & Tea fund
+ *     fndv=Lock                    fund read-only
+ *     r=No & rcv=False             one-time, recurring selector hidden entirely
+ *
+ * ...so all this adds is `a=3` — the amount, pre-filled and deliberately editable (no
+ * `al`, which would lock it). Nothing else is needed, and nothing else should be added:
+ * passing `fnd`/`r`/`rcv` again would duplicate keys the short link already sets.
+ *
+ * **If that short link is ever regenerated in the Pushpay portal, check it still carries
+ * the fund lock.** Nothing in the code can tell that it stopped, and gifts would quietly
+ * land in the merchant's default fund instead.
+ *
+ * The other Pushpay merchant (the numeric "Events" handle) is deliberately NOT used here:
+ * it marks **Booking ID** and **Event Name** as required custom fields, so a coffee
+ * customer gets asked for a booking reference before Pushpay will take $3. This link has
+ * no custom fields at all — just the amount and the payment method.
  *
  * ORDER FIRST, THEN PUSHPAY. THIS ORDERING IS THE WHOLE DESIGN.
  * ------------------------------------------------------------
@@ -70,30 +90,10 @@ export function pushpayLinkWithReturn(origin: string): string {
  * already on the barista board, so it costs nothing if they wander off — which is exactly
  * what went wrong when the ask sat on /checkout, where the in-memory cart
  * (`src/lib/cart-store.ts`) dies with the page.
- *
- * THE PARAMETERS
- * --------------
- *   a=3        starting amount. Deliberately no `al` — they can change it.
- *   fnd=<key>  the Coffee & Tea fund.
- *   fndv=Lock  fund read-only, so a coffee gift can't land in Events by accident.
- *   r=No       one-time.
- *   rcv=false  hide the recurring selector entirely. Belt and braces with `r=No`.
- *   f[1] f[2]  Booking ID and Event Name — REQUIRED custom fields on this merchant, which
- *              Pushpay won't advance without, so they're pre-answered rather than asking a
- *              coffee customer for a booking reference. Booking ID is validated as a
- *              number, hence `0`. If those are ever made optional in the portal, drop them.
  */
 
 /** The amount offered on the button, and pre-filled at Pushpay. */
 export const COFFEE_GIFT_AMOUNT = 3;
 
-/** $3 to Coffee & Tea, one-time, fund locked, amount editable. Shown on /checkout/confirmation. */
-export const COFFEE_GIVING_LINK = `https://pushpay.com/g/4135984186?${new URLSearchParams({
-  a: String(COFFEE_GIFT_AMOUNT),
-  fnd: 'J2nNkYPMQkzlcuDvwZIcdw', // the Coffee & Tea fund
-  fndv: 'Lock', // fund read-only
-  r: 'No', // one-time
-  rcv: 'false', // hide the recurring selector entirely
-  'f[1]': '0', // Booking ID — required by this merchant, validated as a number
-  'f[2]': 'Coffee & Tea', // Event Name — also required
-}).toString()}`;
+/** $3 to Coffee & Tea, one-time, fund locked, amount editable, no extra fields to fill. */
+export const COFFEE_GIVING_LINK = `${PUSHPAY_LINK}?a=${COFFEE_GIFT_AMOUNT}`;

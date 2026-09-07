@@ -851,11 +851,22 @@ able to move the totals underneath a charge in flight.
 **The two buttons are not gated on `donations_enabled`** — they are the ask, so hiding them
 behind a setting would just make the feature disappear.
 
-`COFFEE_GIVING_LINK` in `src/lib/giving.ts` is the link, with `a=3` (editable), `fndv=Lock`,
-`r=No&rcv=false`, and `f[1]`/`f[2]` pre-answering the **Booking ID** and **Event Name**
-custom fields that merchant marks required — without them Pushpay refuses to advance, and a
-coffee customer would be asked for a booking reference. Booking ID is validated as a number,
-hence `0`.
+`COFFEE_GIVING_LINK` in `src/lib/giving.ts` is just `PUSHPAY_LINK` with **`a=3`** on the
+end. That short link is already preconfigured on Pushpay's side and expands to
+`fnd=<Coffee & Tea>&fndv=Lock&r=No&rcv=False` — fund locked, one-time, recurring selector
+gone — so the only thing left to add is the amount. Deliberately no `al`, so $3 is a
+starting point they can change.
+
+Don't re-send `fnd`/`r`/`rcv` alongside it; the short link already sets them and duplicate
+query keys are asking for trouble. **If the short link is ever regenerated in the Pushpay
+portal, check it still carries the fund lock** — nothing in the code can tell that it
+stopped, and gifts would quietly land in the default fund instead.
+
+The church's other Pushpay merchant (the numeric "Events" handle) is **deliberately not
+used here.** It marks **Booking ID** and **Event Name** as required custom fields, so
+Pushpay won't take the $3 until a coffee customer supplies a booking reference. The short
+link's merchant has no custom fields at all — the giving page is just the amount and the
+payment method.
 
 ### /live vs /yourlive
 
