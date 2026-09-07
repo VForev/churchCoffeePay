@@ -20,7 +20,6 @@ import {
   fetchShopConfig,
   getShopStatus,
   canOrderNow,
-  parseDonationPresets,
   DEFAULT_SETTINGS,
 } from '@/lib/shop';
 import {
@@ -37,7 +36,6 @@ import Card from '@/components/ui/Card';
 import { ClosedNotice } from '@/components/ShopBanner';
 import { COFFEE_GIFT_AMOUNT } from '@/lib/giving';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
-import { cn } from '@/lib/utils';
 import type { Coupon, ShopSettings, OrderingHours } from '@/types';
 
 function CheckoutForm() {
@@ -65,7 +63,8 @@ function CheckoutForm() {
   const [unlock, setUnlock] = useState<AccessUnlock | null>(() => getActiveUnlock());
   const isFreeOrder = cart.total === 0;
   const cartItemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-  const donationPresets = parseDonationPresets(settings.donation_presets);
+  // What the order costs with no donation. `cart.total` already has any donation in it.
+  const baseTotal = cart.total - cart.donation_amount;
 
   useEffect(() => {
     async function load() {
@@ -98,13 +97,6 @@ function CheckoutForm() {
     }
     load();
   }, []);
-
-  // Donations may have been switched off after something was already added.
-  useEffect(() => {
-    if (configLoaded && !settings.donations_enabled && cart.donation_amount > 0) {
-      cartStore.setDonation(0);
-    }
-  }, [configLoaded, settings.donations_enabled, cart.donation_amount]);
 
   // Same for a coupon applied before the admin turned coupons off.
   useEffect(() => {
@@ -149,8 +141,22 @@ function CheckoutForm() {
     setCouponLoading(false);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  /**
+   * `donation` comes from whichever of the two Place Order buttons was tapped.
+   *
+   * It has to be applied and read here rather than trusted from the render snapshot:
+   * `cartStore` mutates synchronously, but the `cart` from `useCart()` is a render behind,
+   * so a button that set the donation and submitted in the same tick would charge the old
+   * total. Everything below reads the fresh store value — this is the money.
+   */
+  async function handleSubmit(e: React.FormEvent | null, donation: number) {
+    e?.preventDefault();
+    cartStore.setDonation(donation);
+    // A copy, not the store's own object: `getState()` returns the live mutable state, and
+    // this function is long — it awaits Stripe and several inserts. Anything that touched
+    // the cart meanwhile would otherwise change the totals underneath a charge in flight.
+    const cart = { ...cartStore.getState() };
+    const isFreeOrder = cart.total === 0;
 
     // This name goes up on the lobby TV, so it has to pass before we take money.
     const nameCheck = validateFullName(cart.customer_name);
@@ -423,7 +429,7 @@ function CheckoutForm() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
           <Card>
             <Input
               label="First & Last Name"
@@ -515,103 +521,6 @@ function CheckoutForm() {
           </Card>
           )}
 
-          {/* Coffee & Tea — a $3 ask that rides along on the card payment the customer
-              is already making, so it never navigates anywhere.
-
-              This used to be a Pushpay link and can't go back to being one. Pushpay only
-              ever takes payment on pushpay.com: its "embedded" widget is a pre-fill form
-              that redirects the top window (it breaks out of an iframe to do it), and the
-              giving page itself sends `X-Frame-Options: SAMEORIGIN`, so it can't be framed
-              either. Both were tested against the real handle. Anything Pushpay-shaped here
-              means leaving /checkout mid-order — and this cart is in memory only, so that
-              is how a coffee order gets lost. See "Giving to the Church" in CLAUDE.md.
-
-              The money therefore lands in Stripe with the coffee, recorded on the order as
-              `tip_amount`, NOT in the Pushpay Coffee & Tea fund. That's the trade, and it's
-              the only way to keep someone on the page. The Pushpay route still exists on
-              /checkout/confirmation, where the order is already placed and leaving is free.
-
-              Still behind `donations_enabled`, so the admin off switch keeps working. */}
-          {settings.donations_enabled && (
-            <Card>
-              <h3 className="font-heading font-bold text-text-dark">
-                Support the Coffee &amp; Tea Ministry
-              </h3>
-              <p className="mb-3 mt-0.5 font-body text-xs text-text-light">
-                Optional — helps cover the cups, beans and milk. Added to the card payment
-                below, so there&apos;s nothing else to do.
-              </p>
-
-              <button
-                type="button"
-                onClick={() =>
-                  cartStore.setDonation(
-                    cart.donation_amount === COFFEE_GIFT_AMOUNT ? 0 : COFFEE_GIFT_AMOUNT,
-                  )
-                }
-                className={cn(
-                  'flex w-full cursor-pointer items-center justify-between rounded-xl border-2 px-4 py-3 font-accent font-bold transition-all',
-                  cart.donation_amount === COFFEE_GIFT_AMOUNT
-                    ? 'border-success bg-success text-white'
-                    : 'border-gray-200 bg-surface text-text hover:border-success/40',
-                )}
-              >
-                <span>
-                  {cart.donation_amount === COFFEE_GIFT_AMOUNT ? '\u2713 ' : ''}Add $
-                  {COFFEE_GIFT_AMOUNT.toFixed(2)}
-                </span>
-                <span className="font-body text-xs font-normal opacity-80">
-                  {cart.donation_amount === COFFEE_GIFT_AMOUNT ? 'Tap to remove' : 'One tap'}
-                </span>
-              </button>
-
-              {/* The admin's own quick amounts stay available underneath — $3 is the
-                  headline, not the only choice. */}
-              {donationPresets.filter((a) => a !== COFFEE_GIFT_AMOUNT).length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {donationPresets
-                    .filter((a) => a !== COFFEE_GIFT_AMOUNT)
-                    .map((amount) => (
-                      <button
-                        key={amount}
-                        type="button"
-                        onClick={() =>
-                          cartStore.setDonation(cart.donation_amount === amount ? 0 : amount)
-                        }
-                        className={cn(
-                          'cursor-pointer rounded-xl border-2 px-4 py-2 font-accent text-sm font-semibold transition-all',
-                          cart.donation_amount === amount
-                            ? 'border-success bg-success text-white'
-                            : 'border-gray-200 bg-surface text-text hover:border-success/40',
-                        )}
-                      >
-                        ${amount.toFixed(2)}
-                      </button>
-                    ))}
-                  {cart.donation_amount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => cartStore.setDonation(0)}
-                      className="cursor-pointer px-3 py-2 font-accent text-sm text-text-light hover:text-danger"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              )}
-
-              <Input
-                type="number"
-                placeholder="Or enter another amount"
-                min="0"
-                step="0.01"
-                className="mt-3"
-                value={cart.donation_amount || ''}
-                onChange={(e) => cartStore.setDonation(parseFloat(e.target.value) || 0)}
-              />
-            </Card>
-          )}
-
           <Card>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
@@ -654,26 +563,51 @@ function CheckoutForm() {
 
           {error && <p className="text-center text-sm text-danger">{error}</p>}
 
-          <Button
-            type="submit"
-            fullWidth
-            size="lg"
-            disabled={processing || cart.items.length === 0 || orderingClosed}
-          >
-            {orderingClosed
-              ? 'Ordering Is Closed'
-              : processing
-                ? 'Placing your order...'
-                : isFreeOrder
-                  ? 'Place Order'
-                  : `Place Order · $${cart.total.toFixed(2)}`}
-          </Button>
+          {/* Two ways out of this page, both of which place the order. The $3 is a
+              choice between buttons rather than a box further up, so nobody reaches the
+              bottom having missed it — and neither path leaves /checkout, which is the
+              whole reason this isn't a Pushpay link (see src/lib/giving.ts). */}
+          {orderingClosed ? (
+            <Button type="button" fullWidth size="lg" disabled>
+              Ordering Is Closed
+            </Button>
+          ) : (
+            <div className="space-y-3">
+              <Button
+                type="button"
+                fullWidth
+                size="lg"
+                variant="success"
+                disabled={processing || cart.items.length === 0}
+                onClick={() => handleSubmit(null, COFFEE_GIFT_AMOUNT)}
+              >
+                {processing
+                  ? 'Placing your order...'
+                  : `\u2615 Place Order & Give $${COFFEE_GIFT_AMOUNT} \u00b7 $${(
+                      baseTotal + COFFEE_GIFT_AMOUNT
+                    ).toFixed(2)}`}
+              </Button>
 
-          {!orderingClosed && !processing && cart.items.length > 0 && (
-            <p className="text-center font-body text-xs text-text-light">
-              Your order is sent to the baristas once you tap the button above.
-            </p>
+              <Button
+                type="button"
+                fullWidth
+                size="lg"
+                disabled={processing || cart.items.length === 0}
+                onClick={() => handleSubmit(null, 0)}
+              >
+                {processing
+                  ? 'Placing your order...'
+                  : baseTotal === 0
+                    ? 'Place Order \u2014 No Donation'
+                    : `Place Order \u2014 No Donation \u00b7 $${baseTotal.toFixed(2)}`}
+              </Button>
+
+              <p className="text-center font-body text-xs text-text-light">
+                {`The $${COFFEE_GIFT_AMOUNT} supports the Coffee & Tea Ministry and is charged with your order \u2014 you stay right here either way.`}
+              </p>
+            </div>
           )}
+
         </form>
       </main>
     </div>

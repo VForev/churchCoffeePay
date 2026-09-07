@@ -794,26 +794,37 @@ boxes and they do different things.**
 
 | | Coffee & Tea ask (`/checkout`) | Pushpay giving box |
 |---|---|---|
-| Where | `/checkout`, above the order summary | `/checkout/confirmation`, `/yourlive` |
-| When | Before the order is placed | After the order is placed |
-| Amount | **$3, one tap** (other amounts available) | Whatever they pick |
+| Where | `/checkout`, one of the two Place Order buttons | `/checkout/confirmation`, `/yourlive` |
+| When | As the order is placed | After the order is placed |
+| Amount | **$3, or nothing** | Whatever they pick |
 | Leaves the page? | **Never** | Yes — goes to pushpay.com |
 | Money goes | Through Stripe, with the coffee | Straight to the church, via Pushpay |
 | Recorded | `orders.tip_amount` | Nowhere — we never see it |
 
-### The Coffee & Tea ask — `/checkout`
+### The Coffee & Tea ask — two Place Order buttons
 
-A one-tap **Add $3.00** that rides along on the card payment the customer is already
-making. No redirect, no second card entry, no second tab — they tap it, it appears on the
-order summary as *Coffee & Tea*, and the Place Order button charges it with the coffee.
+`/checkout` ends in **two buttons**, not a donation box and one button:
 
-It writes `cart.donation_amount` (`cartStore.setDonation`), which saves to
-`orders.tip_amount` — the same column the old generic donation box used. **It is still
-gated on `donations_enabled`**, so `/admin/settings` → Donations is the off switch for it.
-With that setting off, no ask appears at all.
+- **☕ Place Order & Give $3 · $X** — the order plus $3, on one card charge
+- **Place Order — No Donation · $X** — the order on its own
 
-**The money therefore lands in Stripe with the coffee, NOT in the Pushpay Coffee & Tea
-fund.** That is a real trade and it is deliberate — see below.
+The ask is a choice *between the buttons* rather than a box further up the page, so nobody
+reaches the bottom having missed it, and declining takes exactly one tap. Both paths place
+the order and **neither leaves `/checkout`** — that is the whole point (see below).
+
+The $3 is applied through `cartStore.setDonation`, saved on the order as `tip_amount`.
+
+**`handleSubmit(e, donation)` takes the amount as an argument and re-reads the store.**
+This matters: `cartStore` mutates synchronously but the `cart` from `useCart()` is a render
+behind, so a button that set the donation and submitted in the same tick would charge the
+old total. It also takes a **copy** — `getState()` hands back the live mutable object, and
+that function awaits Stripe and several inserts, so anything touching the cart meanwhile
+would move the totals underneath a charge already in flight.
+
+There is no longer an effect that zeroes the donation when `donations_enabled` is off: the
+amount isn't held in the cart between renders any more, it's chosen at submit. **The two
+buttons are not gated on `donations_enabled`** — they are the ask, so hiding them behind a
+setting would just make the feature disappear.
 
 #### Why this isn't Pushpay's embedded widget
 
