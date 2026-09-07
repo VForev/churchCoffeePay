@@ -5,7 +5,10 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import GivingBox from '@/components/GivingBox';
 import { COFFEE_GIVING_LINK, COFFEE_GIFT_AMOUNT } from '@/lib/giving';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+
+/** Long enough to read "Order Placed!" and the wait, short enough to feel automatic. */
+const REDIRECT_SECONDS = 5;
 
 function ConfirmationContent() {
   const searchParams = useSearchParams();
@@ -18,6 +21,32 @@ function ConfirmationContent() {
   // Pushpay takes money only on its own site, won't be framed, and this merchant has its
   // return button switched off, so whoever goes there isn't coming back.
   const wantsToGive = searchParams.get('give') === '1';
+
+  /**
+   * Auto-hand-off to Pushpay, on a short visible countdown rather than instantly.
+   *
+   * They asked to give on the previous screen, so this shouldn't need a second tap. The
+   * few seconds are there so "Order Placed!" and the wait time are actually read first —
+   * this is a one-way trip. Pushpay's return button is switched off on this merchant
+   * (`ReturnButtonUrl: null`), so nobody comes back to this screen once they leave it.
+   *
+   * `location.href` rather than `window.open`: a redirect on a timer has no user gesture
+   * behind it, and mobile Safari blocks popups opened that way. Top-level navigation is
+   * always allowed.
+   */
+  const [secondsLeft, setSecondsLeft] = useState(REDIRECT_SECONDS);
+  const [cancelled, setCancelled] = useState(false);
+  const redirecting = wantsToGive && !cancelled;
+
+  useEffect(() => {
+    if (!redirecting) return;
+    if (secondsLeft <= 0) {
+      window.location.href = COFFEE_GIVING_LINK;
+      return;
+    }
+    const t = setTimeout(() => setSecondsLeft((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [redirecting, secondsLeft]);
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4">
@@ -58,17 +87,33 @@ function ConfirmationContent() {
         <div className="rounded-2xl border-2 border-success/30 bg-success/5 px-5 py-5 text-center">
           <p className="mb-1 text-3xl leading-none">&#9749;</p>
           <h3 className="font-heading text-lg font-bold text-text-dark">
-            One more step &mdash; your ${COFFEE_GIFT_AMOUNT} gift
+            {redirecting
+              ? `Taking you to Pushpay in ${secondsLeft}\u2026`
+              : `Your $${COFFEE_GIFT_AMOUNT} gift`}
           </h3>
           <p className="mx-auto mt-1 max-w-sm font-body text-sm text-text-light">
-            {`Your order is already placed, so nothing depends on this. Tap below to give $${COFFEE_GIFT_AMOUNT} to the Coffee & Tea Ministry \u2014 the amount is filled in for you.`}
+            {`Your order is placed and being made \u2014 nothing depends on this. $${COFFEE_GIFT_AMOUNT} for the Coffee & Tea Ministry is filled in for you.`}
           </p>
+
           <a
             href={COFFEE_GIVING_LINK}
             className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-success px-7 py-3 font-accent text-base font-bold text-white transition-colors hover:bg-success-light"
           >
-            {`Give $${COFFEE_GIFT_AMOUNT} with Pushpay`}
+            {redirecting ? `Go now` : `Give $${COFFEE_GIFT_AMOUNT} with Pushpay`}
           </a>
+
+          {/* A way out, because the redirect is one-way. Without this the only escape from
+              a countdown someone didn't want is the back button. */}
+          {redirecting && (
+            <button
+              type="button"
+              onClick={() => setCancelled(true)}
+              className="mt-3 block w-full cursor-pointer font-accent text-sm text-text-light underline hover:text-danger"
+            >
+              Not now &mdash; stay on this page
+            </button>
+          )}
+
           <p className="mt-3 font-body text-xs text-text-light">
             Secure giving through Pushpay &middot; one-time, not recurring
           </p>

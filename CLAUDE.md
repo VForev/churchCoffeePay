@@ -805,8 +805,9 @@ boxes and they do different things.**
 
 `/checkout` ends in **two buttons**, and both charge the card the same amount (the drinks):
 
-- **☕ Place Order & Give $3** — places the order, then lands on the confirmation screen
-  with a pre-filled Pushpay $3 gift as the first thing on it
+- **☕ Place Order & Give $3** — places the order, lands on the confirmation screen, and
+  **redirects itself to Pushpay after a 5-second countdown** with the $3 filled in. *Go
+  now* skips the wait; *Not now* cancels it and leaves the link as a button.
 - **Place Order — No Donation** — places the order, normal confirmation screen
 
 The ask is a choice *between the buttons* rather than a box further up the page, so nobody
@@ -830,6 +831,11 @@ merchant handle:
   HMAC, so it can't be extended.
 - **`rbu`/`rbt` (Pushpay's "return to site" button) are off on this merchant** — the page
   comes back `ReturnButtonUrl: null`. Whoever goes to Pushpay is not coming back.
+
+The countdown is deliberate rather than an instant redirect: it's a one-way trip (see
+`ReturnButtonUrl: null` above), so "Order Placed!" and the wait time need a few seconds to
+actually be read first. It uses `location.href`, not `window.open` — a redirect on a timer
+has no user gesture behind it and mobile Safari blocks popups opened that way.
 
 So the order is placed **first**, and the Pushpay link only appears once it's on the
 barista board. Then wandering off costs nothing. This is exactly what went wrong when the
