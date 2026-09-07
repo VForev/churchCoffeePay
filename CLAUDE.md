@@ -789,65 +789,56 @@ Every customer-facing "tip" is now a **donation**, and it can be switched off en
 
 ## Giving to the Church (Pushpay)
 
-Separate from the checkout donation above, and easy to confuse — **there are three
-different "give" boxes and they do different things.**
+Separate from the checkout donation above, and easy to confuse — **there are two "give"
+boxes and they do different things.**
 
-| | Checkout donation | $3 Coffee & Tea box | Pushpay giving box |
-|---|---|---|---|
-| Where | `/checkout`, `/tablet` | `/checkout`, above Place Order | `/checkout/confirmation`, `/yourlive` |
-| When | Before paying, as part of the order | Before the order is placed | After the order is placed |
-| Amount | Whatever they pick | **Starts at $3, editable, one-time** | Whatever they pick |
-| Fund | n/a | **Locked to Coffee & Tea** | Donor chooses |
-| Money goes | Through Stripe, with the coffee | Straight to the church, via Pushpay | Straight to the church, via Pushpay |
-| Recorded | `orders.tip_amount` | Nowhere — we never see it | Nowhere — we never see it |
+| | Coffee & Tea ask (`/checkout`) | Pushpay giving box |
+|---|---|---|
+| Where | `/checkout`, above the order summary | `/checkout/confirmation`, `/yourlive` |
+| When | Before the order is placed | After the order is placed |
+| Amount | **$3, one tap** (other amounts available) | Whatever they pick |
+| Leaves the page? | **Never** | Yes — goes to pushpay.com |
+| Money goes | Through Stripe, with the coffee | Straight to the church, via Pushpay |
+| Recorded | `orders.tip_amount` | Nowhere — we never see it |
 
-### The $3 Coffee & Tea box — `/checkout`
+### The Coffee & Tea ask — `/checkout`
 
-Same `GivingBox` component, a different link: **$3 as a starting amount they can change**,
-one-time only, fund locked to **Coffee & Tea**. Built in `src/lib/giving.ts`
-(`COFFEE_GIVING_LINK`) against the *Light of the Gospel Events* Pushpay handle.
+A one-tap **Add $3.00** that rides along on the card payment the customer is already
+making. No redirect, no second card entry, no second tab — they tap it, it appears on the
+order summary as *Coffee & Tea*, and the Place Order button charges it with the coffee.
 
-**It opens in a new tab, and that is not cosmetic.** The cart lives in memory only
-(`src/lib/cart-store.ts` — no localStorage), so sending someone off to Pushpay from
-`/checkout` would throw their whole order away and bring them back to an empty cart. A
-giving ask that costs someone their coffee is worse than no giving ask.
+It writes `cart.donation_amount` (`cartStore.setDonation`), which saves to
+`orders.tip_amount` — the same column the old generic donation box used. **It is still
+gated on `donations_enabled`**, so `/admin/settings` → Donations is the off switch for it.
+With that setting off, no ask appears at all.
 
-#### Why it isn't Pushpay's embedded widget
+**The money therefore lands in Stripe with the coffee, NOT in the Pushpay Coffee & Tea
+fund.** That is a real trade and it is deliberate — see below.
 
-The widget was tried against this exact handle in a real browser. It renders, and it can be
-pre-filled to $3 / Coffee & Tea / one-time. It still can't be used on `/checkout`, for one
-reason nothing on our side can fix: **its "Next" button navigates the top window to
-`pushpay.com/g/<handle>`.** It is not an embedded payment — it's a pre-fill form that hands
-off to the same hosted giving page our link opens, and it breaks out of an `<iframe>` to do
-it (tested: a parent page hosting it in an iframe was itself navigated away). On `/checkout`
-that redirect destroys the cart, and there is no wrapper or sandbox that stops it. Since it
-redirects to the same page anyway, the link just skips a wasted form step.
+#### Why this isn't Pushpay's embedded widget
 
-Two supporting facts, so nobody re-derives them:
+It was tried, in a real browser, against the church's actual handle. **Pushpay only ever
+takes payment on pushpay.com**, and there is no configuration that changes it:
 
-- The widget reads exactly three keys off `window.pushpayEmbeddedConfig` — `handle`, `wgc`,
-  `onSubmitCallback`. Amount, fund and recurrence are **not** among them; they come from the
-  merchant's Pushpay settings, which on this handle default to the *Event* fund with an
-  empty amount box. `wgc` decodes to `{"askgp":true}` plus an HMAC, so it can't be extended.
-- The widget's own mount point is a **shadow root**, and its form fields carry stable ids
-  (`#amountInput`, `#fundKeyOrName`, `#recurring-toggle-once`). Pre-filling them via native
-  value setters does work — that's how the above was tested. It just doesn't help.
+- The **embedded widget is not an embedded payment.** It's a pre-fill form whose "Next"
+  button sets `window.top.location.href` to `pushpay.com/g/<handle>`. It **breaks out of an
+  iframe** to do it — a parent page hosting it in an `<iframe>` was itself navigated away.
+- The **hosted giving page can't be framed either**: `X-Frame-Options: SAMEORIGIN`.
+- Its config object takes exactly three keys — `handle`, `wgc`, `onSubmitCallback`. Amount,
+  fund and recurrence are **not** among them; they come from the merchant's Pushpay
+  settings. `wgc` decodes to `{"askgp":true}` plus an HMAC, so it can't be extended.
+- `onSubmitCallback` **does** suppress the redirect (the widget hands you `{ redirectUrl }`
+  and stays put), but the customer still has to reach that URL to pay. It only moves the
+  problem to "which tab".
 
-#### The parameters
+Since `/checkout`'s cart is **in memory only** (`src/lib/cart-store.ts` — no localStorage),
+every Pushpay-shaped option risks the coffee order itself: the customer goes off to give
+$3 and never comes back to place the order. That is the reason this is Stripe.
 
-| | |
-|---|---|
-| `a=3` | starting amount. **No `al`** — deliberately not locked, so they can change it |
-| `fnd=<key>` | the Coffee & Tea fund |
-| `fndv=Lock` | fund read-only, so a coffee gift can't land in Events by accident |
-| `r=No` + `rcv=false` | one-time, recurring selector hidden entirely |
-| `f[1]`, `f[2]` | **Booking ID** and **Event Name** |
-
-Those last two are **required custom fields on this merchant** — Pushpay refuses to advance
-without them, so they're pre-filled (`0` and `Coffee & Tea`) rather than asking a coffee
-customer for a booking reference. Booking ID is validated as a number, hence `0`. They're
-still visible on the Pushpay page; making them optional in the Pushpay portal would remove
-them and let the `f[…]` params go.
+`COFFEE_GIVING_LINK` in `src/lib/giving.ts` is the verified Pushpay route to the same fund
+(`a=3` editable, `fndv=Lock`, `r=No&rcv=false`, plus `f[1]`/`f[2]` pre-answering the two
+custom fields that merchant requires). **Nothing renders it today** — it's kept for a page
+where leaving is free, i.e. `/checkout/confirmation`.
 
 ### /live vs /yourlive
 

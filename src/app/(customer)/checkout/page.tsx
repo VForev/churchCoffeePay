@@ -35,8 +35,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import { ClosedNotice } from '@/components/ShopBanner';
-import GivingBox from '@/components/GivingBox';
-import { COFFEE_GIVING_LINK, COFFEE_GIFT_AMOUNT } from '@/lib/giving';
+import { COFFEE_GIFT_AMOUNT } from '@/lib/giving';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
 import { cn } from '@/lib/utils';
 import type { Coupon, ShopSettings, OrderingHours } from '@/types';
@@ -516,35 +515,79 @@ function CheckoutForm() {
           </Card>
           )}
 
-          {/* Donation — hidden entirely when the admin turns donations off */}
+          {/* Coffee & Tea — a $3 ask that rides along on the card payment the customer
+              is already making, so it never navigates anywhere.
+
+              This used to be a Pushpay link and can't go back to being one. Pushpay only
+              ever takes payment on pushpay.com: its "embedded" widget is a pre-fill form
+              that redirects the top window (it breaks out of an iframe to do it), and the
+              giving page itself sends `X-Frame-Options: SAMEORIGIN`, so it can't be framed
+              either. Both were tested against the real handle. Anything Pushpay-shaped here
+              means leaving /checkout mid-order — and this cart is in memory only, so that
+              is how a coffee order gets lost. See "Giving to the Church" in CLAUDE.md.
+
+              The money therefore lands in Stripe with the coffee, recorded on the order as
+              `tip_amount`, NOT in the Pushpay Coffee & Tea fund. That's the trade, and it's
+              the only way to keep someone on the page. The Pushpay route still exists on
+              /checkout/confirmation, where the order is already placed and leaving is free.
+
+              Still behind `donations_enabled`, so the admin off switch keeps working. */}
           {settings.donations_enabled && (
             <Card>
               <h3 className="font-heading font-bold text-text-dark">
-                Add a {settings.donation_label}
+                Support the Coffee &amp; Tea Ministry
               </h3>
               <p className="mb-3 mt-0.5 font-body text-xs text-text-light">
-                Optional — supports the coffee ministry.
+                Optional — helps cover the cups, beans and milk. Added to the card payment
+                below, so there&apos;s nothing else to do.
               </p>
 
-              {donationPresets.length > 0 && (
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {donationPresets.map((amount) => (
-                    <button
-                      key={amount}
-                      type="button"
-                      onClick={() =>
-                        cartStore.setDonation(cart.donation_amount === amount ? 0 : amount)
-                      }
-                      className={cn(
-                        'cursor-pointer rounded-xl border-2 px-4 py-2 font-accent text-sm font-semibold transition-all',
-                        cart.donation_amount === amount
-                          ? 'border-success bg-success text-white'
-                          : 'border-gray-200 bg-surface text-text hover:border-success/40',
-                      )}
-                    >
-                      ${amount.toFixed(2)}
-                    </button>
-                  ))}
+              <button
+                type="button"
+                onClick={() =>
+                  cartStore.setDonation(
+                    cart.donation_amount === COFFEE_GIFT_AMOUNT ? 0 : COFFEE_GIFT_AMOUNT,
+                  )
+                }
+                className={cn(
+                  'flex w-full cursor-pointer items-center justify-between rounded-xl border-2 px-4 py-3 font-accent font-bold transition-all',
+                  cart.donation_amount === COFFEE_GIFT_AMOUNT
+                    ? 'border-success bg-success text-white'
+                    : 'border-gray-200 bg-surface text-text hover:border-success/40',
+                )}
+              >
+                <span>
+                  {cart.donation_amount === COFFEE_GIFT_AMOUNT ? '\u2713 ' : ''}Add $
+                  {COFFEE_GIFT_AMOUNT.toFixed(2)}
+                </span>
+                <span className="font-body text-xs font-normal opacity-80">
+                  {cart.donation_amount === COFFEE_GIFT_AMOUNT ? 'Tap to remove' : 'One tap'}
+                </span>
+              </button>
+
+              {/* The admin's own quick amounts stay available underneath — $3 is the
+                  headline, not the only choice. */}
+              {donationPresets.filter((a) => a !== COFFEE_GIFT_AMOUNT).length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {donationPresets
+                    .filter((a) => a !== COFFEE_GIFT_AMOUNT)
+                    .map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() =>
+                          cartStore.setDonation(cart.donation_amount === amount ? 0 : amount)
+                        }
+                        className={cn(
+                          'cursor-pointer rounded-xl border-2 px-4 py-2 font-accent text-sm font-semibold transition-all',
+                          cart.donation_amount === amount
+                            ? 'border-success bg-success text-white'
+                            : 'border-gray-200 bg-surface text-text hover:border-success/40',
+                        )}
+                      >
+                        ${amount.toFixed(2)}
+                      </button>
+                    ))}
                   {cart.donation_amount > 0 && (
                     <button
                       type="button"
@@ -562,29 +605,10 @@ function CheckoutForm() {
                 placeholder="Or enter another amount"
                 min="0"
                 step="0.01"
+                className="mt-3"
                 value={cart.donation_amount || ''}
                 onChange={(e) => cartStore.setDonation(parseFloat(e.target.value) || 0)}
               />
-            </Card>
-          )}
-
-          {!isFreeOrder && (
-            <Card>
-              <h3 className="mb-3 font-heading font-bold text-text-dark">Payment</h3>
-              <div className="rounded-xl border border-gray-200 p-3">
-                <CardElement
-                  options={{
-                    style: {
-                      base: {
-                        fontSize: '16px',
-                        fontFamily: 'Nunito, sans-serif',
-                        color: '#54595F',
-                        '::placeholder': { color: '#7A7A7A' },
-                      },
-                    },
-                  }}
-                />
-              </div>
             </Card>
           )}
 
@@ -602,7 +626,7 @@ function CheckoutForm() {
               )}
               {cart.donation_amount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-text-light">{settings.donation_label}</span>
+                  <span className="text-text-light">Coffee &amp; Tea</span>
                   <span className="font-accent">${cart.donation_amount.toFixed(2)}</span>
                 </div>
               )}
@@ -626,25 +650,6 @@ function CheckoutForm() {
                 <p className="text-xs text-text-light">Based on current queue + your order</p>
               </div>
             </div>
-          )}
-
-          {/* Coffee & Tea giving — a one-time gift to the church's Coffee & Tea fund,
-              starting at $3 (they can change it), offered on the last screen before the
-              order goes in. It opens in a new tab on purpose: the cart is in memory only,
-              so leaving this page would throw the whole order away. Separate from the
-              donation box above, which rides along on the Stripe charge; this money goes
-              straight to the church and we never see it. Hidden once ordering is closed —
-              there's no order to go back to. */}
-          {!orderingClosed && (
-            <GivingBox
-              icon={'\u2615'}
-              title={'Support the Coffee \u0026 Tea Ministry'}
-              message={`Help cover the cups, beans and milk. Starts at $${COFFEE_GIFT_AMOUNT} \u2014 change it to whatever you like. It goes straight to the church's Coffee \u0026 Tea fund, and opens in a new tab so your order stays right here.`}
-              href={COFFEE_GIVING_LINK}
-              buttonLabel={`Give $${COFFEE_GIFT_AMOUNT} for Coffee \u0026 Tea`}
-              note={'One-time only, never recurring \u00b7 secure giving through Pushpay'}
-              newTab
-            />
           )}
 
           {error && <p className="text-center text-sm text-danger">{error}</p>}

@@ -43,62 +43,53 @@ export function pushpayLinkWithReturn(origin: string): string {
 
 /**
  * ---------------------------------------------------------------------------
- * The $3 Coffee & Tea box on /checkout
+ * Coffee & Tea — the $3 ask on /checkout
  * ---------------------------------------------------------------------------
  *
- * A second, differently-shaped ask: a $3 one-time gift to the church's **Coffee & Tea**
- * fund, offered on the last screen before someone places their order. $3 is the starting
- * amount, not a cap — they can type something else.
+ * THE $3 ASK ON /checkout IS NOT PUSHPAY. It's an amount added to the Stripe charge the
+ * customer is already making (`cartStore.setDonation`, stored on the order as
+ * `tip_amount`), because that is the only way to ask for it without navigating away.
  *
- * WHY THIS IS A LINK AND NOT PUSHPAY'S EMBEDDED WIDGET
- * ----------------------------------------------------
- * The widget was tried, in a real browser, against this exact handle. It renders, and it
- * can be pre-filled. It still can't be used here, for one reason that isn't fixable from
- * our side: **its "Next" button navigates the top window to `pushpay.com/g/<handle>`.**
- * It is not an embedded payment at all — it's a pre-fill form that hands off to the same
- * hosted giving page this link opens, and it breaks out of an iframe to do it (verified:
- * a parent page hosting it in an `<iframe>` was itself navigated away). The cart lives in
- * memory only (`src/lib/cart-store.ts` — no localStorage), so on /checkout that redirect
- * throws away the customer's whole order on the way to giving $3. There is no wrapper,
- * sandbox or handler that prevents it.
+ * This was tried the Pushpay way first, and it cannot work on /checkout. Pushpay only ever
+ * takes payment on pushpay.com:
  *
- * Two smaller things, for whoever revisits this:
- *   - The widget takes exactly three keys off `window.pushpayEmbeddedConfig` — `handle`,
- *     `wgc`, `onSubmitCallback`. Amount, fund and recurrence are NOT among them; they come
- *     from the merchant's Pushpay settings, which on this handle default to the *Event*
- *     fund with an empty amount box. `wgc` is signed by Pushpay, so it can't be extended.
- *   - Since it redirects to this same page anyway, the link skips a whole form step.
+ *   - The **embedded widget** is not an embedded payment. It's a pre-fill form whose
+ *     "Next" button sets `window.top.location.href` to `pushpay.com/g/<handle>` — it
+ *     deliberately breaks out of an iframe to do it (verified: a parent page hosting it in
+ *     an `<iframe>` was itself navigated away).
+ *   - The **hosted giving page can't be framed**: it sends `X-Frame-Options: SAMEORIGIN`.
+ *   - Its config object takes exactly three keys — `handle`, `wgc`, `onSubmitCallback`.
+ *     Amount, fund and recurrence aren't among them; they come from the merchant's Pushpay
+ *     settings. `wgc` decodes to `{"askgp":true}` plus an HMAC, so it can't be extended.
  *
- * WHAT THE PARAMETERS DO
- * ----------------------
- *   a=3        starting amount. Deliberately no `al` (amount lock) — they can change it.
- *   fnd=<key>  the Coffee & Tea fund.
- *   fndv=Lock  fund shown read-only, so a coffee gift can't land in Events by accident.
- *   r=No       one-time.
- *   rcv=false  hide the recurring selector entirely. Belt and braces with `r=No`.
- *   f[1] f[2]  Booking ID and Event Name. These are REQUIRED custom fields on this
- *              merchant and Pushpay refuses to advance without them, so they're pre-filled
- *              — otherwise a coffee customer is asked for a booking reference. Booking ID
- *              is validated as a number, hence `0`. If those two fields are ever made
- *              optional in the Pushpay portal, these can go.
+ * `onSubmitCallback` DOES suppress the redirect — the widget hands you `{ redirectUrl }`
+ * and stays put — but the customer still has to reach that URL to pay, so it only moves
+ * the problem to "which tab". Since /checkout's cart is in memory only
+ * (`src/lib/cart-store.ts` — no localStorage), any of those routes risks the coffee order
+ * itself. Hence Stripe.
+ *
+ * The trade, stated plainly: this money lands in **Stripe with the coffee, not in the
+ * Pushpay Coffee & Tea fund**. Reconciling that is a bookkeeping job, not a code one.
  */
 
-/** Pushpay merchant handle — "Light of the Gospel Events". */
-const COFFEE_HANDLE = '4135984186';
-
-/** The Coffee & Tea fund on that merchant. */
-const COFFEE_FUND_KEY = 'J2nNkYPMQkzlcuDvwZIcdw';
-
-/** Starting amount. Not a lock — the customer can type over it. */
+/** The headline amount for the Coffee & Tea ask. One tap on /checkout. */
 export const COFFEE_GIFT_AMOUNT = 3;
 
-/** $3 to Coffee & Tea, one-time, fund locked. Static — no origin needed. */
-export const COFFEE_GIVING_LINK = `https://pushpay.com/g/${COFFEE_HANDLE}?${new URLSearchParams({
+/**
+ * The verified Pushpay route to the same fund — $3 pre-filled but editable, one-time,
+ * fund locked, with the merchant's two required custom fields pre-answered so a coffee
+ * customer is never asked for a booking reference.
+ *
+ * **Nothing renders this today**, on purpose: it navigates away, which is the whole thing
+ * /checkout can't afford. It's kept, and known to work, for a page where leaving is free —
+ * `/checkout/confirmation` is the obvious one, since the order is already placed by then.
+ */
+export const COFFEE_GIVING_LINK = `https://pushpay.com/g/4135984186?${new URLSearchParams({
   a: String(COFFEE_GIFT_AMOUNT),
-  fnd: COFFEE_FUND_KEY,
-  fndv: 'Lock',
-  r: 'No',
-  rcv: 'false',
-  'f[1]': '0',
-  'f[2]': 'Coffee & Tea',
+  fnd: 'J2nNkYPMQkzlcuDvwZIcdw', // the Coffee & Tea fund
+  fndv: 'Lock', // fund read-only
+  r: 'No', // one-time
+  rcv: 'false', // hide the recurring selector entirely
+  'f[1]': '0', // Booking ID — required by this merchant, validated as a number
+  'f[2]': 'Coffee & Tea', // Event Name — also required
 }).toString()}`;
