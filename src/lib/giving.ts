@@ -46,33 +46,59 @@ export function pushpayLinkWithReturn(origin: string): string {
  * The $3 Coffee & Tea box on /checkout
  * ---------------------------------------------------------------------------
  *
- * A second, differently-shaped ask: a fixed $3 one-time gift to the church's
- * **Coffee & Tea** fund, offered on the last screen before someone places their order.
+ * A second, differently-shaped ask: a $3 one-time gift to the church's **Coffee & Tea**
+ * fund, offered on the last screen before someone places their order. $3 is the starting
+ * amount, not a cap — they can type something else.
  *
- * This is NOT Pushpay's embedded widget, and it can't be. The widget's loader reads
- * exactly three keys off `window.pushpayEmbeddedConfig` — `handle`, `wgc` and
- * `onSubmitCallback` — and takes everything else (fund list, default fund, whether a gift
- * is recurring by default) from the merchant's own Pushpay settings. There is no amount,
- * no amount lock, no fund lock and no recurrence override a host page can pass it, and the
- * `wgc` token is signed by Pushpay so we can't extend it. Dropped in as-is on this account
- * the widget opens on a *recurring* gift to *Tithes* with an empty amount box — the
- * opposite of all three things this box is for. A preconfigured giving link does support
- * every one of them, so that's what this is.
+ * WHY THIS IS A LINK AND NOT PUSHPAY'S EMBEDDED WIDGET
+ * ----------------------------------------------------
+ * The widget was tried, in a real browser, against this exact handle. It renders, and it
+ * can be pre-filled. It still can't be used here, for one reason that isn't fixable from
+ * our side: **its "Next" button navigates the top window to `pushpay.com/g/<handle>`.**
+ * It is not an embedded payment at all — it's a pre-fill form that hands off to the same
+ * hosted giving page this link opens, and it breaks out of an iframe to do it (verified:
+ * a parent page hosting it in an `<iframe>` was itself navigated away). The cart lives in
+ * memory only (`src/lib/cart-store.ts` — no localStorage), so on /checkout that redirect
+ * throws away the customer's whole order on the way to giving $3. There is no wrapper,
+ * sandbox or handler that prevents it.
  *
- * Most of the locking is already baked into PUSHPAY_LINK itself: that short link expands
- * to `fnd=<Coffee & Tea>&fndv=Lock&r=No&rcv=False`, i.e. the fund is fixed and read-only
- * and the recurring selector is hidden. **If that short link is ever regenerated in the
- * Pushpay portal, check it still carries those** — nothing here can tell that it stopped,
- * and the gift would quietly land in the default fund (Tithes) instead.
+ * Two smaller things, for whoever revisits this:
+ *   - The widget takes exactly three keys off `window.pushpayEmbeddedConfig` — `handle`,
+ *     `wgc`, `onSubmitCallback`. Amount, fund and recurrence are NOT among them; they come
+ *     from the merchant's Pushpay settings, which on this handle default to the *Event*
+ *     fund with an empty amount box. `wgc` is signed by Pushpay, so it can't be extended.
+ *   - Since it redirects to this same page anyway, the link skips a whole form step.
  *
- * The two parameters we add are the ones the short link doesn't set:
- *   a=3      the amount
- *   al=true  make it read-only, so $3 is $3
- *
- * Deliberately no `rbu`/`rbt` here: this account returns `ReturnButtonUrl: null` for them,
- * so they'd be noise. The box opens in a new tab instead — see below for why that matters.
+ * WHAT THE PARAMETERS DO
+ * ----------------------
+ *   a=3        starting amount. Deliberately no `al` (amount lock) — they can change it.
+ *   fnd=<key>  the Coffee & Tea fund.
+ *   fndv=Lock  fund shown read-only, so a coffee gift can't land in Events by accident.
+ *   r=No       one-time.
+ *   rcv=false  hide the recurring selector entirely. Belt and braces with `r=No`.
+ *   f[1] f[2]  Booking ID and Event Name. These are REQUIRED custom fields on this
+ *              merchant and Pushpay refuses to advance without them, so they're pre-filled
+ *              — otherwise a coffee customer is asked for a booking reference. Booking ID
+ *              is validated as a number, hence `0`. If those two fields are ever made
+ *              optional in the Pushpay portal, these can go.
  */
+
+/** Pushpay merchant handle — "Light of the Gospel Events". */
+const COFFEE_HANDLE = '4135984186';
+
+/** The Coffee & Tea fund on that merchant. */
+const COFFEE_FUND_KEY = 'J2nNkYPMQkzlcuDvwZIcdw';
+
+/** Starting amount. Not a lock — the customer can type over it. */
 export const COFFEE_GIFT_AMOUNT = 3;
 
-/** The Coffee & Tea fund, locked to a one-time $3. Static — no origin needed. */
-export const COFFEE_GIVING_LINK = `${PUSHPAY_LINK}?a=${COFFEE_GIFT_AMOUNT}&al=true`;
+/** $3 to Coffee & Tea, one-time, fund locked. Static — no origin needed. */
+export const COFFEE_GIVING_LINK = `https://pushpay.com/g/${COFFEE_HANDLE}?${new URLSearchParams({
+  a: String(COFFEE_GIFT_AMOUNT),
+  fnd: COFFEE_FUND_KEY,
+  fndv: 'Lock',
+  r: 'No',
+  rcv: 'false',
+  'f[1]': '0',
+  'f[2]': 'Coffee & Tea',
+}).toString()}`;

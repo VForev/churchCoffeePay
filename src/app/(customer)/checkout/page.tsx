@@ -628,17 +628,18 @@ function CheckoutForm() {
             </div>
           )}
 
-          {/* Coffee & Tea giving — a fixed $3 one-time gift to the church's Coffee & Tea
-              fund, offered on the last screen before the order goes in. It opens in a new
-              tab on purpose: the cart is in memory only, so leaving this page would throw
-              the whole order away. Separate from the donation box above, which rides along
-              on the Stripe charge; this money goes straight to the church and we never see
-              it. Hidden once ordering is closed — there's no order to go back to. */}
+          {/* Coffee & Tea giving — a one-time gift to the church's Coffee & Tea fund,
+              starting at $3 (they can change it), offered on the last screen before the
+              order goes in. It opens in a new tab on purpose: the cart is in memory only,
+              so leaving this page would throw the whole order away. Separate from the
+              donation box above, which rides along on the Stripe charge; this money goes
+              straight to the church and we never see it. Hidden once ordering is closed —
+              there's no order to go back to. */}
           {!orderingClosed && (
             <GivingBox
               icon={'\u2615'}
               title={'Support the Coffee \u0026 Tea Ministry'}
-              message={`Help cover the cups, beans and milk. A one-time $${COFFEE_GIFT_AMOUNT} gift goes straight to the church's Coffee \u0026 Tea fund \u2014 it opens in a new tab, so your order stays right here.`}
+              message={`Help cover the cups, beans and milk. Starts at $${COFFEE_GIFT_AMOUNT} \u2014 change it to whatever you like. It goes straight to the church's Coffee \u0026 Tea fund, and opens in a new tab so your order stays right here.`}
               href={COFFEE_GIVING_LINK}
               buttonLabel={`Give $${COFFEE_GIFT_AMOUNT} for Coffee \u0026 Tea`}
               note={'One-time only, never recurring \u00b7 secure giving through Pushpay'}
