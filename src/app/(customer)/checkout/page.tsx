@@ -63,8 +63,6 @@ function CheckoutForm() {
   const [unlock, setUnlock] = useState<AccessUnlock | null>(() => getActiveUnlock());
   const isFreeOrder = cart.total === 0;
   const cartItemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-  // What the order costs with no donation. `cart.total` already has any donation in it.
-  const baseTotal = cart.total - cart.donation_amount;
 
   useEffect(() => {
     async function load() {
@@ -142,16 +140,20 @@ function CheckoutForm() {
   }
 
   /**
-   * `donation` comes from whichever of the two Place Order buttons was tapped.
+   * `give` is which of the two Place Order buttons was tapped — it does NOT change what
+   * the card is charged. The $3 goes to Pushpay, not Stripe, so Stripe only ever sees the
+   * drinks and `tip_amount` is always 0.
    *
-   * It has to be applied and read here rather than trusted from the render snapshot:
-   * `cartStore` mutates synchronously, but the `cart` from `useCart()` is a render behind,
-   * so a button that set the donation and submitted in the same tick would charge the old
-   * total. Everything below reads the fresh store value — this is the money.
+   * The order is placed FIRST and the Pushpay handoff happens after, on the confirmation
+   * screen. That ordering is the whole design: Pushpay can only take money on its own
+   * site, it refuses to be framed, and `rbu` (its return button) is off on this merchant,
+   * so anyone sent there is gone. Once the order is in the database that costs nothing —
+   * sending them there *before* placing it is what used to lose the coffee order.
    */
-  async function handleSubmit(e: React.FormEvent | null, donation: number) {
+  async function handleSubmit(e: React.FormEvent | null, give: boolean) {
     e?.preventDefault();
-    cartStore.setDonation(donation);
+    // Nothing is ever added to the card payment here; see above.
+    cartStore.setDonation(0);
     // A copy, not the store's own object: `getState()` returns the live mutable state, and
     // this function is long — it awaits Stripe and several inserts. Anything that touched
     // the cart meanwhile would otherwise change the totals underneath a charge in flight.
@@ -386,7 +388,10 @@ function CheckoutForm() {
       cartStore.clear();
       const estimatedWait = queueWait !== null ? queueWait + cartItemCount : null;
       const waitParam = estimatedWait !== null ? `&wait=${estimatedWait}` : '';
-      router.push(`/checkout/confirmation?name=${encodeURIComponent(customerName)}${waitParam}`);
+      const giveParam = give ? '&give=1' : '';
+      router.push(
+        `/checkout/confirmation?name=${encodeURIComponent(customerName)}${waitParam}${giveParam}`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setProcessing(false);
@@ -563,10 +568,10 @@ function CheckoutForm() {
 
           {error && <p className="text-center text-sm text-danger">{error}</p>}
 
-          {/* Two ways out of this page, both of which place the order. The $3 is a
-              choice between buttons rather than a box further up, so nobody reaches the
-              bottom having missed it — and neither path leaves /checkout, which is the
-              whole reason this isn't a Pushpay link (see src/lib/giving.ts). */}
+          {/* Two ways out of this page, both of which place the order. Both charge the
+              card the same amount — the drinks — because the $3 is a Pushpay gift, not a
+              Stripe line. The only difference is where the confirmation screen sends them
+              next. See src/lib/giving.ts for why the $3 can't happen on this page. */}
           {orderingClosed ? (
             <Button type="button" fullWidth size="lg" disabled>
               Ordering Is Closed
@@ -579,13 +584,11 @@ function CheckoutForm() {
                 size="lg"
                 variant="success"
                 disabled={processing || cart.items.length === 0}
-                onClick={() => handleSubmit(null, COFFEE_GIFT_AMOUNT)}
+                onClick={() => handleSubmit(null, true)}
               >
                 {processing
                   ? 'Placing your order...'
-                  : `\u2615 Place Order & Give $${COFFEE_GIFT_AMOUNT} \u00b7 $${(
-                      baseTotal + COFFEE_GIFT_AMOUNT
-                    ).toFixed(2)}`}
+                  : `\u2615 Place Order & Give $${COFFEE_GIFT_AMOUNT}`}
               </Button>
 
               <Button
@@ -593,17 +596,15 @@ function CheckoutForm() {
                 fullWidth
                 size="lg"
                 disabled={processing || cart.items.length === 0}
-                onClick={() => handleSubmit(null, 0)}
+                onClick={() => handleSubmit(null, false)}
               >
-                {processing
-                  ? 'Placing your order...'
-                  : baseTotal === 0
-                    ? 'Place Order \u2014 No Donation'
-                    : `Place Order \u2014 No Donation \u00b7 $${baseTotal.toFixed(2)}`}
+                {processing ? 'Placing your order...' : 'Place Order \u2014 No Donation'}
               </Button>
 
               <p className="text-center font-body text-xs text-text-light">
-                {`The $${COFFEE_GIFT_AMOUNT} supports the Coffee & Tea Ministry and is charged with your order \u2014 you stay right here either way.`}
+                {isFreeOrder
+                  ? `Your drinks are free either way. The $${COFFEE_GIFT_AMOUNT} goes to the Coffee & Tea Ministry through Pushpay, on the next screen.`
+                  : `Your card is charged $${cart.total.toFixed(2)} for the drinks either way. The $${COFFEE_GIFT_AMOUNT} goes to the Coffee & Tea Ministry through Pushpay, on the next screen.`}
               </p>
             </div>
           )}

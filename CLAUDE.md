@@ -792,64 +792,64 @@ Every customer-facing "tip" is now a **donation**, and it can be switched off en
 Separate from the checkout donation above, and easy to confuse — **there are two "give"
 boxes and they do different things.**
 
-| | Coffee & Tea ask (`/checkout`) | Pushpay giving box |
+| | Coffee & Tea $3 gift | Pushpay giving box |
 |---|---|---|
-| Where | `/checkout`, one of the two Place Order buttons | `/checkout/confirmation`, `/yourlive` |
-| When | As the order is placed | After the order is placed |
-| Amount | **$3, or nothing** | Whatever they pick |
-| Leaves the page? | **Never** | Yes — goes to pushpay.com |
-| Money goes | Through Stripe, with the coffee | Straight to the church, via Pushpay |
-| Recorded | `orders.tip_amount` | Nowhere — we never see it |
+| Where | `/checkout` button → `/checkout/confirmation` | `/checkout/confirmation`, `/yourlive` |
+| When | Chosen before ordering, paid after | After the order is placed |
+| Amount | **$3 pre-filled**, editable | Whatever they pick |
+| Fund | **Locked to Coffee & Tea** | Donor chooses |
+| Money goes | Straight to the church, via Pushpay | Straight to the church, via Pushpay |
+| Recorded | Nowhere — we never see it | Nowhere — we never see it |
 
-### The Coffee & Tea ask — two Place Order buttons
+### The $3 Coffee & Tea gift — two buttons, then Pushpay
 
-`/checkout` ends in **two buttons**, not a donation box and one button:
+`/checkout` ends in **two buttons**, and both charge the card the same amount (the drinks):
 
-- **☕ Place Order & Give $3 · $X** — the order plus $3, on one card charge
-- **Place Order — No Donation · $X** — the order on its own
+- **☕ Place Order & Give $3** — places the order, then lands on the confirmation screen
+  with a pre-filled Pushpay $3 gift as the first thing on it
+- **Place Order — No Donation** — places the order, normal confirmation screen
 
 The ask is a choice *between the buttons* rather than a box further up the page, so nobody
-reaches the bottom having missed it, and declining takes exactly one tap. Both paths place
-the order and **neither leaves `/checkout`** — that is the whole point (see below).
+reaches the bottom having missed it, and declining takes one tap.
 
-The $3 is applied through `cartStore.setDonation`, saved on the order as `tip_amount`.
+**The $3 does not go through Stripe.** `orders.tip_amount` is always 0 on this path;
+Stripe only ever sees the drinks. The gift goes to the church's Pushpay Coffee & Tea fund
+and never touches our database.
 
-**`handleSubmit(e, donation)` takes the amount as an argument and re-reads the store.**
-This matters: `cartStore` mutates synchronously but the `cart` from `useCart()` is a render
-behind, so a button that set the donation and submitted in the same tick would charge the
-old total. It also takes a **copy** — `getState()` hands back the live mutable object, and
-that function awaits Stripe and several inserts, so anything touching the cart meanwhile
-would move the totals underneath a charge already in flight.
+#### Order first, then Pushpay — this ordering is the whole design
 
-There is no longer an effect that zeroes the donation when `donations_enabled` is off: the
-amount isn't held in the cart between renders any more, it's chosen at submit. **The two
-buttons are not gated on `donations_enabled`** — they are the ask, so hiding them behind a
-setting would just make the feature disappear.
-
-#### Why this isn't Pushpay's embedded widget
-
-It was tried, in a real browser, against the church's actual handle. **Pushpay only ever
-takes payment on pushpay.com**, and there is no configuration that changes it:
+Pushpay can only take money on pushpay.com. All of this was tested against the real
+merchant handle:
 
 - The **embedded widget is not an embedded payment.** It's a pre-fill form whose "Next"
-  button sets `window.top.location.href` to `pushpay.com/g/<handle>`. It **breaks out of an
+  sets `window.top.location.href` to `pushpay.com/g/<handle>`. It **breaks out of an
   iframe** to do it — a parent page hosting it in an `<iframe>` was itself navigated away.
-- The **hosted giving page can't be framed either**: `X-Frame-Options: SAMEORIGIN`.
+- The **hosted page refuses to be framed**: `X-Frame-Options: SAMEORIGIN`.
 - Its config object takes exactly three keys — `handle`, `wgc`, `onSubmitCallback`. Amount,
-  fund and recurrence are **not** among them; they come from the merchant's Pushpay
-  settings. `wgc` decodes to `{"askgp":true}` plus an HMAC, so it can't be extended.
-- `onSubmitCallback` **does** suppress the redirect (the widget hands you `{ redirectUrl }`
-  and stays put), but the customer still has to reach that URL to pay. It only moves the
-  problem to "which tab".
+  fund and recurrence are **not** among them. `wgc` decodes to `{"askgp":true}` plus an
+  HMAC, so it can't be extended.
+- **`rbu`/`rbt` (Pushpay's "return to site" button) are off on this merchant** — the page
+  comes back `ReturnButtonUrl: null`. Whoever goes to Pushpay is not coming back.
 
-Since `/checkout`'s cart is **in memory only** (`src/lib/cart-store.ts` — no localStorage),
-every Pushpay-shaped option risks the coffee order itself: the customer goes off to give
-$3 and never comes back to place the order. That is the reason this is Stripe.
+So the order is placed **first**, and the Pushpay link only appears once it's on the
+barista board. Then wandering off costs nothing. This is exactly what went wrong when the
+ask sat on `/checkout` itself: the cart is in memory only (`src/lib/cart-store.ts` — no
+localStorage), so leaving that page threw the whole coffee order away.
 
-`COFFEE_GIVING_LINK` in `src/lib/giving.ts` is the verified Pushpay route to the same fund
-(`a=3` editable, `fndv=Lock`, `r=No&rcv=false`, plus `f[1]`/`f[2]` pre-answering the two
-custom fields that merchant requires). **Nothing renders it today** — it's kept for a page
-where leaving is free, i.e. `/checkout/confirmation`.
+`handleSubmit(e, give)` takes the choice as an argument; `give` only decides whether
+`&give=1` is added to the confirmation URL. It always calls `cartStore.setDonation(0)`, and
+it reads a **copy** of the store rather than the `useCart()` snapshot — that snapshot is a
+render behind, and the function awaits Stripe and several inserts, so nothing should be
+able to move the totals underneath a charge in flight.
+
+**The two buttons are not gated on `donations_enabled`** — they are the ask, so hiding them
+behind a setting would just make the feature disappear.
+
+`COFFEE_GIVING_LINK` in `src/lib/giving.ts` is the link, with `a=3` (editable), `fndv=Lock`,
+`r=No&rcv=false`, and `f[1]`/`f[2]` pre-answering the **Booking ID** and **Event Name**
+custom fields that merchant marks required — without them Pushpay refuses to advance, and a
+coffee customer would be asked for a booking reference. Booking ID is validated as a number,
+hence `0`.
 
 ### /live vs /yourlive
 
