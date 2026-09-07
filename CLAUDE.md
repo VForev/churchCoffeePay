@@ -789,15 +789,39 @@ Every customer-facing "tip" is now a **donation**, and it can be switched off en
 
 ## Giving to the Church (Pushpay)
 
-Separate from the checkout donation above, and easy to confuse — **there are two different
-"give" boxes and they do different things.**
+Separate from the checkout donation above, and easy to confuse — **there are three
+different "give" boxes and they do different things.**
 
-| | Checkout donation | Pushpay giving box |
-|---|---|---|
-| Where | `/checkout`, `/tablet` | `/checkout/confirmation`, `/yourlive` |
-| When | Before paying, as part of the order | After the order is placed |
-| Money goes | Through Stripe, with the coffee | Straight to the church, via Pushpay |
-| Recorded | `orders.tip_amount` | Nowhere — we never see it |
+| | Checkout donation | $3 Coffee & Tea box | Pushpay giving box |
+|---|---|---|---|
+| Where | `/checkout`, `/tablet` | `/checkout`, above Place Order | `/checkout/confirmation`, `/yourlive` |
+| When | Before paying, as part of the order | Before the order is placed | After the order is placed |
+| Amount | Whatever they pick | **Locked at $3, one-time** | Whatever they pick |
+| Fund | n/a | **Locked to Coffee & Tea** | Donor chooses |
+| Money goes | Through Stripe, with the coffee | Straight to the church, via Pushpay | Straight to the church, via Pushpay |
+| Recorded | `orders.tip_amount` | Nowhere — we never see it | Nowhere — we never see it |
+
+### The $3 Coffee & Tea box — `/checkout`
+
+Same `GivingBox` component, a different link and one critical difference: **it opens in a
+new tab.** The cart lives in memory only (`src/lib/cart-store.ts` — no localStorage), so
+sending someone off to Pushpay from `/checkout` would throw their whole order away and
+bring them back to an empty cart. A giving ask that costs someone their coffee is worse
+than no giving ask.
+
+**It is not Pushpay's embedded giving widget, and it can't be.** The widget's loader reads
+exactly three keys off `window.pushpayEmbeddedConfig` — `handle`, `wgc` and
+`onSubmitCallback` — and takes everything else from the merchant's Pushpay settings, which
+on this account mean a *recurring* gift to *Tithes* with an empty amount box. There is no
+amount, no amount lock, no fund lock and no recurrence override a host page can pass it,
+and `wgc` is signed by Pushpay so it can't be extended. A **preconfigured giving link**
+supports all of it, so that's what this is.
+
+Most of the locking is already in `PUSHPAY_LINK` itself — that short link expands to
+`fnd=<Coffee & Tea>&fndv=Lock&r=No&rcv=False`. `COFFEE_GIVING_LINK` in `src/lib/giving.ts`
+adds only the two it doesn't set: `a=3` and `al=true`. **If the short link is ever
+regenerated in the Pushpay portal, check it still carries the fund lock** — nothing in the
+code can tell that it stopped, and gifts would quietly land in Tithes instead.
 
 `src/components/GivingBox.tsx` is the Pushpay one. It's a **plain link to Pushpay, not their
 embedded widget.** The widget would keep people on our page, but it's a third-party script,

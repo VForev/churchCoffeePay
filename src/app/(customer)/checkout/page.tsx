@@ -35,6 +35,8 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import { ClosedNotice } from '@/components/ShopBanner';
+import GivingBox from '@/components/GivingBox';
+import { COFFEE_GIVING_LINK, COFFEE_GIFT_AMOUNT } from '@/lib/giving';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
 import { cn } from '@/lib/utils';
 import type { Coupon, ShopSettings, OrderingHours } from '@/types';
@@ -624,6 +626,24 @@ function CheckoutForm() {
                 <p className="text-xs text-text-light">Based on current queue + your order</p>
               </div>
             </div>
+          )}
+
+          {/* Coffee & Tea giving — a fixed $3 one-time gift to the church's Coffee & Tea
+              fund, offered on the last screen before the order goes in. It opens in a new
+              tab on purpose: the cart is in memory only, so leaving this page would throw
+              the whole order away. Separate from the donation box above, which rides along
+              on the Stripe charge; this money goes straight to the church and we never see
+              it. Hidden once ordering is closed — there's no order to go back to. */}
+          {!orderingClosed && (
+            <GivingBox
+              icon={'\u2615'}
+              title={'Support the Coffee \u0026 Tea Ministry'}
+              message={`Help cover the cups, beans and milk. A one-time $${COFFEE_GIFT_AMOUNT} gift goes straight to the church's Coffee \u0026 Tea fund \u2014 it opens in a new tab, so your order stays right here.`}
+              href={COFFEE_GIVING_LINK}
+              buttonLabel={`Give $${COFFEE_GIFT_AMOUNT} for Coffee \u0026 Tea`}
+              note={'One-time only, never recurring \u00b7 secure giving through Pushpay'}
+              newTab
+            />
           )}
 
           {error && <p className="text-center text-sm text-danger">{error}</p>}

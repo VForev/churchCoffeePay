@@ -40,3 +40,39 @@ export function pushpayLinkWithReturn(origin: string): string {
   });
   return `${PUSHPAY_LINK}?${params.toString()}`;
 }
+
+/**
+ * ---------------------------------------------------------------------------
+ * The $3 Coffee & Tea box on /checkout
+ * ---------------------------------------------------------------------------
+ *
+ * A second, differently-shaped ask: a fixed $3 one-time gift to the church's
+ * **Coffee & Tea** fund, offered on the last screen before someone places their order.
+ *
+ * This is NOT Pushpay's embedded widget, and it can't be. The widget's loader reads
+ * exactly three keys off `window.pushpayEmbeddedConfig` — `handle`, `wgc` and
+ * `onSubmitCallback` — and takes everything else (fund list, default fund, whether a gift
+ * is recurring by default) from the merchant's own Pushpay settings. There is no amount,
+ * no amount lock, no fund lock and no recurrence override a host page can pass it, and the
+ * `wgc` token is signed by Pushpay so we can't extend it. Dropped in as-is on this account
+ * the widget opens on a *recurring* gift to *Tithes* with an empty amount box — the
+ * opposite of all three things this box is for. A preconfigured giving link does support
+ * every one of them, so that's what this is.
+ *
+ * Most of the locking is already baked into PUSHPAY_LINK itself: that short link expands
+ * to `fnd=<Coffee & Tea>&fndv=Lock&r=No&rcv=False`, i.e. the fund is fixed and read-only
+ * and the recurring selector is hidden. **If that short link is ever regenerated in the
+ * Pushpay portal, check it still carries those** — nothing here can tell that it stopped,
+ * and the gift would quietly land in the default fund (Tithes) instead.
+ *
+ * The two parameters we add are the ones the short link doesn't set:
+ *   a=3      the amount
+ *   al=true  make it read-only, so $3 is $3
+ *
+ * Deliberately no `rbu`/`rbt` here: this account returns `ReturnButtonUrl: null` for them,
+ * so they'd be noise. The box opens in a new tab instead — see below for why that matters.
+ */
+export const COFFEE_GIFT_AMOUNT = 3;
+
+/** The Coffee & Tea fund, locked to a one-time $3. Static — no origin needed. */
+export const COFFEE_GIVING_LINK = `${PUSHPAY_LINK}?a=${COFFEE_GIFT_AMOUNT}&al=true`;
