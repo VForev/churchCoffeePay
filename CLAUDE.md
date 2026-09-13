@@ -130,6 +130,12 @@ honest value to back-fill them with.
 the board can show which cups have already come off the roll. Without it, printing still
 works per cup; every cup just always looks unprinted.
 
+**`supabase-theme.sql`** — Required for **changing the app's colours** at `/admin/theme`.
+Creates `theme_settings` (single row, `id = 1`) holding the chosen scheme and any
+per-colour overrides, and puts it on the realtime publication so a save repaints every
+open screen. Until it runs, the app looks exactly as it does now (the Navy preset is the
+same set of values hard-coded in `globals.css`) and the page says to run this file.
+
 **`supabase-giving-intent.sql`** — Required for the **$3 gift metric** on `/admin`
 (*The $3 Coffee & Tea gift* panel). Adds `orders.giving_intent` — which of the two Place
 Order buttons the customer tapped. Until it runs, checkout quietly drops the column from
@@ -179,6 +185,7 @@ trigger that actually enforces the limit. Until it runs there is no limit at all
 | `/admin/orders` | Full order history — expand rows, filter by status, search by name, archive or delete |
 | `/admin/labels` | Cup label layout — roll size, what's on the label, text sizes, live preview, test print |
 | `/admin/print-setup` | Non-technical, step-by-step guide to installing the printer software on the shop PC; downloads the agent bundle |
+| `/admin/theme` | **Look & Colours** — pick a colour scheme or change any individual colour; live preview, saves to every screen at once |
 | `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, **lock everything**, donation on/off, coupon box on/off, **spam-order limit** |
 
 ---
@@ -196,6 +203,7 @@ src/
 │   ├── admin/                       # All admin pages
 │   └── api/checkout/route.ts        # Stripe PaymentIntent API
 ├── components/
+│   ├── ThemeProvider.tsx            # Paints the saved colours onto every page
 │   ├── menu/ModifierSelector.tsx    # Customization modal (supports 30+ syrup dropdowns)
 │   ├── menu/MenuCard.tsx            # Item card
 │   └── ui/                          # Button, Card, Modal, Input, Badge
@@ -208,6 +216,7 @@ src/
 │   ├── order-issues.ts              # Problem-order flag: reasons, hasIssue(), error copy
 │   ├── logo.ts                      # Church mark as base64; shared with the print agent
 │   ├── giving.ts                    # Pushpay handle, token and link
+│   ├── theme.ts                     # Colour tokens, the schemes, load/save
 │   ├── my-order.ts                  # Which orders on the board are this phone's
 │   ├── supabase.ts                  # Supabase client
 │   ├── access.ts                    # Admin service-role client
@@ -251,6 +260,11 @@ Based on [lotgchurch.com](https://www.lotgchurch.com/).
 
 ### Color Palette
 
+**These are the defaults, not the truth.** They're the `Navy` scheme, and every one of
+them is editable at `/admin/theme` — see *Colours and Themes* below. Components are
+written in terms of the token (`bg-primary`, `text-success`), never a hex value, which is
+what makes that possible.
+
 | Variable | Hex | Use |
 |----------|-----|-----|
 | `--color-primary` | `#4054B2` | Navy blue — buttons, links, active states |
@@ -271,6 +285,62 @@ Based on [lotgchurch.com](https://www.lotgchurch.com/).
 - **Accents/UI:** Roboto (`font-accent`)
 
 ---
+
+## Colours and Themes
+
+The whole app can be recoloured from **`/admin/theme`** — a scheme, or any single colour
+on top of it — and the change reaches the customer menu, the tablet, the barista board and
+the lobby TV the moment it's saved. Migration: `supabase-theme.sql`.
+
+### How it works, in one paragraph
+
+Every colour on every screen is one of **fifteen tokens** declared in `globals.css` and
+read by Tailwind (`bg-primary`, `text-success`, `border-danger`…). Tailwind v4 compiles
+those utilities to `background-color: var(--color-primary)`, so changing the *value* of
+the variable at runtime recolours the app without a single component knowing a theme
+exists. `ThemeProvider` (mounted once in the root layout) writes one `<style>` holding a
+second `:root { … }` block; it lands after `globals.css` in document order and wins on the
+cascade. **That is the whole mechanism** — if you find yourself adding a hex value to a
+component, you've stepped outside it.
+
+### The schemes
+
+`THEME_PRESETS` in **`src/lib/theme.ts`** is the one definition of them:
+
+| Scheme | What it is |
+|---|---|
+| **Navy — how it is now** | The default, and what a database with no theme row gets. Identical to the values hard-coded in `globals.css`. |
+| **Coffee House** | The warm browns off the church website. |
+| **Slate** | Blue-grey for buttons — furthest from the olive and the red, so ready / sold out / tappable can't be confused. |
+| **Brown** | Closest to the church site itself; slate takes over "being made". |
+| **Red** | The boldest. Costs you red for problems: errors and sold-out fall back to bark, because red is doing the tapping. |
+
+Every colour in the four church schemes is one of the ten on the church colour sheet.
+Nothing is invented, which is the only reason they sit beside the church's own materials
+without clashing.
+
+### Things worth knowing before changing it
+
+- **The scheme and the overrides are stored separately** (`theme_settings.preset` and
+  `.overrides`). "Slate, but with a warmer page" stays Slate — so a preset can be
+  corrected later without wiping the shop's own edits, and clearing one colour puts it
+  back to the scheme's value rather than to navy blue.
+- **A missing migration is Navy, not grey.** Every read in `theme.ts` falls back to the
+  built-in preset, so a database that never ran `supabase-theme.sql` looks exactly as it
+  does today.
+- **The first paint comes from localStorage.** The theme lives in the database, so it
+  isn't known when the page first renders — without the cache a customer watches the menu
+  change colour under them on every load. It can only be wrong for one paint, right after
+  an admin changes it.
+- **Only hex is ever written into the page.** `themeCss()` filters every value through
+  `isHexColor()` before it becomes CSS.
+- **`/admin/theme` previews on itself.** The page renders its own `<style>` after the
+  provider's, so unsaved edits paint that screen and nowhere else. A colour picker that
+  only tints a swatch is how you save something nobody looked at.
+- **Dark backgrounds aren't supported yet.** Around 150 hairlines and two dozen surfaces
+  are still literal light greys (`border-gray-100`, `bg-white`), so a dark page colour
+  reads as broken rather than dark. Real dark mode means replacing those with tokens
+  first; the admin page says so out loud rather than letting someone find out on a Sunday.
 
 ## Order Workflow
 
@@ -1117,6 +1187,13 @@ For Netlify:
 2. Read the **How long orders took** panel — average, typical, fastest, slowest, and
    every order with its own time
 3. Only orders where the barista tapped **Start Making** and then **Mark Ready** are timed
+
+**Change the app's colours:**
+1. Go to `/admin/theme`
+2. Pick a scheme, or change any single colour under **Change a colour** — the page
+   repaints as you go
+3. **Save colours.** Every open screen, including the lobby TV, has it a second later
+4. Keep the page colour light — see *Colours and Themes* above for why
 
 **See how many people said they'd give the $3:**
 1. Go to `/admin` and pick a time range

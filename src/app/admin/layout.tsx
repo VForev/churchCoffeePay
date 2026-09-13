@@ -17,6 +17,7 @@ const navItems = [
   { href: '/admin/orders', label: 'Orders', icon: '📋' },
   { href: '/admin/labels', label: 'Cup Labels', icon: '🏷' },
   { href: '/admin/print-setup', label: 'Printer Setup', icon: '🖨' },
+  { href: '/admin/theme', label: 'Look & Colours', icon: '🎨' },
   { href: '/admin/settings', label: 'Settings', icon: '🕒' },
 ];
 

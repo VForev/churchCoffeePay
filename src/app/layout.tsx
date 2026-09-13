@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Kumbh_Sans, Nunito, Roboto } from "next/font/google";
 import "./globals.css";
+import ThemeProvider from "@/components/ThemeProvider";
 
 const kumbhSans = Kumbh_Sans({
   variable: "--font-heading",
@@ -36,7 +37,12 @@ export default function RootLayout({
       lang="en"
       className={`${kumbhSans.variable} ${nunito.variable} ${roboto.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-body">{children}</body>
+      <body className="min-h-full flex flex-col font-body">
+        {/* First thing in the body so every page's own <style> still wins over it —
+            /admin/theme previews unsaved colours that way. */}
+        <ThemeProvider />
+        {children}
+      </body>
     </html>
   );
 }
