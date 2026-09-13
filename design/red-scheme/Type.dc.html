@@ -1,0 +1,215 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kumbh+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #2B2A28; }
+    a { color: #911B1B; } a:hover { color: #6d1414; }
+    .page { width: 1456px; height: 816px; box-sizing: border-box; padding: 40px 56px 32px;
+            background: #2B2A28; font-family: 'Nunito', system-ui, sans-serif; color: #E6E6E6; }
+    .eyebrow { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 11px; font-weight: 600;
+               letter-spacing: .14em; text-transform: uppercase; color: #B3ACA1; }
+    .h1 { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 30px; font-weight: 700;
+          color: #F2F1ED; margin: 12px 0 5px; letter-spacing: -.01em; }
+    .sub { font-size: 13px; color: #918F8A; }
+    .pageno { font-size: 12px; color: #918F8A; font-family: 'Kumbh Sans', system-ui, sans-serif; }
+    .rule { height: 1px; background: #46443F; margin: 14px 0 20px; }
+
+    .sheet { background: #FBFAF8; border-radius: 12px; padding: 15px 16px; color: #2F2E2C;
+             display: flex; flex-direction: column; gap: 12px; }
+    .stitle { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 12.5px; font-weight: 700; }
+    .slaw { font-size: 10.5px; line-height: 1.45; color: #86837D; }
+    .slaw b { color: #911B1B; font-weight: 700; }
+    .k { font-family: 'Kumbh Sans', system-ui, sans-serif; }
+    .spec { font-size: 9.5px; color: #A09C95; font-family: 'Kumbh Sans', system-ui, sans-serif;
+            letter-spacing: .02em; }
+    .use { font-size: 10.5px; color: #86837D; }
+    .hair { height: 1px; background: #E7E5E0; }
+    .sw { border-radius: 6px; width: 26px; height: 26px; flex: none; }
+    .note { font-size: 11.5px; line-height: 1.55; color: #A9A69F; }
+    .note b { color: #E6E6E6; font-weight: 700; }
+  </style>
+</helmet>
+
+<div class="page">
+  <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+      <div class="eyebrow">LOTG Coffee — the red scheme</div>
+      <div class="h1">Type, space and what each colour means</div>
+      <div class="sub">Two typefaces, one spacing step, and a colour that only ever means one thing</div>
+    </div>
+    <div class="pageno">9 / 9</div>
+  </div>
+  <div class="rule"></div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin-bottom: 22px;">
+
+    <!-- type scale -->
+    <div class="sheet" style="grid-column: span 2;">
+      <div>
+        <div class="stitle">The scale</div>
+        <div class="slaw"><b>Kumbh Sans</b> for anything named or tapped, <b>Nunito</b> for anything
+          read in a sentence. Nothing else.</div>
+      </div>
+
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 14px;">
+        <div class="k" style="font-size: 30px; font-weight: 700; letter-spacing: -.01em;">Order Placed</div>
+        <div style="text-align: right;">
+          <div class="spec">Kumbh 30 / 700</div><div class="use">Screen title, one per page</div>
+        </div>
+      </div>
+      <div class="hair"></div>
+
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 14px;">
+        <div class="k" style="font-size: 17px; font-weight: 700;">Taking you to Pushpay in 3&hellip;</div>
+        <div style="text-align: right;">
+          <div class="spec">Kumbh 17 / 700</div><div class="use">Panel heading</div>
+        </div>
+      </div>
+      <div class="hair"></div>
+
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 14px;">
+        <div class="k" style="font-size: 13px; font-weight: 700;">Cappuccino</div>
+        <div style="text-align: right;">
+          <div class="spec">Kumbh 13 / 700</div><div class="use">Drink name, customer name, button</div>
+        </div>
+      </div>
+      <div class="hair"></div>
+
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 14px;">
+        <div style="font-size: 12px; line-height: 1.5;">Two orders ahead of you right now.</div>
+        <div style="text-align: right;">
+          <div class="spec">Nunito 12 / 400 &middot; 1.5</div><div class="use">Body, help text</div>
+        </div>
+      </div>
+      <div class="hair"></div>
+
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 14px;">
+        <div style="font-size: 10.5px; color: #86837D;">2 shots &middot; oat milk &middot; iced</div>
+        <div style="text-align: right;">
+          <div class="spec">Nunito 10.5 / 400</div><div class="use">The add-ins under a drink</div>
+        </div>
+      </div>
+      <div class="hair"></div>
+
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 14px;">
+        <div class="k" style="font-size: 10px; font-weight: 600; letter-spacing: .08em;
+             text-transform: uppercase; color: #A09C95;">Ready — come grab it</div>
+        <div style="text-align: right;">
+          <div class="spec">Kumbh 10 / 600 &middot; .08em</div><div class="use">Section label</div>
+        </div>
+      </div>
+
+      <div class="slaw">On the cafe screen every one of these doubles: a name is read at six metres,
+        not sixty centimetres. <b>Same scale, one multiplier</b> — never a second set of sizes.</div>
+    </div>
+
+    <!-- spacing -->
+    <div class="sheet">
+      <div>
+        <div class="stitle">Space and corners</div>
+        <div class="slaw">One step of <b>4</b>, and four radii. If a value isn&rsquo;t on this list
+          it is a mistake.</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="height: 8px; width: 4px; background: #911B1B;"></div>
+          <div class="spec" style="width: 26px;">4</div><div class="use">Inside a chip</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="height: 8px; width: 8px; background: #911B1B;"></div>
+          <div class="spec" style="width: 26px;">8</div><div class="use">Between rows</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="height: 8px; width: 12px; background: #911B1B;"></div>
+          <div class="spec" style="width: 26px;">12</div><div class="use">Card padding</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="height: 8px; width: 24px; background: #911B1B;"></div>
+          <div class="spec" style="width: 26px;">24</div><div class="use">Between blocks</div>
+        </div>
+      </div>
+
+      <div class="hair"></div>
+
+      <div style="display: flex; gap: 9px; align-items: flex-end;">
+        <div style="text-align: center;">
+          <div style="width: 34px; height: 26px; border: 1.5px solid #DEDBD5; border-radius: 5px;"></div>
+          <div class="spec" style="margin-top: 4px;">5</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 34px; height: 26px; border: 1.5px solid #DEDBD5; border-radius: 9px;"></div>
+          <div class="spec" style="margin-top: 4px;">9</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 34px; height: 26px; border: 1.5px solid #DEDBD5; border-radius: 12px;"></div>
+          <div class="spec" style="margin-top: 4px;">12</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="width: 44px; height: 26px; border: 1.5px solid #DEDBD5; border-radius: 999px;"></div>
+          <div class="spec" style="margin-top: 4px;">pill</div>
+        </div>
+      </div>
+      <div class="slaw">Bands and badges 5. Fields and rows 9. Cards 12. <b>Anything you tap is a
+        pill.</b></div>
+    </div>
+
+    <!-- colour roles -->
+    <div class="sheet">
+      <div>
+        <div class="stitle">One colour, one meaning</div>
+        <div class="slaw">The values are on the previous page. This is where each one is allowed
+          to appear.</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 9px;">
+        <div style="display: flex; gap: 10px; align-items: flex-start;">
+          <div class="sw" style="background: #911B1B;"></div>
+          <div><div class="k" style="font-size: 11.5px; font-weight: 700;">Tap this</div>
+               <div class="use">Buttons, the chosen option, the cup number, a flagged card.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: flex-start;">
+          <div class="sw" style="background: #6F745D;"></div>
+          <div><div class="k" style="font-size: 11.5px; font-weight: 700;">Open and ready</div>
+               <div class="use">Open dot, Ready column, a printed cup.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: flex-start;">
+          <div class="sw" style="background: #695B4B;"></div>
+          <div><div class="k" style="font-size: 11.5px; font-weight: 700;">Being made</div>
+               <div class="use">The middle column, and nothing else.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: flex-start;">
+          <div class="sw" style="background: #5C5241;"></div>
+          <div><div class="k" style="font-size: 11.5px; font-weight: 700;">Sold out and late</div>
+               <div class="use">Struck-through options, an order past its wait.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: flex-start;">
+          <div class="sw" style="background: #C3C4BA;"></div>
+          <div><div class="k" style="font-size: 11.5px; font-weight: 700;">Read, don&rsquo;t tap</div>
+               <div class="use">Wait times, the no-charge notice, the fixed cup size.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px;">
+    <div class="note"><b>Red is a verb.</b> If something is red, tapping it does something. The
+      moment red also means &ldquo;sold out&rdquo; or &ldquo;heading&rdquo;, nobody can tell what
+      is a button any more.</div>
+    <div class="note"><b>Nothing is smaller than 44 px to tap, or 12 px to read.</b> This is used
+      one-handed, standing, in a queue, by people who left their glasses in the pew.</div>
+    <div class="note"><b>The label has no scheme.</b> A thermal printer is one bit — black or
+      nothing. Emphasis there is bold, or white out of a black chip, and it is decided in
+      <span style="color: #C3C4BA;">labels.ts</span> so the preview cannot drift from the roll.</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

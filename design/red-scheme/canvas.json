@@ -1,0 +1,13 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",       "x": 0,    "y": 0,   "w": 1456, "h": 816, "title": "6 · Ordering in three taps" },
+    { "file": "Handoff.dc.html",    "x": 1556, "y": 0,   "w": 1456, "h": 816, "title": "7 · After they pay" },
+    { "file": "Components.dc.html", "x": 0,    "y": 936, "w": 1456, "h": 816, "title": "8 · The pieces" },
+    { "file": "Type.dc.html",       "x": 1556, "y": 936, "w": 1456, "h": 816, "title": "9 · Type, space, colour" }
+  ],
+  "annotations": [
+    { "id": "deck-note", "x": 0, "y": -150, "w": 620,
+      "text": "Pages 6–9 of the red-scheme deck.\n6 and 7 are the flow as it now works in the app; 8 and 9 are the style sheets the rest of it gets built from.\nExport PDF gives you four pages to sit behind the existing five." }
+  ],
+  "launch": { "view": "canvas" }
+}

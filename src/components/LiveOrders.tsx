@@ -81,9 +81,17 @@ const STATUS_CONFIG = {
 export default function LiveOrders({
   showGiving = false,
   twoColumn = false,
+  embedded = false,
 }: {
   showGiving?: boolean;
   twoColumn?: boolean;
+  /**
+   * Dropped into the bottom of another page (the confirmation screen) rather than being
+   * the page. Loses the full-height background and the shop banner — that page has
+   * already said whether the shop is open — and keeps the queue itself identical, which
+   * is the whole reason this is a prop and not a second copy of the board.
+   */
+  embedded?: boolean;
 }) {
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,7 +171,9 @@ export default function LiveOrders({
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg">
+      <div
+        className={`flex items-center justify-center bg-bg ${embedded ? 'py-16' : 'min-h-screen'}`}
+      >
         <div className="text-center">
           <div className="mx-auto mb-4 h-14 w-14 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
           <p className="font-body text-lg text-text-light">Loading orders...</p>
@@ -173,9 +183,9 @@ export default function LiveOrders({
   }
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className={embedded ? 'bg-bg' : 'min-h-screen bg-bg'}>
       <div className={`mx-auto max-w-2xl px-4 pt-3 ${twoColumn ? 'lg:max-w-[1500px]' : ''}`}>
-        <ShopBanner settings={settings} status={status} compact />
+        {!embedded && <ShopBanner settings={settings} status={status} compact />}
 
         <div className="mt-2.5 flex items-center justify-between px-1">
           <h2 className="font-accent text-xs font-bold uppercase tracking-wide text-text-light">

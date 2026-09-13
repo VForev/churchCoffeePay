@@ -1,0 +1,260 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kumbh+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #2B2A28; }
+    a { color: #911B1B; } a:hover { color: #6d1414; }
+    .page { width: 1456px; height: 816px; box-sizing: border-box; padding: 40px 56px 32px;
+            background: #2B2A28; font-family: 'Nunito', system-ui, sans-serif; color: #E6E6E6; }
+    .eyebrow { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 11px; font-weight: 600;
+               letter-spacing: .14em; text-transform: uppercase; color: #B3ACA1; }
+    .h1 { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 30px; font-weight: 700;
+          color: #F2F1ED; margin: 12px 0 5px; letter-spacing: -.01em; }
+    .sub { font-size: 13px; color: #918F8A; }
+    .pageno { font-size: 12px; color: #918F8A; font-family: 'Kumbh Sans', system-ui, sans-serif; }
+    .rule { height: 1px; background: #46443F; margin: 14px 0 20px; }
+
+    .sheet { background: #FBFAF8; border-radius: 12px; padding: 13px 15px; color: #2F2E2C;
+             display: flex; flex-direction: column; gap: 9px; }
+    .stitle { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 12.5px; font-weight: 700; }
+    .slaw { font-size: 10.5px; line-height: 1.45; color: #86837D; }
+    .slaw b { color: #911B1B; font-weight: 700; }
+    .lab { font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: #A09C95;
+           font-family: 'Kumbh Sans', system-ui, sans-serif; font-weight: 600; }
+    .name { font-family: 'Kumbh Sans', system-ui, sans-serif; font-weight: 700; }
+    .muted { color: #86837D; }
+    .hair { height: 1px; background: #E7E5E0; }
+
+    .b { border-radius: 999px; text-align: center; font-family: 'Kumbh Sans', system-ui, sans-serif;
+         font-weight: 700; font-size: 12.5px; padding: 11px 16px; }
+    .b-red { background: #911B1B; color: #FFF3F0; }
+    .b-out { border: 1.5px solid #D9D6D0; color: #2F2E2C; padding: 9.5px 16px; }
+    .b-quiet { color: #911B1B; background: transparent; }
+    .b-off { background: #ECEAE5; color: #A09C95; }
+    .b-sm { font-size: 11px; padding: 9px 14px; }
+
+    .chip { border-radius: 999px; padding: 5px 10px; font-size: 10.5px; font-weight: 700;
+            font-family: 'Kumbh Sans', system-ui, sans-serif; letter-spacing: .03em; }
+    .band { border-radius: 5px; padding: 4px 8px; font-size: 10.5px; font-weight: 700;
+            letter-spacing: .08em; font-family: 'Kumbh Sans', system-ui, sans-serif; }
+
+    .opt { border: 1.5px solid #DEDBD5; border-radius: 9px; padding: 8px 11px; font-size: 11.5px;
+           background: #FFF; }
+    .opt-on { background: #911B1B; border-color: #911B1B; color: #FFF3F0; font-weight: 700; }
+    .opt-off { color: #A09C95; text-decoration: line-through; background: #F4F3F0; }
+    .opt-lock { border-style: dashed; color: #5C5241; background: #F4F3F0; }
+
+    .card { background: #FFF; border: 1px solid #E7E5E0; border-radius: 10px; padding: 10px 11px; }
+    .field { border: 1.5px solid #DEDBD5; border-radius: 9px; padding: 9px 11px; font-size: 11.5px;
+             background: #FFF; }
+    .step { width: 27px; height: 27px; border-radius: 999px; border: 1px solid #DEDBD5;
+            display: flex; align-items: center; justify-content: center; font-weight: 700;
+            color: #5C5241; background: #FFF; }
+  </style>
+</helmet>
+
+<div class="page">
+  <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+      <div class="eyebrow">LOTG Coffee — the red scheme</div>
+      <div class="h1">The pieces</div>
+      <div class="sub">Every control on every screen is one of these — built once, used everywhere</div>
+    </div>
+    <div class="pageno">8 / 9</div>
+  </div>
+  <div class="rule"></div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px;">
+
+    <!-- buttons -->
+    <div class="sheet">
+      <div>
+        <div class="stitle">Buttons</div>
+        <div class="slaw">One red button per screen. <b>Red is the thing to tap</b> — never a
+          hairline, never body text.</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div class="b b-red">Send to the baristas</div>
+        <div class="b b-out">Place Order — No Donation</div>
+        <div class="b b-quiet">Order another drink</div>
+        <div class="b b-off">Ordering Is Closed</div>
+      </div>
+      <div class="hair"></div>
+      <div style="display: flex; align-items: center; gap: 9px;">
+        <div class="b b-red b-sm">Start</div>
+        <div class="b b-out b-sm">Edit</div>
+        <div class="slaw" style="margin: 0;">Small pair — inside a card only.</div>
+      </div>
+      <div class="slaw">Every tap target is <b>44 px tall or more</b>. These are used with wet
+        hands, standing up.</div>
+    </div>
+
+    <!-- fields -->
+    <div class="sheet">
+      <div>
+        <div class="stitle">Fields &amp; quantity</div>
+        <div class="slaw">Labels sit above, help sits below, and the error <b>replaces the
+          help</b> rather than adding a third line.</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <div class="lab">What should we call out?</div>
+        <div class="field" style="color: #A09C95;">e.g. Sarah K</div>
+        <div class="slaw">A last initial is enough.</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <div class="field">Sarah K</div>
+        <div class="field" style="border-color: #911B1B;">Sarah</div>
+        <div class="slaw" style="color: #911B1B;">We need a last initial too.</div>
+      </div>
+      <div class="hair"></div>
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="step">&minus;</div>
+          <div class="name" style="font-size: 12.5px; width: 14px; text-align: center;">1</div>
+          <div class="step">+</div>
+        </div>
+        <div style="font-size: 11px; color: #911B1B;">Remove</div>
+      </div>
+    </div>
+
+    <!-- chips -->
+    <div class="sheet" style="grid-column: span 2;">
+      <div>
+        <div class="stitle">Chips, bands and badges</div>
+        <div class="slaw">Two different jobs, never mixed: a <b>band</b> is shouted across the bar,
+          a <b>chip</b> is read in the hand.</div>
+      </div>
+
+      <div class="lab">Bands — read from the other end of the bar</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+        <span class="band" style="background: #2F2E2C; color: #FFF;">HOT CUP</span>
+        <span class="band" style="background: #5A666B; color: #FFF;">COLD CUP</span>
+        <span class="band" style="background: #FFF; color: #2F2E2C; border: 1.5px solid #2F2E2C;">DECAF</span>
+        <span class="band" style="background: #911B1B; color: #FFF3F0;">CUP 1 OF 2</span>
+      </div>
+
+      <div class="lab">Chips — state on a row</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+        <span class="chip" style="background: #F1F2ED; color: #4E5243; border: 1px solid #DCDED4;">Ready</span>
+        <span class="chip" style="background: #F4F1ED; color: #695B4B; border: 1px solid #E2DBD2;">Being made</span>
+        <span class="chip" style="background: #F6F5F2; color: #86837D; border: 1px solid #E7E5E0;">Waiting &middot; 4 min</span>
+        <span class="chip" style="background: #F4F3F0; color: #5C5241; border: 1px solid #E0DCD4;">Sold out</span>
+        <span class="chip" style="background: #FFF; color: #6F745D; border: 1px solid #DCDED4;">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#6F745D" stroke-width="3.4"
+               stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;">
+            <path d="m5 13 4.5 4.5L19 7"/></svg>
+          Printed 9:42
+        </span>
+        <span class="chip" style="background: #911B1B; color: #FFF3F0;">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#FFF3F0" stroke-width="2.6"
+               stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;">
+            <path d="M12 3 1.8 20.5h20.4L12 3Z"/><path d="M12 9.5v4.5M12 17.2v.1"/></svg>
+          Issue
+        </span>
+        <span class="chip" style="background: #FFF; color: #86837D; border: 1px solid #E7E5E0;">No charge</span>
+      </div>
+    </div>
+
+    <!-- choosing -->
+    <div class="sheet">
+      <div>
+        <div class="stitle">Choosing</div>
+        <div class="slaw">Four states, and the two quiet ones are the point.</div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+        <span class="opt">Whole</span>
+        <span class="opt opt-on">Oat</span>
+        <span class="opt opt-off">Almond</span>
+        <span class="opt opt-lock">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#5C5241" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;">
+            <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          Included
+        </span>
+      </div>
+      <div class="slaw"><b>Sold out stays on screen</b>, struck through — taking it away just makes
+        people hunt for it. Bark, not red: red is doing the tapping.</div>
+      <div class="slaw">&ldquo;Included&rdquo; is a locked option — an Americano that always comes
+        with hot water. It cannot be removed, so it is shown rather than hidden.</div>
+    </div>
+
+    <!-- cards -->
+    <div class="sheet" style="grid-column: span 2;">
+      <div>
+        <div class="stitle">Cards</div>
+        <div class="slaw">Colour carries the column; the <b>flagged card outranks it</b> so the one
+          with a problem is the one you spot first.</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+        <div class="card">
+          <div class="name" style="font-size: 12.5px;">Latte</div>
+          <div class="muted" style="font-size: 10.5px;">Smooth espresso with steamed milk</div>
+        </div>
+
+        <div class="card" style="border-color: #911B1B; box-shadow: 0 0 0 2px rgba(145,27,27,.12);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div class="name" style="font-size: 12.5px;">Latte</div>
+              <div class="muted" style="font-size: 10.5px;">Selected</div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#911B1B" stroke-width="2.4"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg>
+          </div>
+        </div>
+
+        <div class="card" style="border-left: 4px solid #695B4B;">
+          <div style="display: flex; justify-content: space-between;">
+            <div class="name" style="font-size: 12.5px;">Slavik B</div>
+            <span class="chip" style="background: #F4F1ED; color: #695B4B;">9 min</span>
+          </div>
+          <div class="muted" style="font-size: 10.5px; margin-top: 2px;">Latte — 1 shot, whole milk, hot</div>
+        </div>
+
+        <div class="card" style="border-left: 4px solid #911B1B; border-color: #911B1B;">
+          <div style="display: flex; justify-content: space-between;">
+            <div class="name" style="font-size: 12.5px;">Maria K</div>
+            <span class="chip" style="background: #911B1B; color: #FFF3F0;">Remade</span>
+          </div>
+          <div style="font-size: 10.5px; margin-top: 3px; color: #911B1B;">Spilled — second cup on the bar</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- the board -->
+    <div class="sheet">
+      <div>
+        <div class="stitle">Columns</div>
+        <div class="slaw">The heading dot is the only place these three colours are named.</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 8px; height: 8px; border-radius: 999px; background: #B3ACA1;"></span>
+          <span class="name" style="font-size: 11.5px;">Waiting (2)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 8px; height: 8px; border-radius: 999px; background: #695B4B;"></span>
+          <span class="name" style="font-size: 11.5px;">Making (1)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 8px; height: 8px; border-radius: 999px; background: #6F745D;"></span>
+          <span class="name" style="font-size: 11.5px;">Ready (2)</span>
+        </div>
+      </div>
+      <div class="hair"></div>
+      <div class="slaw"><b>The cup label is the exception to all of it.</b> Black on white thermal
+        paper, one bit deep — no scheme at all, and nothing on this page applies to it.</div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

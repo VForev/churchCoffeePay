@@ -62,6 +62,12 @@ interface AnalyticsOrder {
   started_at?: string | null;
   ready_at?: string | null;
   completed_at?: string | null;
+  /**
+   * Which Place Order button they tapped, from supabase-giving-intent.sql. `true` = said
+   * they'd give the $3, `false` = declined, `null`/absent = never asked (counter orders,
+   * write-ins, and everything from before that migration).
+   */
+  giving_intent?: boolean | null;
   order_items: {
     quantity: number;
     menu_item: { name: string } | null;
@@ -144,6 +150,8 @@ export default function AdminDashboard() {
   const [issuesReady, setIssuesReady] = useState(true);
   /** False until supabase-order-timing.sql has been run — the timing panel says so. */
   const [timingReady, setTimingReady] = useState(true);
+  /** False until supabase-giving-intent.sql has been run — the giving panel says so. */
+  const [givingReady, setGivingReady] = useState(true);
   /** Set when the orders query itself failed, so an error never reads as "no orders". */
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lowStock, setLowStock] = useState<
@@ -158,18 +166,33 @@ export default function AdminDashboard() {
   const fetchData = useCallback(async () => {
     setLoading(true);
 
-    // The timing columns come from a migration, so they're asked for separately from the
-    // rest of the column list: if they're missing the query is re-run without them and
-    // only the "How long orders took" panel goes quiet. Everything else on the page is
-    // computed from the same fetched set and must not fall over with it.
+    // Two column groups arrive in their own migrations — the make-time stamps and the
+    // giving choice — so the fetch walks down a list of column sets until one works.
+    // A shop that has run neither, or only one, still gets a fully working dashboard;
+    // only the panel whose columns are missing goes quiet, and it says which file to run.
+    // Everything else on this page is computed from the same fetched set and must not
+    // fall over with it.
     const BASE_COLUMNS = `id, customer_name, total, subtotal, tip_amount, discount_amount,
          status, payment_status, order_source, event_id, created_at`;
     const TIMING_COLUMNS = `started_at, ready_at, completed_at`;
+    const GIVING_COLUMNS = `giving_intent`;
     const ITEM_COLUMNS = `order_items (
            quantity,
            menu_item:menu_items (name),
            order_item_modifiers ( modifier:modifiers (name) )
          )`;
+
+    const ATTEMPTS = [
+      { timing: true, giving: true },
+      { timing: true, giving: false },
+      { timing: false, giving: true },
+      { timing: false, giving: false },
+    ];
+
+    const columnsFor = (a: { timing: boolean; giving: boolean }) =>
+      [BASE_COLUMNS, a.timing ? TIMING_COLUMNS : '', a.giving ? GIVING_COLUMNS : '', ITEM_COLUMNS]
+        .filter(Boolean)
+        .join(', ');
 
     const ordersQuery = (columns: string) => {
       let q = supabase
@@ -182,7 +205,7 @@ export default function AdminDashboard() {
       return q;
     };
 
-    const query = ordersQuery(`${BASE_COLUMNS}, ${TIMING_COLUMNS}, ${ITEM_COLUMNS}`);
+    const query = ordersQuery(columnsFor(ATTEMPTS[0]));
 
     // Same window, same exclusion of cancelled orders, so "issue rate" divides two
     // numbers counted the same way. A flag on a cancelled order is still visible at
@@ -210,21 +233,23 @@ export default function AdminDashboard() {
     setIssuesReady(!issuesRes.error);
     setIssues((issuesRes.data ?? []) as unknown as IssueOrder[]);
 
-    // No timing columns here yet — fetch the same window without them so the dashboard
-    // is fully working, and let the timing panel say which migration is missing.
-    if (ordersRes.error) {
-      const fallback = await ordersQuery(`${BASE_COLUMNS}, ${ITEM_COLUMNS}`);
-      setTimingReady(false);
-      // If even the fallback fails, an empty list would render as "no orders in this
-      // window" — a quiet Sunday and a broken query looking identical is the worst
-      // possible outcome on a page whose whole job is reporting numbers.
-      setLoadError(fallback.error ? fallback.error.message : null);
-      setOrders((fallback.data ?? []) as unknown as AnalyticsOrder[]);
-    } else {
-      setTimingReady(true);
-      setLoadError(null);
-      setOrders((ordersRes.data ?? []) as unknown as AnalyticsOrder[]);
+    // Drop one migration's columns at a time until the window comes back. Each step is
+    // the same query over the same window, so whichever set finally works is the real
+    // data — only the panels above the dropped columns go quiet.
+    let settled = ordersRes;
+    let attempt = 0;
+    while (settled.error && attempt < ATTEMPTS.length - 1) {
+      attempt++;
+      settled = await ordersQuery(columnsFor(ATTEMPTS[attempt]));
     }
+
+    setTimingReady(!settled.error && ATTEMPTS[attempt].timing);
+    setGivingReady(!settled.error && ATTEMPTS[attempt].giving);
+    // If even the plainest query fails, an empty list would render as "no orders in this
+    // window" — a quiet Sunday and a broken query looking identical is the worst possible
+    // outcome on a page whose whole job is reporting numbers.
+    setLoadError(settled.error ? settled.error.message : null);
+    setOrders((settled.data ?? []) as unknown as AnalyticsOrder[]);
 
     setEvents((eventsRes.data ?? []) as Event[]);
     setLowStock(
@@ -249,6 +274,22 @@ export default function AdminDashboard() {
   }, [orders, eventFilter]);
 
   const stats = useMemo(() => summarize(filtered), [filtered]);
+
+  /**
+   * The giving choice, as a rate over the orders that were actually asked — never over
+   * every order. Counter orders on /tablet are never offered the $3, so dividing by all
+   * orders would report the shop getting worse at asking every time the counter is busy.
+   */
+  const giving = useMemo(() => {
+    const asked = stats.gaveYes + stats.gaveNo;
+    return {
+      yes: stats.gaveYes,
+      no: stats.gaveNo,
+      asked,
+      notAsked: stats.orderCount - asked,
+      rate: asked ? (stats.gaveYes / asked) * 100 : 0,
+    };
+  }, [stats]);
 
   /**
    * What went wrong, grouped the three ways that actually change what you'd do about it:
@@ -543,6 +584,56 @@ export default function AdminDashboard() {
               <BarList rows={stats.topModifiers} unit="times" />
             </Card>
           </div>
+
+          {/* Who said yes to the $3 — the choice, never the money. See the note below. */}
+          <Card className="mb-6">
+            <ChartHeading
+              title="The $3 Coffee & Tea gift"
+              subtitle="Which Place Order button customers tapped"
+            />
+
+            {!givingReady ? (
+              <p className="rounded-xl bg-warning/10 px-4 py-3 font-body text-sm text-text">
+                Nothing is being recorded yet. Run{' '}
+                <strong className="font-accent">supabase-giving-intent.sql</strong> in the Supabase
+                SQL editor — from then on, every phone order records which of the two Place Order
+                buttons was tapped. Orders placed before that can&apos;t be back-filled. Already
+                run it? Reload the API schema cache: Supabase →{' '}
+                <strong>Settings → API → Reload schema</strong>.
+              </p>
+            ) : giving.asked === 0 ? (
+              <p className="py-6 text-center font-body text-sm text-text-light">
+                No orders in this window were asked. Only phone orders get the choice —
+                counter orders on the tablet never see it.
+              </p>
+            ) : (
+              <>
+                <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <MiniStat label="Said they&rsquo;d give" value={giving.yes.toString()} />
+                  <MiniStat label="Said not today" value={giving.no.toString()} />
+                  <MiniStat label="Said yes" value={`${giving.rate.toFixed(0)}%`} />
+                  <MiniStat label="Never asked" value={giving.notAsked.toString()} />
+                </div>
+
+                <BarList
+                  rows={[
+                    { name: 'Place Order & Give $3', count: giving.yes },
+                    { name: 'Place Order — No Donation', count: giving.no },
+                  ].filter((r) => r.count > 0)}
+                  unit="orders"
+                />
+
+                <p className="mt-4 font-body text-xs text-text-light">
+                  <strong className="font-accent">This is the button, not the money.</strong> The
+                  $3 goes to Pushpay, which never tells us whether it arrived — so a
+                  &ldquo;yes&rdquo; here is someone who chose to be sent to the giving page, and
+                  nothing more. Of {stats.orderCount} orders in this window,{' '}
+                  <strong>{giving.asked}</strong> were asked; the other {giving.notAsked} were
+                  counter orders, write-ins, or placed before this was being recorded.
+                </p>
+              </>
+            )}
+          </Card>
 
           {/* How long orders took — the make-time record the board now stamps */}
           <Card className="mb-6">
@@ -858,6 +949,10 @@ interface Summary {
   discounts: number;
   mobileOrders: number;
   counterOrders: number;
+  /** Tapped "Place Order & Give $3". A stated intention, never a receipt — see below. */
+  gaveYes: number;
+  /** Tapped "Place Order — No Donation". */
+  gaveNo: number;
   hotDrinks: number;
   icedDrinks: number;
   unknownDrinks: number;
@@ -877,6 +972,8 @@ function summarize(orders: AnalyticsOrder[]): Summary {
   let drinkCount = 0;
   let mobileOrders = 0;
   let counterOrders = 0;
+  let gaveYes = 0;
+  let gaveNo = 0;
   let hotDrinks = 0;
   let icedDrinks = 0;
   let unknownDrinks = 0;
@@ -887,6 +984,11 @@ function summarize(orders: AnalyticsOrder[]): Summary {
     discounts += order.discount_amount ?? 0;
     if (order.order_source === 'mobile') mobileOrders++;
     else counterOrders++;
+
+    // Strictly true/false. `null` and `undefined` are "never asked" — a counter order, a
+    // write-in, or an order from before the migration — and must not be counted as a no.
+    if (order.giving_intent === true) gaveYes++;
+    else if (order.giving_intent === false) gaveNo++;
 
     const hour = new Date(order.created_at).getHours();
     hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
@@ -919,6 +1021,8 @@ function summarize(orders: AnalyticsOrder[]): Summary {
     discounts,
     mobileOrders,
     counterOrders,
+    gaveYes,
+    gaveNo,
     hotDrinks,
     icedDrinks,
     unknownDrinks,

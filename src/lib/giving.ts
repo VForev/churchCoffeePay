@@ -97,3 +97,34 @@ export const COFFEE_GIFT_AMOUNT = 3;
 
 /** $3 to Coffee & Tea, one-time, fund locked, amount editable, no extra fields to fill. */
 export const COFFEE_GIVING_LINK = `${PUSHPAY_LINK}?a=${COFFEE_GIFT_AMOUNT}`;
+
+/**
+ * ---------------------------------------------------------------------------
+ * Recording the choice — `orders.giving_intent`
+ * ---------------------------------------------------------------------------
+ *
+ * Which of the two Place Order buttons was tapped: `true` for "Give $3", `false` for
+ * "No Donation", `null` for an order that was never asked (counter orders on /tablet,
+ * write-in orders, anything placed before supabase-giving-intent.sql ran).
+ *
+ * **It is the choice, not the money.** Pushpay never tells us whether the $3 arrived, so
+ * this column can only ever answer "how many said yes" — never "how much came in". Any
+ * screen reporting it has to say so, or a number that means one thing will be read as the
+ * other.
+ */
+export const GIVING_INTENT_COLUMN = 'giving_intent';
+
+/**
+ * True when a failed write is only failing because this database hasn't run
+ * supabase-giving-intent.sql yet.
+ *
+ * PostgREST answers a missing column with PGRST204 and names it in the message
+ * ("Could not find the 'giving_intent' column of 'orders' in the schema cache").
+ * The caller retries without the column: a metric must never cost someone their coffee.
+ */
+export function isMissingGivingIntent(
+  error: { message?: string; code?: string } | null | undefined,
+): boolean {
+  if (!error) return false;
+  return (error.message ?? '').includes(GIVING_INTENT_COLUMN);
+}

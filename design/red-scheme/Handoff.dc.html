@@ -1,0 +1,248 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kumbh+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #2B2A28; }
+    a { color: #911B1B; } a:hover { color: #6d1414; }
+    .page { width: 1456px; height: 816px; box-sizing: border-box; padding: 40px 56px 32px;
+            background: #2B2A28; font-family: 'Nunito', system-ui, sans-serif; color: #E6E6E6; }
+    .eyebrow { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 11px; font-weight: 600;
+               letter-spacing: .14em; text-transform: uppercase; color: #B3ACA1; }
+    .h1 { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 30px; font-weight: 700;
+          color: #F2F1ED; margin: 12px 0 5px; letter-spacing: -.01em; }
+    .sub { font-size: 13px; color: #918F8A; }
+    .pageno { font-size: 12px; color: #918F8A; font-family: 'Kumbh Sans', system-ui, sans-serif; }
+    .rule { height: 1px; background: #46443F; margin: 14px 0 20px; }
+    .colhead { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 11px; font-weight: 600;
+               color: #8C8A86; letter-spacing: .04em; }
+    .cap { font-size: 11.5px; line-height: 1.5; color: #918F8A; }
+    .cap b { color: #C3C4BA; font-weight: 700; }
+    .note { font-size: 11.5px; line-height: 1.55; color: #A9A69F; }
+    .note b { color: #E6E6E6; font-weight: 700; }
+    .step-n { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 10px; font-weight: 700;
+              color: #2B2A28; background: #C3C4BA; border-radius: 999px; width: 17px; height: 17px;
+              display: flex; align-items: center; justify-content: center; flex: none; }
+
+    .phone { background: #FFFFFF; border-radius: 14px; overflow: hidden; color: #2F2E2C;
+             font-size: 12px; box-shadow: 0 12px 28px rgba(0,0,0,.28); }
+    .pad { padding: 12px 13px; }
+    .hair { height: 1px; background: #E7E5E0; }
+    .muted { color: #86837D; }
+    .name { font-family: 'Kumbh Sans', system-ui, sans-serif; font-weight: 700; }
+    .btn-red { background: #911B1B; color: #FFF3F0; border-radius: 999px; text-align: center;
+               font-family: 'Kumbh Sans', system-ui, sans-serif; font-weight: 700; font-size: 12.5px;
+               padding: 12px 14px; }
+    .btn-out { border: 1.5px solid #D9D6D0; color: #2F2E2C; border-radius: 999px; text-align: center;
+               font-family: 'Kumbh Sans', system-ui, sans-serif; font-weight: 700; font-size: 12.5px;
+               padding: 11px 14px; }
+    .queue-row { border-radius: 9px; padding: 8px 10px; display: flex; align-items: center;
+                 justify-content: space-between; gap: 8px; }
+    .pos { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 10px; font-weight: 700;
+           color: #FFF3F0; border-radius: 5px; padding: 2px 6px; }
+    .adminpanel { background: #FBFAF8; border-radius: 12px; color: #2F2E2C; padding: 14px; }
+    .tilebox { background: #F1F0EC; border-radius: 9px; padding: 8px 9px; }
+    .tilebox .n { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 20px; font-weight: 700; }
+    .tilebox .l { font-size: 9.5px; color: #86837D; }
+  </style>
+</helmet>
+
+<div class="page">
+  <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+      <div class="eyebrow">LOTG Coffee — the red scheme</div>
+      <div class="h1">After they pay</div>
+      <div class="sub">The giving screen is upside down on purpose — and it now keeps score</div>
+    </div>
+    <div class="pageno">7 / 9</div>
+  </div>
+  <div class="rule"></div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px;">
+
+    <!-- gave -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div class="colhead">They tapped &ldquo;Give $3&rdquo;</div>
+      <div class="phone">
+        <!-- 1: pushpay leads -->
+        <div style="background: #F1F2ED; border-bottom: 1px solid #DCDED4; padding: 14px 13px; text-align: center;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5C5241" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 4px;">
+            <path d="M4 8h12v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8Z"/>
+            <path d="M16 9h2.5a2.5 2.5 0 0 1 0 5H16"/>
+            <path d="M7 2.5v2M11 2.5v2"/>
+          </svg>
+          <div class="name" style="font-size: 14px;">Taking you to Pushpay in 3&hellip;</div>
+          <div class="muted" style="font-size: 10.5px; margin-top: 3px; line-height: 1.45;">
+            Your order is placed and already on the barista board — nothing below depends on this.
+            $3 for Coffee &amp; Tea is filled in for you.
+          </div>
+          <div class="btn-red" style="margin-top: 10px;">Go now</div>
+          <div style="font-size: 10.5px; color: #86837D; margin-top: 8px; text-decoration: underline;">
+            Not now — stay on this page
+          </div>
+        </div>
+
+        <!-- 2: their order -->
+        <div class="pad" style="text-align: center;">
+          <div class="name" style="font-size: 12.5px;">Order placed</div>
+          <div class="muted" style="font-size: 11px; margin-top: 2px;">
+            Thanks, <span style="color: #2F2E2C; font-weight: 700;">Sarah K</span> —
+            ready in about <span style="color: #911B1B; font-weight: 700;">3 min</span>.
+          </div>
+          <div class="btn-out" style="margin-top: 9px;">Order another drink</div>
+        </div>
+        <div class="hair"></div>
+
+        <!-- 3: the queue -->
+        <div class="pad" style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="display: flex; justify-content: space-between;">
+            <div class="colhead" style="color: #5C5241;">LIVE ORDER STATUS</div>
+            <div class="muted" style="font-size: 10px;">3 active</div>
+          </div>
+          <div class="queue-row" style="background: #F1F2ED; border: 1px solid #DCDED4;">
+            <div style="display: flex; align-items: center; gap: 7px;">
+              <span class="pos" style="background: #6F745D;">17</span>
+              <span class="name" style="font-size: 11.5px;">Anna B</span>
+            </div>
+            <span style="font-size: 10.5px; font-weight: 700; color: #6F745D;">Ready</span>
+          </div>
+          <div class="queue-row" style="background: #F4F1ED; border: 1px solid #E2DBD2;">
+            <div style="display: flex; align-items: center; gap: 7px;">
+              <span class="pos" style="background: #695B4B;">18</span>
+              <span class="name" style="font-size: 11.5px;">Sarah K</span>
+            </div>
+            <span style="font-size: 10.5px; font-weight: 700; color: #695B4B;">Being made</span>
+          </div>
+          <div class="queue-row" style="background: #F6F5F2; border: 1px solid #E7E5E0;">
+            <div style="display: flex; align-items: center; gap: 7px;">
+              <span class="pos" style="background: #B3ACA1;">19</span>
+              <span class="name" style="font-size: 11.5px;">Maria K</span>
+            </div>
+            <span class="muted" style="font-size: 10.5px;">2 cups &middot; ~5 min</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- declined -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div class="colhead">They tapped &ldquo;No donation&rdquo;</div>
+      <div class="phone">
+        <div style="padding: 22px 16px; text-align: center;">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#6F745D" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.5 2.5L16 9.5"/>
+          </svg>
+          <div class="name" style="font-size: 17px; margin-top: 8px;">Order Placed!</div>
+          <div class="muted" style="font-size: 11.5px; margin-top: 4px;">
+            Thanks, <span style="color: #2F2E2C; font-weight: 700;">Sarah K</span>!
+          </div>
+          <div class="muted" style="font-size: 11.5px;">
+            Ready in about <span style="color: #911B1B; font-weight: 700;">3 min</span>.
+          </div>
+          <div class="muted" style="font-size: 10.5px; margin-top: 6px;">
+            We&rsquo;ll call your name when it&rsquo;s ready.
+          </div>
+          <div class="btn-red" style="margin-top: 14px;">Track your order live</div>
+          <div class="btn-out" style="margin-top: 7px;">Order another drink</div>
+        </div>
+      </div>
+      <div style="background: #F1F2ED; border-radius: 12px; padding: 13px; text-align: center; color: #2F2E2C;">
+        <div class="name" style="font-size: 12.5px;">Give to Light of the Gospel</div>
+        <div style="font-size: 10.5px; color: #86837D; margin-top: 3px; line-height: 1.45;">
+          Your coffee is on its way. If you&rsquo;d like to give while you wait, you can do it here.
+        </div>
+        <div class="btn-red" style="margin-top: 9px;">Give with Pushpay</div>
+      </div>
+      <div class="cap">Unchanged, and no countdown. Nobody who declined gets sent anywhere.</div>
+    </div>
+
+    <!-- why -->
+    <div style="display: flex; flex-direction: column; gap: 13px;">
+      <div class="colhead">Why it is this way up</div>
+
+      <div style="display: flex; gap: 9px;">
+        <div class="step-n">1</div>
+        <div class="note"><b>Pushpay leads.</b> In three seconds the screen belongs to Pushpay.
+          The one thing that has to be read before then is why it changed — a redirect nobody
+          saw coming reads as the site crashing with their money in it.</div>
+      </div>
+      <div style="display: flex; gap: 9px;">
+        <div class="step-n">2</div>
+        <div class="note"><b>Their order sits under it.</b> Reassurance, not news: they just
+          tapped the button that placed it.</div>
+      </div>
+      <div style="display: flex; gap: 9px;">
+        <div class="step-n">3</div>
+        <div class="note"><b>The queue is last, and only here.</b> It is for whoever taps
+          &ldquo;Not now&rdquo;. Anyone who lets the countdown run sees the same board on
+          /yourlive.</div>
+      </div>
+
+      <div style="height: 1px; background: #46443F;"></div>
+
+      <div class="note"><b>Three seconds, not five.</b> They already asked for this, so it is a
+        handoff and not a second ask. Longer reads as a page that has stalled.</div>
+      <div class="note"><b>It is a one-way trip.</b> Pushpay&rsquo;s return button is switched off
+        on this merchant — which is exactly why the order is placed first and the coffee is
+        already on the board.</div>
+      <div class="note"><b>No giving box at the bottom.</b> The ask is at the top of this same
+        screen; twice is nagging.</div>
+    </div>
+
+    <!-- the metric -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div class="colhead">What it records — /admin</div>
+      <div class="adminpanel">
+        <div class="name" style="font-size: 13px;">The $3 Coffee &amp; Tea gift</div>
+        <div class="muted" style="font-size: 10px; margin-bottom: 10px;">Which Place Order button customers tapped</div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px;">
+          <div class="tilebox"><div class="l">Said they&rsquo;d give</div><div class="n">34</div></div>
+          <div class="tilebox"><div class="l">Said not today</div><div class="n">61</div></div>
+          <div class="tilebox"><div class="l">Said yes</div><div class="n">36%</div></div>
+          <div class="tilebox"><div class="l">Never asked</div><div class="n">12</div></div>
+        </div>
+
+        <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 10.5px; margin-bottom: 3px;">
+              <span>Place Order &amp; Give $3</span><span style="font-weight: 700;">34</span>
+            </div>
+            <div style="height: 7px; border-radius: 999px; background: #ECEAE5;">
+              <div style="width: 36%; height: 7px; border-radius: 999px; background: #911B1B;"></div>
+            </div>
+          </div>
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 10.5px; margin-bottom: 3px;">
+              <span>Place Order — No Donation</span><span style="font-weight: 700;">61</span>
+            </div>
+            <div style="height: 7px; border-radius: 999px; background: #ECEAE5;">
+              <div style="width: 64%; height: 7px; border-radius: 999px; background: #B3ACA1;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 11px; font-size: 10px; line-height: 1.5; color: #86837D;">
+          <b style="color: #2F2E2C;">This is the button, not the money.</b> Pushpay never tells us
+          whether the $3 arrived, so a &ldquo;yes&rdquo; is someone who chose to be sent to the
+          giving page and nothing more.
+        </div>
+      </div>
+      <div class="cap">The rate divides by the orders that were <b>asked</b>. Counter orders never
+        see the two buttons, so counting them would make the shop look worse at asking every time
+        the counter is busy.</div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

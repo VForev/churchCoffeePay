@@ -152,6 +152,15 @@ export interface Order {
    * used by the spam-order limit (supabase-order-rate-limit.sql).
    */
   device_id?: string | null;
+  /**
+   * Which Place Order button the customer tapped: `true` = "Give $3", `false` = "No
+   * Donation", `null`/absent = never asked (counter orders, write-ins, and everything
+   * from before supabase-giving-intent.sql).
+   *
+   * The choice, not the money — Pushpay never tells us whether the $3 arrived. See
+   * src/lib/giving.ts before reporting it anywhere.
+   */
+  giving_intent?: boolean | null;
   archived_at: string | null;
   /**
    * When the cup labels were printed. NULL means "not printed yet" — the print

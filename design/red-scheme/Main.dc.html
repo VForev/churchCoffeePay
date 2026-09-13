@@ -1,0 +1,303 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kumbh+Sans:wght@400;500;600;700&family=Nunito:wght@400;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #2B2A28; }
+    a { color: #911B1B; } a:hover { color: #6d1414; }
+    .page { width: 1456px; height: 816px; box-sizing: border-box; padding: 40px 56px 32px;
+            background: #2B2A28; font-family: 'Nunito', system-ui, sans-serif; color: #E6E6E6; }
+    .eyebrow { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 11px; font-weight: 600;
+               letter-spacing: .14em; text-transform: uppercase; color: #B3ACA1; }
+    .h1 { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 30px; font-weight: 700;
+          color: #F2F1ED; margin: 12px 0 5px; letter-spacing: -.01em; }
+    .sub { font-size: 13px; color: #918F8A; }
+    .pageno { font-size: 12px; color: #918F8A; font-family: 'Kumbh Sans', system-ui, sans-serif; }
+    .rule { height: 1px; background: #46443F; margin: 14px 0 20px; }
+    .colhead { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 11px; font-weight: 600;
+               color: #8C8A86; letter-spacing: .04em; }
+    .cap { font-size: 11.5px; line-height: 1.5; color: #918F8A; }
+    .cap b { color: #C3C4BA; font-weight: 700; }
+
+    .phone { background: #FFFFFF; border-radius: 14px; overflow: hidden; color: #2F2E2C;
+             font-size: 12px; box-shadow: 0 12px 28px rgba(0,0,0,.28); }
+    .pad { padding: 12px 13px; }
+    .hair { height: 1px; background: #E7E5E0; }
+    .muted { color: #86837D; }
+    .name { font-family: 'Kumbh Sans', system-ui, sans-serif; font-weight: 700; }
+    .btn-red { background: #911B1B; color: #FFF3F0; border-radius: 999px; text-align: center;
+               font-family: 'Kumbh Sans', system-ui, sans-serif; font-weight: 700; font-size: 12.5px;
+               padding: 12px 14px; }
+    .btn-out { border: 1.5px solid #D9D6D0; color: #2F2E2C; border-radius: 999px; text-align: center;
+               font-family: 'Kumbh Sans', system-ui, sans-serif; font-weight: 700; font-size: 12.5px;
+               padding: 11px 14px; }
+    .chip { border: 1px solid #DEDBD5; border-radius: 8px; padding: 5px 9px; font-size: 11px; }
+    .chip-on { background: #911B1B; border-color: #911B1B; color: #FFF3F0; font-weight: 700; }
+    .tile { background: #F6F5F2; border-radius: 10px; }
+    .step { width: 24px; height: 24px; border-radius: 999px; border: 1px solid #DEDBD5;
+            display: flex; align-items: center; justify-content: center; font-weight: 700;
+            color: #5C5241; background: #FFF; }
+    .plus { width: 26px; height: 26px; border-radius: 8px; background: #911B1B; color: #FFF3F0;
+            display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; }
+    .gone { position: relative; opacity: .38; filter: grayscale(1); }
+    .tag-gone { display: inline-block; background: #911B1B; color: #FFF3F0; font-size: 10px;
+                font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+                border-radius: 5px; padding: 3px 7px; font-family: 'Kumbh Sans', system-ui, sans-serif; }
+    .note { font-size: 11.5px; line-height: 1.55; color: #A9A69F; }
+    .note b { color: #E6E6E6; font-weight: 700; }
+  </style>
+</helmet>
+
+<div class="page">
+  <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+      <div class="eyebrow">LOTG Coffee — the red scheme</div>
+      <div class="h1">Ordering in three taps</div>
+      <div class="sub">The review screen is gone — the menu goes straight to payment</div>
+    </div>
+    <div class="pageno">6 / 9</div>
+  </div>
+  <div class="rule"></div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px;">
+
+    <!-- 1 · Menu -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div class="colhead">1 · Menu</div>
+      <div class="phone">
+        <div class="pad" style="display: flex; align-items: center; justify-content: space-between;">
+          <div class="name" style="font-size: 13px;">LOTG Coffee</div>
+          <div class="chip" style="border-radius: 999px; padding: 4px 10px;">Track order</div>
+        </div>
+        <div class="hair"></div>
+        <div class="pad" style="display: flex; flex-direction: column; gap: 3px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="width: 6px; height: 6px; border-radius: 999px; background: #6F745D;"></span>
+            <span class="name" style="font-size: 12.5px;">Open — about 3 min wait</span>
+          </div>
+          <div class="muted" style="font-size: 11px;">Two orders ahead of you right now.</div>
+        </div>
+        <div style="display: flex; gap: 14px; padding: 0 13px;">
+          <div class="name" style="font-size: 11.5px; padding-bottom: 6px; border-bottom: 2px solid #911B1B;">Espresso</div>
+          <div class="muted" style="font-size: 11.5px;">Tea</div>
+          <div class="muted" style="font-size: 11.5px;">Steamer</div>
+          <div class="muted" style="font-size: 11.5px;">Custom</div>
+        </div>
+        <div class="hair"></div>
+        <div class="pad" style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div>
+              <div class="name" style="font-size: 12.5px;">Latte</div>
+              <div class="muted" style="font-size: 10.5px;">Smooth espresso with steamed milk</div>
+            </div>
+            <div class="plus">+</div>
+          </div>
+          <div class="hair"></div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div>
+              <div class="name" style="font-size: 12.5px;">Cappuccino</div>
+              <div class="muted" style="font-size: 10.5px;">Espresso, steamed milk and foam</div>
+            </div>
+            <div class="plus">+</div>
+          </div>
+          <div class="hair"></div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div>
+              <div class="name" style="font-size: 12.5px;">Americano</div>
+              <div class="muted" style="font-size: 10.5px;">Espresso with hot water</div>
+            </div>
+            <div class="plus">+</div>
+          </div>
+        </div>
+        <div style="background: #FBFAF8; border-top: 1px solid #E7E5E0; padding: 10px 13px;">
+          <div class="btn-red" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <span>Pay &amp; Place Your Order (2)</span>
+            <span style="opacity: .75; font-weight: 600;">$9.00</span>
+          </div>
+        </div>
+      </div>
+      <div class="cap">One button, and it goes <b>straight to payment</b>. Free event? It reads
+        &ldquo;Place Your Order&rdquo; with no total.</div>
+    </div>
+
+    <!-- 2 · Build -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div class="colhead">2 · Build your drink</div>
+      <div class="phone">
+        <div class="pad" style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <div class="name" style="font-size: 15px;">Latte</div>
+            <div class="muted" style="font-size: 10.5px;">Smooth espresso with steamed milk</div>
+          </div>
+          <div class="muted" style="font-size: 14px;">&#10005;</div>
+        </div>
+        <div class="hair"></div>
+        <div class="pad" style="display: flex; flex-direction: column; gap: 11px;">
+          <div>
+            <div class="colhead" style="color: #5C5241; margin-bottom: 5px;">SIZE</div>
+            <div class="tile" style="padding: 6px 9px; font-size: 11px; color: #86837D;">Medium, 12 oz — the only size we pour</div>
+          </div>
+          <div>
+            <div class="colhead" style="color: #5C5241; margin-bottom: 5px;">SHOTS</div>
+            <div style="display: flex; gap: 6px;">
+              <div class="chip chip-on">1</div><div class="chip">2</div><div class="chip">3</div><div class="chip">4</div>
+            </div>
+          </div>
+          <div>
+            <div class="colhead" style="color: #5C5241; margin-bottom: 5px;">MILK</div>
+            <div style="display: flex; gap: 6px;">
+              <div class="chip">Whole</div><div class="chip chip-on">Oat</div><div class="chip">Almond</div><div class="chip">None</div>
+            </div>
+          </div>
+          <div>
+            <div class="colhead" style="color: #5C5241; margin-bottom: 5px;">SYRUP</div>
+            <div style="display: flex; gap: 6px;">
+              <div class="chip chip-on">Vanilla &#10005;</div><div class="chip chip-on">Hazelnut &#10005;</div>
+            </div>
+          </div>
+          <div>
+            <div class="colhead" style="color: #5C5241; margin-bottom: 5px;">TEMPERATURE</div>
+            <div style="display: flex; gap: 6px;">
+              <div class="chip chip-on">Hot</div><div class="chip">Iced</div>
+            </div>
+          </div>
+        </div>
+        <div style="padding: 10px 13px 12px;">
+          <div class="btn-red">Add to order</div>
+        </div>
+      </div>
+      <div class="cap">Unchanged. The drink is <b>confirmed here</b> — which is why reading it
+        back on a third screen bought nothing.</div>
+    </div>
+
+    <!-- 3 · Pay -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div class="colhead">3 · Pay</div>
+      <div class="phone">
+        <div class="pad" style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="name" style="font-size: 12.5px;">&#8592; Your order</div>
+          <div class="name" style="font-size: 12.5px;">$9.00</div>
+        </div>
+        <div class="hair"></div>
+        <div class="pad" style="display: flex; flex-direction: column; gap: 4px;">
+          <div class="colhead" style="color: #5C5241;">WHAT SHOULD WE CALL OUT?</div>
+          <div style="border: 1.5px solid #DEDBD5; border-radius: 9px; padding: 8px 10px; color: #A9A69F; font-size: 11.5px;">e.g. Sarah K</div>
+          <div class="muted" style="font-size: 10px;">A last initial is enough — it&rsquo;s how we tell two Sarahs apart.</div>
+        </div>
+        <div style="padding: 0 13px 12px;">
+          <div class="tile" style="padding: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div class="name" style="font-size: 12px;">Your Drinks</div>
+              <div style="font-size: 10.5px; font-weight: 700; color: #911B1B;">+ Add another</div>
+            </div>
+
+            <div style="background: #FFF; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 7px;">
+              <div style="display: flex; justify-content: space-between; gap: 8px;">
+                <div>
+                  <div class="name" style="font-size: 11.5px;">Latte</div>
+                  <div class="muted" style="font-size: 10px;">1 shot &middot; oat &middot; vanilla &middot; hot</div>
+                </div>
+                <div style="font-size: 11.5px; font-weight: 700;">$4.50</div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 7px;">
+                  <div class="step">&minus;</div>
+                  <div style="font-size: 11.5px; font-weight: 700; width: 12px; text-align: center;">1</div>
+                  <div class="step">+</div>
+                </div>
+                <div style="font-size: 10.5px; color: #911B1B;">Remove</div>
+              </div>
+            </div>
+
+            <div style="height: 7px;"></div>
+
+            <div style="background: #FFF; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 7px;">
+              <div style="display: flex; justify-content: space-between; gap: 8px;">
+                <div>
+                  <div class="name" style="font-size: 11.5px;">Cappuccino</div>
+                  <div class="muted" style="font-size: 10px;">2 shots &middot; oat &middot; iced</div>
+                </div>
+                <div style="font-size: 11.5px; font-weight: 700;">$4.50</div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 7px;">
+                  <div class="step">&minus;</div>
+                  <div style="font-size: 11.5px; font-weight: 700; width: 12px; text-align: center;">1</div>
+                  <div class="step">+</div>
+                </div>
+                <div style="font-size: 10.5px; color: #911B1B;">Remove</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="hair"></div>
+        <div class="pad" style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="muted" style="font-size: 11px;">Two orders ahead of you</div>
+          <div style="font-size: 11.5px; font-weight: 700; color: #911B1B;">about 3 min</div>
+        </div>
+        <div style="padding: 0 13px 12px; display: flex; flex-direction: column; gap: 7px;">
+          <div class="btn-red">Place Order &amp; Give $3</div>
+          <div class="btn-out">Place Order — No Donation</div>
+        </div>
+      </div>
+      <div class="cap">The drinks list is <b>editable here</b>. It has to be: with the drawer gone
+        this is the only place a mis-tapped drink can be fixed.</div>
+    </div>
+
+    <!-- 4 · What went away -->
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div class="colhead">What went away</div>
+
+      <div class="gone">
+        <div class="phone" style="box-shadow: none;">
+          <div class="pad" style="display: flex; justify-content: space-between;">
+            <div class="name" style="font-size: 13px;">Your Order</div>
+            <div class="muted">&#10005;</div>
+          </div>
+          <div class="hair"></div>
+          <div class="pad" style="display: flex; flex-direction: column; gap: 7px;">
+            <div style="display: flex; justify-content: space-between;">
+              <div><div class="name" style="font-size: 11.5px;">Latte</div>
+                   <div class="muted" style="font-size: 10px;">1 shot, oat, vanilla</div></div>
+              <div style="font-size: 11.5px;">$4.50</div>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <div><div class="name" style="font-size: 11.5px;">Cappuccino</div>
+                   <div class="muted" style="font-size: 10px;">2 shots, oat, iced</div></div>
+              <div style="font-size: 11.5px;">$4.50</div>
+            </div>
+          </div>
+          <div class="hair"></div>
+          <div class="pad" style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 700;">
+              <div>Total</div><div>$9.00</div>
+            </div>
+            <div class="btn-red">Place Your Coffee Order</div>
+          </div>
+        </div>
+      </div>
+
+      <div><span class="tag-gone">Removed — the cart drawer</span></div>
+
+      <div class="note">It showed the same two lines the payment page shows, then asked for a
+        second tap to get there. On a phone that is a whole screen of friction and one more
+        place to put the phone down.</div>
+
+      <div class="note"><b>What moved, not what vanished:</b> quantities, Remove and
+        &ldquo;+ Add another&rdquo; all live on the payment page now.</div>
+
+      <div class="note"><b>The tablet keeps its cart.</b> A barista is building someone
+        else&rsquo;s order out loud and reads it back to them — that review is the point.</div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

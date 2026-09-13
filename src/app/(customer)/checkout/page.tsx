@@ -34,7 +34,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import { ClosedNotice } from '@/components/ShopBanner';
-import { COFFEE_GIFT_AMOUNT } from '@/lib/giving';
+import { COFFEE_GIFT_AMOUNT, isMissingGivingIntent } from '@/lib/giving';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
 import type { Coupon, ShopSettings, OrderingHours } from '@/types';
 
@@ -266,24 +266,40 @@ function CheckoutForm() {
         stripePaymentId = paymentIntent?.id || null;
       }
 
-      const { data: order, error: orderError } = await supabase
+      const orderRow = {
+        customer_name: cart.customer_name.trim(),
+        status: 'pending',
+        subtotal: cart.subtotal,
+        discount_amount: cart.discount_amount,
+        tip_amount: cart.donation_amount,
+        total: cart.total,
+        payment_status: isFreeOrder ? 'free' : 'paid',
+        stripe_payment_id: stripePaymentId,
+        coupon_id: cart.coupon?.id || null,
+        order_source: 'mobile',
+        event_id: activeEventId,
+        device_id: getDeviceId(),
+      };
+
+      // `giving_intent` is which button they tapped, and it is the *choice*, not the
+      // money — Pushpay never tells us whether the $3 arrived (see src/lib/giving.ts).
+      // It's written as a second attempt rather than part of the row above because the
+      // column comes from a migration: on a database that hasn't run
+      // supabase-giving-intent.sql the insert is retried without it. The card may already
+      // have been charged by this point, so a missing metric column must never be what
+      // loses somebody their order. The failed attempt inserts nothing, so the retry
+      // can't double-order.
+      let inserted = await supabase
         .from('orders')
-        .insert({
-          customer_name: cart.customer_name.trim(),
-          status: 'pending',
-          subtotal: cart.subtotal,
-          discount_amount: cart.discount_amount,
-          tip_amount: cart.donation_amount,
-          total: cart.total,
-          payment_status: isFreeOrder ? 'free' : 'paid',
-          stripe_payment_id: stripePaymentId,
-          coupon_id: cart.coupon?.id || null,
-          order_source: 'mobile',
-          event_id: activeEventId,
-          device_id: getDeviceId(),
-        })
+        .insert({ ...orderRow, giving_intent: give })
         .select()
         .single();
+
+      if (inserted.error && isMissingGivingIntent(inserted.error)) {
+        inserted = await supabase.from('orders').insert(orderRow).select().single();
+      }
+
+      const { data: order, error: orderError } = inserted;
 
       // The trigger can still refuse this if two tabs were submitted together and raced
       // past the pre-check above. Its Postgres error must never reach the screen raw —
@@ -458,27 +474,84 @@ function CheckoutForm() {
             </p>
           </Card>
 
+          {/* The order is reviewed here and nowhere else. The menu page used to open a
+              cart drawer first — a whole screen showing this same list — so this list has
+              to be editable, or removing a mis-tapped drink would mean starting over. */}
           <Card>
-            <h3 className="mb-3 font-heading font-bold text-text-dark">Your Drinks</h3>
-            <div className="space-y-2">
-              {cart.items.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <div>
-                    <span className="font-body">
-                      {item.quantity}x {item.menu_item.name}
-                    </span>
-                    {item.selected_modifiers.length > 0 && (
-                      <span className="block text-xs text-text-light">
-                        {item.selected_modifiers.map((m) => m.name).join(', ')}
-                      </span>
-                    )}
-                  </div>
-                  <span className="font-accent font-semibold">
-                    {item.item_total === 0 ? 'Free' : `$${item.item_total.toFixed(2)}`}
-                  </span>
-                </div>
-              ))}
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-heading font-bold text-text-dark">Your Drinks</h3>
+              <button
+                type="button"
+                onClick={() => router.push('/')}
+                className="cursor-pointer font-accent text-xs font-semibold text-primary hover:underline"
+              >
+                + Add another
+              </button>
             </div>
+
+            {cart.items.length === 0 ? (
+              <p className="py-4 text-center font-body text-sm text-text-light">
+                Your order is empty — go back to the menu and pick a drink.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {cart.items.map((item) => (
+                  <div key={item.id} className="rounded-xl bg-bg p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-heading text-sm font-bold text-text-dark">
+                          {item.menu_item.name}
+                        </p>
+                        {item.selected_modifiers.length > 0 && (
+                          <p className="mt-0.5 font-body text-xs text-text-light">
+                            {item.selected_modifiers.map((m) => m.name).join(', ')}
+                          </p>
+                        )}
+                        {item.special_instructions && (
+                          <p className="mt-0.5 font-body text-xs italic text-warm">
+                            &ldquo;{item.special_instructions}&rdquo;
+                          </p>
+                        )}
+                      </div>
+                      <span className="shrink-0 font-accent text-sm font-semibold">
+                        {item.item_total === 0 ? 'Free' : `$${item.item_total.toFixed(2)}`}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label={`One fewer ${item.menu_item.name}`}
+                          onClick={() => cartStore.updateQuantity(item.id, item.quantity - 1)}
+                          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-gray-200 bg-surface font-bold hover:bg-gray-50"
+                        >
+                          &minus;
+                        </button>
+                        <span className="w-6 text-center font-accent text-sm font-semibold">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`One more ${item.menu_item.name}`}
+                          onClick={() => cartStore.updateQuantity(item.id, item.quantity + 1)}
+                          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-gray-200 bg-surface font-bold hover:bg-gray-50"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => cartStore.removeItem(item.id)}
+                        className="cursor-pointer font-body text-xs text-danger hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
 
           {settings.coupons_enabled && (

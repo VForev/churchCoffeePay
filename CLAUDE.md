@@ -130,6 +130,12 @@ honest value to back-fill them with.
 the board can show which cups have already come off the roll. Without it, printing still
 works per cup; every cup just always looks unprinted.
 
+**`supabase-giving-intent.sql`** — Required for the **$3 gift metric** on `/admin`
+(*The $3 Coffee & Tea gift* panel). Adds `orders.giving_intent` — which of the two Place
+Order buttons the customer tapped. Until it runs, checkout quietly drops the column from
+the insert (an order must never fail over a metric) and the dashboard panel says to run
+this file. Orders placed before it can't be back-filled.
+
 **`supabase-order-rate-limit.sql`** — Required for the **spam-order limit**. Adds
 `orders.device_id`, the three `shop_settings.spam_*` columns, and the `BEFORE INSERT`
 trigger that actually enforces the limit. Until it runs there is no limit at all, and
@@ -147,7 +153,7 @@ trigger that actually enforces the limit. Until it runs there is no limit at all
 | Route | Description |
 |-------|-------------|
 | `/` | Main menu page — customers browse categories and items, add to cart |
-| `/checkout` | "Place Your Coffee Order" — customer name, coupon, donation, Stripe card payment. The word "checkout" is deliberately gone from the UI: customers read it as "order already placed" and bail. Name requires **first + last name, last initial is enough** (`validateFullName` in `src/lib/profanity.ts`) — one letter is what tells two Sarahs apart when the barista calls the order. |
+| `/checkout` | "Place Your Coffee Order" — customer name, the **editable** drinks list, coupon, donation, Stripe card payment. **This is the only review screen; the menu goes straight here** (see *Straight to Payment* below). The word "checkout" is deliberately gone from the UI: customers read it as "order already placed" and bail. Name requires **first + last name, last initial is enough** (`validateFullName` in `src/lib/profanity.ts`) — one letter is what tells two Sarahs apart when the barista calls the order. |
 | `/checkout/confirmation` | Order confirmation screen after successful payment — plus the Pushpay giving box |
 
 ### Staff
@@ -192,7 +198,6 @@ src/
 ├── components/
 │   ├── menu/ModifierSelector.tsx    # Customization modal (supports 30+ syrup dropdowns)
 │   ├── menu/MenuCard.tsx            # Item card
-│   ├── cart/CartDrawer.tsx          # Slide-out cart
 │   └── ui/                          # Button, Card, Modal, Input, Badge
 ├── lib/
 │   ├── cart-store.ts                # Client-side cart state (observer pattern)
@@ -291,6 +296,28 @@ Used on `/live` and `/barista`:
 
 ---
 
+## Straight to Payment — There Is No Cart Screen
+
+Tapping **Order** on the menu goes **straight to `/checkout`**. There is no cart drawer in
+between, and `src/components/cart/CartDrawer.tsx` is gone.
+
+The drawer showed the same list of drinks the payment page shows, then asked for a second
+tap to go there. On a phone that's a screen of pure friction and one more place to abandon
+an order — the drink is already built and confirmed in the customization modal, so the
+review was the third look at the same three lines.
+
+The review didn't disappear, it moved onto the page that was always going to be read:
+
+- **The "Your Drinks" card on `/checkout` is editable** — quantity −/+ per line, Remove,
+  and **+ Add another** back to the menu. This is not optional polish. With the drawer
+  gone this is the only place a mis-tapped drink can be fixed, and without it the fix
+  would be starting the order over.
+- **The menu's Order button is disabled while the cart is empty** (nothing to pay for),
+  and the phone's bottom bar reads **Pay & Place Your Order** with the total, or **Place
+  Your Order** when the event is free.
+- **`/tablet` is untouched.** The counter POS has its own two-panel cart, because the
+  barista is building someone else's order out loud and reads it back to them.
+
 ## Modifier System
 
 Modifier groups are linked to menu items. Each group can be:
@@ -328,7 +355,8 @@ the same fetched set — nothing on the page can disagree with anything else.
 
 It reports orders, revenue, drinks made, average order, donations, discounts, busiest
 hours, hot vs cold split, phone vs counter, top drinks, top add-ins, a **How long orders
-took** panel (see below), a **Problem orders** panel (see *Problem-order stats* below), and
+took** panel (see below), a **Problem orders** panel (see *Problem-order stats* below), a
+**$3 Coffee & Tea gift** panel (see *Who said yes to the $3* below), and
 a per-event comparison table (click a row to filter the whole page to that event).
 Cancelled orders are excluded everywhere.
 
@@ -374,6 +402,30 @@ Things that keep the numbers honest:
 - **A missing migration doesn't take the page down.** The main query asks for the timing
   columns and, if they aren't there, re-runs without them; only this one panel goes quiet
   and names `supabase-order-timing.sql`.
+
+### Who said yes to the $3 — `/admin`
+
+A **The $3 Coffee & Tea gift** panel on the dashboard, under the same time-range and event
+filters as everything else: how many tapped **Place Order & Give $3**, how many tapped
+**Place Order — No Donation**, the yes rate, and how many were never asked.
+
+**It is the button, not the money — and the panel says so on screen.** Pushpay never tells
+us whether the $3 arrived, so a "yes" is someone who chose to be sent to the giving page
+and nothing more. Reporting it as income, or adding it to the Donations tile (which is
+`orders.tip_amount`, real money through Stripe), would be inventing revenue.
+
+- **The rate divides by the orders that were asked**, not by every order. Counter orders on
+  `/tablet` never see the two buttons, so dividing by all orders would make the shop look
+  worse at asking every time the counter is busy. "Never asked" is reported as its own
+  number: counter orders, write-ins, and everything from before the migration.
+- **`null` is never counted as a no.** Only a literal `false` — someone who saw both
+  buttons and picked the second one — is a decline.
+- **A missing migration doesn't take the page down.** The orders query walks down a list
+  of column sets (times + giving, times only, giving only, neither) until one works, so a
+  shop that has run neither migration still gets a full dashboard and each quiet panel
+  names its own file. Checkout is resilient the same way: if `giving_intent` isn't there,
+  the insert is retried without it. The card may already have been charged by that point —
+  a metric column must never be what loses somebody their order.
 
 ## Stopping Spam Orders
 
@@ -806,9 +858,12 @@ boxes and they do different things.**
 `/checkout` ends in **two buttons**, and both charge the card the same amount (the drinks):
 
 - **☕ Place Order & Give $3** — places the order, lands on the confirmation screen, and
-  **redirects itself to Pushpay after a 5-second countdown** with the $3 filled in. *Go
+  **redirects itself to Pushpay after a 3-second countdown** with the $3 filled in. *Go
   now* skips the wait; *Not now* cancels it and leaves the link as a button.
 - **Place Order — No Donation** — places the order, normal confirmation screen
+
+Which button was tapped is saved on the order as `giving_intent` and reported at `/admin`
+— see *Who said yes to the $3* below.
 
 The ask is a choice *between the buttons* rather than a box further up the page, so nobody
 reaches the bottom having missed it, and declining takes one tap.
@@ -833,9 +888,30 @@ merchant handle:
   comes back `ReturnButtonUrl: null`. Whoever goes to Pushpay is not coming back.
 
 The countdown is deliberate rather than an instant redirect: it's a one-way trip (see
-`ReturnButtonUrl: null` above), so "Order Placed!" and the wait time need a few seconds to
-actually be read first. It uses `location.href`, not `window.open` — a redirect on a timer
-has no user gesture behind it and mobile Safari blocks popups opened that way.
+`ReturnButtonUrl: null` above), so the handoff needs a beat to be read first. **Three
+seconds** — they already tapped a button asking for this, so it's a handoff and not a
+second ask; longer reads as a page that has stalled. It uses `location.href`, not
+`window.open` — a redirect on a timer has no user gesture behind it and mobile Safari
+blocks popups opened that way.
+
+#### The giving confirmation screen is upside down on purpose
+
+On the `give=1` path the confirmation screen is ordered **Pushpay → your order → the live
+queue**, which is the reverse of the normal one:
+
+- **Pushpay leads**, because in three seconds the screen belongs to Pushpay, and the one
+  thing that has to be read before then is *why* it changed. A redirect nobody saw coming
+  reads as the site having crashed with their money in it.
+- **The order confirmation sits under it** — placed, named, wait time. It's reassurance,
+  not news; they just tapped the button that placed it.
+- **The live queue is at the bottom**, and only on this path. It's there for whoever taps
+  *Not now* — anyone who lets the countdown run sees the same board on `/yourlive`. It's
+  the real `LiveOrders` with a new `embedded` prop (no shop banner, no full-height
+  background), not a second copy of the board: the queue maths must not fork.
+- **No giving box down there.** The ask is already at the top of this page; twice is
+  nagging.
+
+The plain path (**Place Order — No Donation**) is unchanged: order card, then `GivingBox`.
 
 So the order is placed **first**, and the Pushpay link only appears once it's on the
 barista board. Then wandering off costs nothing. This is exactly what went wrong when the
@@ -1010,6 +1086,13 @@ For Netlify:
 2. Read the **How long orders took** panel — average, typical, fastest, slowest, and
    every order with its own time
 3. Only orders where the barista tapped **Start Making** and then **Mark Ready** are timed
+
+**See how many people said they'd give the $3:**
+1. Go to `/admin` and pick a time range
+2. Read **The $3 Coffee & Tea gift** panel — said yes, said not today, the yes rate, and
+   how many were never asked (counter orders never see the two buttons)
+3. Remember what it is: the button they tapped, not money received. Pushpay never tells us
+   whether the gift arrived
 
 **Change how many orders one person can place:**
 1. Go to `/admin/settings` → **Stopping spam orders**

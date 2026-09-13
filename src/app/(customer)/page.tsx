@@ -15,7 +15,6 @@ import { fetchItemModifierGroups } from '@/lib/menu';
 import CategoryTabs from '@/components/menu/CategoryTabs';
 import MenuCard from '@/components/menu/MenuCard';
 import ModifierSelector from '@/components/menu/ModifierSelector';
-import CartDrawer from '@/components/cart/CartDrawer';
 import ShopBanner, { ClosedNotice } from '@/components/ShopBanner';
 import CustomOrderBox from '@/components/CustomOrderBox';
 import type {
@@ -40,7 +39,6 @@ export default function MenuPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [queueWait, setQueueWait] = useState<number | null>(null);
@@ -156,6 +154,20 @@ export default function MenuPage() {
     ? [...categories, { id: CUSTOM_TAB_ID, name: 'Custom Order', display_order: 9999, is_active: true }]
     : categories;
 
+  /**
+   * Menu → payment, with nothing in between.
+   *
+   * There used to be a cart drawer here: tap Order, read the same list of drinks back,
+   * tap again. On a phone that second screen was pure friction — it showed nothing the
+   * payment page doesn't already show, and it was one more place to abandon an order.
+   * The drinks list on /checkout is editable (quantities, remove), so the review didn't
+   * go away — it moved onto the page that was always going to be read anyway.
+   */
+  function goToCheckout() {
+    if (cart.itemCount === 0) return;
+    router.push('/checkout');
+  }
+
   function handleAddToCart(modifiers: Modifier[], instructions: string) {
     if (!selectedItem) return;
     cartStore.addItem(selectedItem, modifiers, instructions, isEventFree);
@@ -200,8 +212,9 @@ export default function MenuPage() {
               Track Order
             </button>
             <button
-              onClick={() => setCartOpen(true)}
-              className="relative cursor-pointer rounded-full bg-primary px-5 py-2.5 font-accent text-sm font-semibold text-white transition-all hover:bg-primary-light"
+              onClick={goToCheckout}
+              disabled={cart.itemCount === 0}
+              className="relative rounded-full bg-primary px-5 py-2.5 font-accent text-sm font-semibold text-white transition-all enabled:cursor-pointer enabled:hover:bg-primary-light disabled:opacity-40"
             >
               Order
               {cart.itemCount > 0 && (
@@ -274,15 +287,18 @@ export default function MenuPage() {
         )}
       </main>
 
-      {/* Mobile cart button */}
-      {cart.itemCount > 0 && !cartOpen && canOrder && (
+      {/* The one way out of the menu on a phone, and it goes straight to the payment
+          page — there is no cart drawer in between. See goToCheckout above. */}
+      {cart.itemCount > 0 && canOrder && (
         <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-100 bg-surface/90 p-4 backdrop-blur-sm sm:hidden">
           <button
-            onClick={() => setCartOpen(true)}
+            onClick={goToCheckout}
             className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary py-3 font-accent font-semibold text-white"
           >
-            View Order ({cart.itemCount})
-            <span className="text-sm opacity-75">${cart.total.toFixed(2)}</span>
+            {cart.total === 0 ? 'Place Your Order' : 'Pay & Place Your Order'} ({cart.itemCount})
+            {cart.total > 0 && (
+              <span className="text-sm opacity-75">${cart.total.toFixed(2)}</span>
+            )}
           </button>
         </div>
       )}
@@ -297,16 +313,6 @@ export default function MenuPage() {
           onAddToCart={handleAddToCart}
         />
       )}
-
-      <CartDrawer
-        isOpen={cartOpen}
-        onClose={() => setCartOpen(false)}
-        orderingOpen={canOrder}
-        onCheckout={() => {
-          setCartOpen(false);
-          router.push('/checkout');
-        }}
-      />
     </div>
   );
 }
