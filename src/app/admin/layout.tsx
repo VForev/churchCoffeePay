@@ -10,6 +10,7 @@ const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞', exact: true },
   { href: '/admin/menu', label: 'Menu', icon: '☕' },
   { href: '/admin/modifiers', label: 'Modifiers', icon: '⚙' },
+  { href: '/admin/specialty', label: 'Drink of the Day', icon: '🍁' },
   { href: '/admin/events', label: 'Events', icon: '📅' },
   { href: '/admin/coupons', label: 'Coupons', icon: '🎟' },
   { href: '/admin/access-codes', label: 'Access Codes', icon: '🔑' },

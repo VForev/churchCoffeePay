@@ -130,6 +130,11 @@ honest value to back-fill them with.
 the board can show which cups have already come off the roll. Without it, printing still
 works per cup; every cup just always looks unprinted.
 
+**`supabase-specialty-drink.sql`** — Required for the **Drink of the Day** at
+`/admin/specialty`. Creates `specialty_drink` (single row, `id = 1`) and puts it on the
+realtime publication, so switching the special on or off reaches every open phone. Until
+it runs there is simply no special: the menu looks exactly as it does today.
+
 **`supabase-theme.sql`** — Required for **changing the app's colours** at `/admin/theme`.
 Creates `theme_settings` (single row, `id = 1`) holding the chosen scheme and any
 per-colour overrides, and puts it on the realtime publication so a save repaints every
@@ -185,6 +190,7 @@ trigger that actually enforces the limit. Until it runs there is no limit at all
 | `/admin/orders` | Full order history — expand rows, filter by status, search by name, archive or delete |
 | `/admin/labels` | Cup label layout — roll size, what's on the label, text sizes, live preview, test print |
 | `/admin/print-setup` | Non-technical, step-by-step guide to installing the printer software on the shop PC; downloads the agent bundle |
+| `/admin/specialty` | **Drink of the Day** — the seasonal special at the top of the customer menu: big card or one line, with its build and an end date |
 | `/admin/theme` | **Look & Colours** — pick a colour scheme or change any individual colour; live preview, saves to every screen at once |
 | `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, **lock everything**, donation on/off, coupon box on/off, **spam-order limit** |
 
@@ -204,6 +210,7 @@ src/
 │   └── api/checkout/route.ts        # Stripe PaymentIntent API
 ├── components/
 │   ├── ThemeProvider.tsx            # Paints the saved colours onto every page
+│   ├── menu/SpecialtyDrink.tsx      # Drink of the day — big card, one line, sold out
 │   ├── menu/ModifierSelector.tsx    # Customization modal (supports 30+ syrup dropdowns)
 │   ├── menu/MenuCard.tsx            # Item card
 │   └── ui/                          # Button, Card, Modal, Input, Badge
@@ -217,6 +224,7 @@ src/
 │   ├── logo.ts                      # Church mark as base64; shared with the print agent
 │   ├── giving.ts                    # Pushpay handle, token and link
 │   ├── theme.ts                     # Colour tokens, the schemes, load/save
+│   ├── specialty.ts                 # Drink of the day — settings and what to show
 │   ├── my-order.ts                  # Which orders on the board are this phone's
 │   ├── supabase.ts                  # Supabase client
 │   ├── access.ts                    # Admin service-role client
@@ -285,6 +293,60 @@ what makes that possible.
 - **Accents/UI:** Roboto (`font-accent`)
 
 ---
+
+## Drink of the Day
+
+A seasonal special at the top of the customer menu, set at **`/admin/specialty`**.
+Migration: `supabase-specialty-drink.sql`.
+
+### It is a drink plus a build, not a menu item
+
+`specialty_drink` stores `menu_item_id` (the drink it's made on) and `modifier_ids` (the
+add-ins that make it the special). Tapping it opens the ordinary customization sheet with
+those already ticked — `preselectIds` on `ModifierSelector`, which is the only change that
+component needed. Three things fall out of that, and they're the reason it isn't just
+another row in `menu_items`:
+
+- **It can't be ordered when the bar can't make it.** The card reads the same
+  `is_sold_out` flags the barista already flips on the 86 tab, so 86-ing the maple takes
+  the special out of service with nothing else to remember. A seasonal drink only exists
+  while its syrup is on the shelf; the two are tied together rather than tracked apart.
+- **It costs what the drink costs.** No second price to keep in step with the menu.
+- **It reaches the bar as an ordinary order** — a Latte with add-ins listed like any
+  other. Nothing behind the bar has to learn a new kind of thing.
+
+### Big or one line
+
+`display_style` picks between the two layouts in `src/components/menu/SpecialtyDrink.tsx`:
+
+- **Big** — the featured card: ribbon, large name, the build, an *Order this* button. Use
+  it when the special is the point of the morning.
+- **One line** — a single row above the menu. Use it the rest of the time: the top of that
+  menu is contested (the service banner is already there), regulars outnumber browsers,
+  and a full-width card pushes the drink someone actually came for below the fold.
+
+### Sold out is shown, not hidden
+
+When the base drink or any of the build's add-ins is 86'd, the card stays on the menu —
+greyed, struck through, naming what ran out, and not tappable. Hiding it was the other
+option and it's worse: someone who came in for the maple latte decides they imagined it
+and asks the barista mid-rush. `sold_out_note` ("Back next Sunday") is the line
+underneath.
+
+**"Off the menu" and "sold out" are different**, exactly as everywhere else in this app: a
+base drink an admin has hidden (`is_available = false`), a deleted drink, a special with
+no name, or one past its `show_until` date all resolve to `off` — nothing on the menu at
+all. Only a 86 produces the sold-out card. The whole decision is `resolveSpecialty()` in
+`src/lib/specialty.ts`, computed from the menu the page has already loaded, so a barista's
+86 flips the card live with no extra query.
+
+**`show_until` takes it down on its own.** Nothing looks more abandoned than a "this
+Sunday" card three weeks later.
+
+Not on `/tablet` — the barista knows what the special is, and the counter POS has no room
+above the fold for an ad. The cup label doesn't call it out either; a seasonal build
+printed as a numbered recipe on the sticker is a separate job (it needs the order item to
+remember it was the special).
 
 ## Colours and Themes
 
@@ -1187,6 +1249,13 @@ For Netlify:
 2. Read the **How long orders took** panel — average, typical, fastest, slowest, and
    every order with its own time
 3. Only orders where the barista tapped **Start Making** and then **Mark Ready** are timed
+
+**Put a special on the menu:**
+1. Go to `/admin/specialty`
+2. Name it, write the one line, pick the drink it's **built on** and the **add-ins**
+   that make it the special
+3. Choose **Big card** or **One line**, set **Show until**, tick *Show a drink of the day*
+4. Save. If the barista 86s one of those add-ins, the card says so on its own
 
 **Change the app's colours:**
 1. Go to `/admin/theme`

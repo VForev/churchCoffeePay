@@ -16,6 +16,12 @@ interface ModifierSelectorProps {
   item: MenuItem;
   modifierGroups: ModifierGroup[];
   eventFree?: boolean;
+  /**
+   * Options to start ticked — the drink of the day's build, opened from the menu's
+   * featured card. Everything else about the sheet is unchanged, which is the point:
+   * the special is an ordinary drink someone has already filled part of in.
+   */
+  preselectIds?: string[];
   onAddToCart: (selectedModifiers: Modifier[], specialInstructions: string) => void;
 }
 
@@ -34,30 +40,42 @@ export default function ModifierSelector({
   item,
   modifierGroups,
   eventFree,
+  preselectIds,
   onAddToCart,
 }: ModifierSelectorProps) {
   const [selections, setSelections] = useState<Record<string, Modifier[]>>({});
   const [instructions, setInstructions] = useState('');
   const [groupSearch, setGroupSearch] = useState<Record<string, string>>({});
 
-  // Seed each group with its locked options (always included) plus any available default.
+  // Seed each group with its locked options (always included) plus any available default,
+  // then let the drink of the day's build override that where it says something.
   useEffect(() => {
     if (!isOpen) return;
     const initial: Record<string, Modifier[]> = {};
+    const wanted = new Set(preselectIds ?? []);
 
     modifierGroups.forEach((group) => {
       const locked = lockedModifiers(group);
       const selectable = selectableModifiers(group);
+      // Only options this drink actually offers and can actually make. A special whose
+      // syrup was 86'd can't be ordered at all (the card says so), but a build naming an
+      // option that's since been hidden on this drink must not tick a phantom.
+      const asked = selectable.filter((m) => wanted.has(m.id));
 
       if (group.allow_multiple) {
         const defaults = selectable.filter((m) => m.is_default);
-        initial[group.id] = [...locked, ...defaults];
+        initial[group.id] = asked.length > 0 ? [...locked, ...asked] : [...locked, ...defaults];
         return;
       }
 
-      // Single-select: a locked option wins outright and can't be swapped.
+      // Single-select: a locked option wins outright and can't be swapped — not even by
+      // the special, which is a suggestion and not a rule.
       if (locked.length > 0) {
         initial[group.id] = [locked[0]];
+        return;
+      }
+      if (asked.length > 0) {
+        initial[group.id] = [asked[0]];
         return;
       }
       const defaultMod = selectable.find((m) => m.is_default);
@@ -67,7 +85,7 @@ export default function ModifierSelector({
     setSelections(initial);
     setInstructions('');
     setGroupSearch({});
-  }, [isOpen, item.id, modifierGroups]);
+  }, [isOpen, item.id, modifierGroups, preselectIds]);
 
   function toggleModifier(group: ModifierGroup, modifier: Modifier) {
     if (modifier.is_locked || modifier.is_sold_out) return;

@@ -17,6 +17,13 @@ import MenuCard from '@/components/menu/MenuCard';
 import ModifierSelector from '@/components/menu/ModifierSelector';
 import ShopBanner, { ClosedNotice } from '@/components/ShopBanner';
 import CustomOrderBox from '@/components/CustomOrderBox';
+import SpecialtyDrink from '@/components/menu/SpecialtyDrink';
+import {
+  DEFAULT_SPECIALTY,
+  fetchSpecialty,
+  resolveSpecialty,
+  type SpecialtySettings,
+} from '@/lib/specialty';
 import type {
   Category,
   MenuItem,
@@ -39,6 +46,11 @@ export default function MenuPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([]);
+  /** The drink of the day's build, when the sheet was opened from its card. */
+  const [preselectIds, setPreselectIds] = useState<string[] | undefined>(undefined);
+  const [specialty, setSpecialty] = useState<SpecialtySettings>(DEFAULT_SPECIALTY);
+  /** Every modifier, only so the special can name its own add-ins and see them sold out. */
+  const [allModifiers, setAllModifiers] = useState<Modifier[]>([]);
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [queueWait, setQueueWait] = useState<number | null>(null);
@@ -83,11 +95,13 @@ export default function MenuPage() {
   }, []);
 
   const fetchMenu = useCallback(async () => {
-    const [catRes, itemRes, eventRes, config] = await Promise.all([
+    const [catRes, itemRes, eventRes, config, special, modRes] = await Promise.all([
       supabase.from('categories').select('*').eq('is_active', true).order('display_order'),
       supabase.from('menu_items').select('*').eq('is_available', true).order('display_order'),
       supabase.from('events').select('*').eq('is_active', true).limit(1).maybeSingle(),
       fetchShopConfig(),
+      fetchSpecialty(),
+      supabase.from('modifiers').select('*'),
     ]);
 
     if (catRes.data) {
@@ -95,6 +109,8 @@ export default function MenuPage() {
       setActiveCategory((prev) => prev ?? catRes.data[0]?.id ?? null);
     }
     if (itemRes.data) setMenuItems(itemRes.data);
+    if (modRes.data) setAllModifiers(modRes.data as Modifier[]);
+    setSpecialty(special);
     setActiveEvent((eventRes.data as Event) ?? null);
     setSettings(config.settings);
     setHours(config.hours);
@@ -116,6 +132,7 @@ export default function MenuPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'modifiers' }, fetchMenu)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shop_settings' }, fetchMenu)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ordering_hours' }, fetchMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'specialty_drink' }, fetchMenu)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchQueueWait)
       .subscribe();
 
@@ -148,6 +165,10 @@ export default function MenuPage() {
   const filteredItems = menuItems.filter((item) => item.category_id === activeCategory);
   const isEventFree = activeEvent?.is_all_free || false;
 
+  // Recomputed from the same menu everyone else on this page is reading, so a barista
+  // 86-ing the syrup flips the card to "sold out" with no extra round trip.
+  const specialtyState = resolveSpecialty(specialty, menuItems, allModifiers);
+
   // A write-in code adds a "Custom Order" tab at the very end — never the default,
   // so it's not the first thing anyone sees.
   const tabCategories = unlock?.allowCustomOrder
@@ -168,10 +189,17 @@ export default function MenuPage() {
     router.push('/checkout');
   }
 
+  /** The featured card and an ordinary drink card open the same sheet. */
+  function openDrink(item: MenuItem, build?: string[]) {
+    setPreselectIds(build);
+    setSelectedItem(item);
+  }
+
   function handleAddToCart(modifiers: Modifier[], instructions: string) {
     if (!selectedItem) return;
     cartStore.addItem(selectedItem, modifiers, instructions, isEventFree);
     setSelectedItem(null);
+    setPreselectIds(undefined);
   }
 
   if (loading) {
@@ -259,6 +287,21 @@ export default function MenuPage() {
         )}
       </div>
 
+      {specialtyState.kind !== 'off' && (
+        <div className="mx-auto max-w-5xl px-4 pt-5">
+          <SpecialtyDrink
+            state={specialtyState}
+            onOrder={() =>
+              specialtyState.kind === 'ready' &&
+              openDrink(
+                specialtyState.item,
+                specialtyState.modifiers.map((m) => m.id),
+              )
+            }
+          />
+        </div>
+      )}
+
       <div className="mx-auto max-w-5xl px-4 pt-5">
         <CategoryTabs categories={tabCategories} activeId={activeCategory} onSelect={setActiveCategory} />
       </div>
@@ -280,7 +323,7 @@ export default function MenuPage() {
                 item={item}
                 eventFree={isEventFree}
                 orderingClosed={!canOrderItem(item)}
-                onClick={() => setSelectedItem(item)}
+                onClick={() => openDrink(item)}
               />
             ))}
           </div>
@@ -306,10 +349,14 @@ export default function MenuPage() {
       {selectedItem && (
         <ModifierSelector
           isOpen={!!selectedItem}
-          onClose={() => setSelectedItem(null)}
+          onClose={() => {
+            setSelectedItem(null);
+            setPreselectIds(undefined);
+          }}
           item={selectedItem}
           modifierGroups={modifierGroups}
           eventFree={isEventFree}
+          preselectIds={preselectIds}
           onAddToCart={handleAddToCart}
         />
       )}
