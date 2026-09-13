@@ -6,10 +6,12 @@ import LiveOrders from '@/components/LiveOrders';
  * The customer's own copy of the order board — where they land after placing an order,
  * and what the "Track Order" button opens.
  *
- * Identical to /live except that it asks for a gift under the queue. That's the whole
- * reason the two routes exist: the giving box belongs on a phone someone is holding,
- * not on the TV in the lobby.
+ * Two things /live doesn't have, and both for the same reason — someone is holding this
+ * screen rather than looking at it across a room:
+ *
+ *  - `highlightMine` pins the orders this browser placed to the top of the board.
+ *  - `showGiving` asks for a gift under the queue.
  */
 export default function YourLiveOrdersPage() {
-  return <LiveOrders showGiving />;
+  return <LiveOrders showGiving highlightMine />;
 }

@@ -42,7 +42,7 @@
     .btn-out { border: 1.5px solid #D9D6D0; color: #2F2E2C; border-radius: 999px; text-align: center;
                font-family: 'Kumbh Sans', system-ui, sans-serif; font-weight: 700; font-size: 12.5px;
                padding: 11px 14px; }
-    .queue-row { border-radius: 9px; padding: 8px 10px; display: flex; align-items: center;
+    .queue-row { border-radius: 9px; padding: 6px 9px; display: flex; align-items: center;
                  justify-content: space-between; gap: 8px; }
     .pos { font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 10px; font-weight: 700;
            color: #FFF3F0; border-radius: 5px; padding: 2px 6px; }
@@ -71,7 +71,7 @@
       <div class="colhead">They tapped &ldquo;Give $3&rdquo;</div>
       <div class="phone">
         <!-- 1: pushpay leads -->
-        <div style="background: #F1F2ED; border-bottom: 1px solid #DCDED4; padding: 14px 13px; text-align: center;">
+        <div style="background: #F1F2ED; border-bottom: 1px solid #DCDED4; padding: 11px 13px; text-align: center;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5C5241" stroke-width="1.6"
                stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 4px;">
             <path d="M4 8h12v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8Z"/>
@@ -80,32 +80,58 @@
           </svg>
           <div class="name" style="font-size: 14px;">Taking you to Pushpay in 3&hellip;</div>
           <div class="muted" style="font-size: 10.5px; margin-top: 3px; line-height: 1.45;">
-            Your order is placed and already on the barista board — nothing below depends on this.
-            $3 for Coffee &amp; Tea is filled in for you.
+            Your order is on the barista board already — nothing below depends on this.
           </div>
-          <div class="btn-red" style="margin-top: 10px;">Go now</div>
-          <div style="font-size: 10.5px; color: #86837D; margin-top: 8px; text-decoration: underline;">
+          <div class="btn-red" style="margin-top: 8px;">Go now</div>
+          <div style="font-size: 10.5px; color: #86837D; margin-top: 6px; text-decoration: underline;">
             Not now — stay on this page
           </div>
         </div>
 
         <!-- 2: their order -->
-        <div class="pad" style="text-align: center;">
+        <div style="padding: 9px 13px; text-align: center;">
           <div class="name" style="font-size: 12.5px;">Order placed</div>
           <div class="muted" style="font-size: 11px; margin-top: 2px;">
-            Thanks, <span style="color: #2F2E2C; font-weight: 700;">Sarah K</span> —
-            ready in about <span style="color: #911B1B; font-weight: 700;">3 min</span>.
+            Thanks, <span style="color: #2F2E2C; font-weight: 700;">Sarah K</span> — we&rsquo;ll
+            call your name. It&rsquo;s at the top of the board below.
           </div>
-          <div class="btn-out" style="margin-top: 9px;">Order another drink</div>
+          <div class="btn-out" style="margin-top: 7px;">Order another drink</div>
         </div>
         <div class="hair"></div>
 
-        <!-- 3: the queue -->
-        <div class="pad" style="display: flex; flex-direction: column; gap: 7px;">
-          <div style="display: flex; justify-content: space-between;">
-            <div class="colhead" style="color: #5C5241;">LIVE ORDER STATUS</div>
-            <div class="muted" style="font-size: 10px;">3 active</div>
+        <!-- 3: their own order, pinned above the line -->
+        <div style="padding: 10px 13px 12px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="background: #2F2E2C; border-radius: 14px; padding: 10px 12px; text-align: center; color: #E6E6E6;">
+            <div style="font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 9px; font-weight: 700;
+                        letter-spacing: .2em; color: #B3ACA1;">YOUR ORDER</div>
+            <div style="font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 28px; font-weight: 700;
+                        line-height: 1; margin-top: 3px;">18</div>
+            <div style="font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #918F8A; margin-top: 2px;">in line</div>
+            <div style="font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 15px; font-weight: 700; margin-top: 6px;">Sarah K</div>
+            <div style="font-size: 10.5px; color: #B3ACA1; margin-top: 1px;">Latte, Cappuccino</div>
+
+            <div style="display: flex; gap: 5px; margin-top: 9px;">
+              <div style="flex: 1;">
+                <div style="height: 4px; border-radius: 999px; background: #E6E6E6;"></div>
+                <div style="font-size: 8.5px; letter-spacing: .06em; text-transform: uppercase; color: #E6E6E6; margin-top: 4px;">Sent</div>
+              </div>
+              <div style="flex: 1;">
+                <div style="height: 4px; border-radius: 999px; background: #E6E6E6;"></div>
+                <div style="font-size: 8.5px; letter-spacing: .06em; text-transform: uppercase; color: #E6E6E6; margin-top: 4px;">Being made</div>
+              </div>
+              <div style="flex: 1;">
+                <div style="height: 4px; border-radius: 999px; background: #55534E;"></div>
+                <div style="font-size: 8.5px; letter-spacing: .06em; text-transform: uppercase; color: #7C7A75; margin-top: 4px;">Ready</div>
+              </div>
+            </div>
+
+            <div style="font-family: 'Kumbh Sans', system-ui, sans-serif; font-size: 12.5px; font-weight: 700; margin-top: 9px;">
+              About 3 min
+            </div>
           </div>
+
+          <div class="colhead" style="color: #5C5241; padding-top: 2px;">THE LINE RIGHT NOW</div>
+
           <div class="queue-row" style="background: #F1F2ED; border: 1px solid #DCDED4;">
             <div style="display: flex; align-items: center; gap: 7px;">
               <span class="pos" style="background: #6F745D;">17</span>
@@ -113,19 +139,15 @@
             </div>
             <span style="font-size: 10.5px; font-weight: 700; color: #6F745D;">Ready</span>
           </div>
-          <div class="queue-row" style="background: #F4F1ED; border: 1px solid #E2DBD2;">
+          <div class="queue-row" style="background: #F4F1ED; border: 1.5px solid #911B1B;">
             <div style="display: flex; align-items: center; gap: 7px;">
-              <span class="pos" style="background: #695B4B;">18</span>
+              <span class="pos" style="background: #911B1B;">18</span>
               <span class="name" style="font-size: 11.5px;">Sarah K</span>
+              <span style="background: #911B1B; color: #FFF3F0; border-radius: 999px; padding: 1px 6px;
+                           font-size: 8.5px; font-weight: 700; letter-spacing: .06em;
+                           font-family: 'Kumbh Sans', system-ui, sans-serif;">YOU</span>
             </div>
             <span style="font-size: 10.5px; font-weight: 700; color: #695B4B;">Being made</span>
-          </div>
-          <div class="queue-row" style="background: #F6F5F2; border: 1px solid #E7E5E0;">
-            <div style="display: flex; align-items: center; gap: 7px;">
-              <span class="pos" style="background: #B3ACA1;">19</span>
-              <span class="name" style="font-size: 11.5px;">Maria K</span>
-            </div>
-            <span class="muted" style="font-size: 10.5px;">2 cups &middot; ~5 min</span>
           </div>
         </div>
       </div>
@@ -195,6 +217,10 @@
         already on the board.</div>
       <div class="note"><b>No giving box at the bottom.</b> The ask is at the top of this same
         screen; twice is nagging.</div>
+      <div class="note"><b>Their own order is pinned above the line</b> — the board is a public
+        list, and this is the one row on it that belongs to whoever is holding the phone. It
+        still appears in the line marked <b>You</b>: the card says how long, the line says who
+        is in front of them.</div>
     </div>
 
     <!-- the metric -->

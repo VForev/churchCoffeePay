@@ -163,7 +163,7 @@ trigger that actually enforces the limit. Until it runs there is no limit at all
 | `/tablet` | Counter POS — two-panel layout: menu left, cart right. Barista builds order, customer pays on same device | Barista at counter |
 | `/barista` | Barista dashboard — three tabs: **Orders** (real-time kanban with search, back buttons, undo, issue flagging and a 🖨 print button per cup) , **Sold Out / 86** (mark drinks and add-ins out of stock) and **History** (past orders with their make time, reprint any single cup, issues-only filter) | Barista making drinks |
 | `/live` | Public live orders screen — queue position, status and wait time for all active orders. **No giving box** | The lobby TV (share the URL / QR code) |
-| `/yourlive` | The same board, plus the Pushpay giving box under the queue | A customer on their own phone — where "Track Order" and the confirmation screen send them |
+| `/yourlive` | The same board, plus **their own order pinned to the top** and the Pushpay giving box under the queue | A customer on their own phone — where "Track Order" and the confirmation screen send them |
 
 ### Admin (requires login)
 
@@ -208,6 +208,7 @@ src/
 │   ├── order-issues.ts              # Problem-order flag: reasons, hasIssue(), error copy
 │   ├── logo.ts                      # Church mark as base64; shared with the print agent
 │   ├── giving.ts                    # Pushpay handle, token and link
+│   ├── my-order.ts                  # Which orders on the board are this phone's
 │   ├── supabase.ts                  # Supabase client
 │   ├── access.ts                    # Admin service-role client
 │   └── utils.ts                     # formatPrice, generateId, cn()
@@ -958,6 +959,36 @@ drift between the screen on the wall and the screen in someone's hand.
 The customer-facing links (the **Track Order** button on the menu, **Track Your Order Live**
 on the confirmation screen) point at `/yourlive`. `/live` is what goes on the TV, in the QR
 code, and in the print agent's startup file.
+
+### Your order, pinned to the top
+
+The board is a public list — the same one on the lobby TV — which answers everybody's
+question except the one the person holding the phone has. So on `/yourlive` (and on the
+board embedded in the giving confirmation screen) **the orders this browser placed are
+pinned above everything else**, as a full-width card: position in line, name, drinks, a
+Sent → Being made → Ready track, and the live countdown. It turns green the moment the
+drink is ready — the only card on the page allowed to change colour for attention,
+because it's the only one that is about the reader.
+
+- **`src/lib/my-order.ts` is how the phone knows.** The order id is written to
+  localStorage the moment the insert succeeds (both on `/checkout` and in
+  `CustomOrderBox`), and expires after 6 hours. It never leaves the phone. **Not the same
+  thing as `orders.device_id`**, which is written to the database for the spam limit —
+  matching on this needs no migration and no extra column in the board's query.
+- **Losing it costs the card and nothing else.** A cleared browser, a private tab, a
+  different phone: the board still works and the order is still being made. Every failure
+  path in that file is silent for exactly that reason.
+- **The pinned order stays in the list below, marked "You"** with a ring. The card says
+  how long; the list says who is in front of them, and taking the row out would remove the
+  second answer to get the first.
+- **The countdown is computed once**, in `countdownMinutes()` in `LiveOrders.tsx`, and
+  both the pinned card and its row in the queue read it from there. Same reasoning as
+  `order-timing.ts`: the two sit inches apart on a phone, so two answers is worse than
+  none. It's also why the giving confirmation screen no longer prints its own `~n min`
+  above the board — that number was frozen into the URL at checkout and would drift.
+- **Never on `/live`.** `highlightMine` is off by default and the TV doesn't pass it:
+  nobody owns that screen, and a "your order" card on it would belong to whoever last
+  ordered from the shop PC.
 
 ---
 

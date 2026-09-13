@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
 import { getDeviceId } from '@/lib/device';
+import { rememberMyOrder } from '@/lib/my-order';
 import { fetchSpamSettings, isSpamLimitError, orderInsertError } from '@/lib/rate-limit';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -125,6 +126,9 @@ export default function CustomOrderBox({
     // One drink, and it's now safely in — lets the printer print immediately
     // instead of waiting to see whether more drinks are still arriving.
     await markOrderItemsComplete(order.id, 1);
+
+    // Same as a paid order: the live board pins this to the top of their own screen.
+    rememberMyOrder(order.id);
 
     const waitParam = queueWait !== null ? `&wait=${queueWait + 1}` : '';
     router.push(`/checkout/confirmation?name=${encodeURIComponent(name.trim())}${waitParam}`);

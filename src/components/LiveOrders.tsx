@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { fetchShopConfig, getShopStatus, DEFAULT_SETTINGS } from '@/lib/shop';
 import { safeDisplayName } from '@/lib/profanity';
+import { getMyOrderIds } from '@/lib/my-order';
 import ShopBanner from '@/components/ShopBanner';
 import GivingBox from '@/components/GivingBox';
 import type { Order, OrderItem, ShopSettings, OrderingHours } from '@/types';
@@ -18,6 +19,10 @@ import type { Order, OrderItem, ShopSettings, OrderingHours } from '@/types';
  *
  * One component rather than two pages, so the queue maths and the wait countdown can't
  * drift between the screen on the wall and the screen in someone's hand.
+ *
+ * `highlightMine` is the third difference, and it only makes sense on a phone: the orders
+ * this browser placed are pinned to the top as one big card, because the board is
+ * otherwise a public list that answers everyone's question except the holder's own.
  */
 
 interface LiveOrder extends Order {
@@ -40,6 +45,23 @@ function calculateWaitMinutes(allOrders: LiveOrder[], currentOrder: LiveOrder): 
   }
 
   return itemsAhead + thisOrderItems;
+}
+
+/**
+ * Minutes left on an order, from the same estimate the queue was built with.
+ *
+ * Both cards below ask for it here rather than each doing the subtraction: the pinned
+ * card and the row for the same order sit one above the other on a phone, and two
+ * different countdowns for one drink is worse than no countdown at all.
+ */
+function countdownMinutes(
+  order: LiveOrder,
+  waitMinutes: number | null,
+  now: number,
+): number | null {
+  if (order.status === 'ready' || waitMinutes === null) return null;
+  const doneAt = new Date(order.created_at).getTime() + waitMinutes * 60000;
+  return Math.max(0, Math.ceil((doneAt - now) / 60000));
 }
 
 // Bold, saturated status colors — this screen is read from across the room.
@@ -82,6 +104,7 @@ export default function LiveOrders({
   showGiving = false,
   twoColumn = false,
   embedded = false,
+  highlightMine = false,
 }: {
   showGiving?: boolean;
   twoColumn?: boolean;
@@ -92,10 +115,22 @@ export default function LiveOrders({
    * is the whole reason this is a prop and not a second copy of the board.
    */
   embedded?: boolean;
+  /**
+   * Pin the orders this browser placed to the top of the board (see the file comment).
+   * Never on the lobby TV: nobody owns that screen, and a "your order" card there would
+   * belong to whoever last ordered from the shop PC.
+   */
+  highlightMine?: boolean;
 }) {
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => Date.now());
+  /**
+   * Read once, on the first client render — which paints the loading spinner, so the
+   * server and the client agree and nothing flashes. Placing an order remounts the page,
+   * which is when a new id needs picking up.
+   */
+  const [myIds] = useState<string[]>(() => (highlightMine ? getMyOrderIds() : []));
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
   const [hours, setHours] = useState<OrderingHours[]>([]);
 
@@ -155,6 +190,8 @@ export default function LiveOrders({
 
   // Built once and placed by whichever layout is active below, so the TV and the
   // phone can't drift into rendering a card differently.
+  const isMine = (order: LiveOrder) => myIds.includes(order.id);
+
   const queueCards = queueOrders.map((order) => (
     <OrderCard
       key={order.id}
@@ -162,12 +199,37 @@ export default function LiveOrders({
       waitMinutes={calculateWaitMinutes(orders, order)}
       position={queuePosition(order)}
       now={now}
+      mine={isMine(order)}
     />
   ));
 
   const readyCards = readyOrders.map((order) => (
-    <OrderCard key={order.id} order={order} waitMinutes={null} position={null} now={now} />
+    <OrderCard
+      key={order.id}
+      order={order}
+      waitMinutes={null}
+      position={null}
+      now={now}
+      mine={isMine(order)}
+    />
   ));
+
+  /**
+   * Ready first, then position in the queue — the same order they'd want to be told
+   * them out loud. Newest-remembered-first would put a second coffee above a drink
+   * that is already sitting on the counter going cold.
+   */
+  const myOrders = orders
+    .filter(isMine)
+    .sort((a, b) =>
+      a.status === b.status
+        ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        : a.status === 'ready'
+          ? -1
+          : b.status === 'ready'
+            ? 1
+            : 0,
+    );
 
   if (loading) {
     return (
@@ -211,6 +273,31 @@ export default function LiveOrders({
               {status.isOpen ? 'Come grab a coffee!' : "We'll be back during service."}
             </p>
           </div>
+        )}
+
+        {/* The whole point of /yourlive: the board is a public list, and this is the one
+            row on it that belongs to the person holding the phone. Above everything,
+            including Ready — their own drink outranks a stranger's. */}
+        {myOrders.length > 0 && (
+          <section className="space-y-3">
+            {myOrders.map((order) => (
+              <MyOrderCard
+                key={order.id}
+                order={order}
+                waitMinutes={
+                  order.status === 'ready' ? null : calculateWaitMinutes(orders, order)
+                }
+                position={order.status === 'ready' ? null : queuePosition(order)}
+                now={now}
+              />
+            ))}
+            {/* Their order stays in the list below as well, marked "You". The card says
+                how long; the list says who is in front of them, which is the other half
+                of the question. */}
+            <h2 className="px-1 pt-2 font-accent text-sm font-bold uppercase tracking-wide text-text-light">
+              The line right now
+            </h2>
+          </section>
         )}
 
         {twoColumn ? (
@@ -288,30 +375,27 @@ function OrderCard({
   waitMinutes,
   position,
   now,
+  mine = false,
 }: {
   order: LiveOrder;
   waitMinutes: number | null;
   position: number | null;
   now: number;
+  /** This browser placed it — ringed and labelled, so it's findable in a long list. */
+  mine?: boolean;
 }) {
   const config = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG];
   if (!config) return null;
 
   const isReady = order.status === 'ready';
   const totalItems = order.order_items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
-
-  // Live countdown: when this order should be done, minus time already elapsed
-  let remainingMinutes: number | null = null;
-  if (!isReady && waitMinutes !== null) {
-    const estimatedDoneAt = new Date(order.created_at).getTime() + waitMinutes * 60000;
-    remainingMinutes = Math.max(0, Math.ceil((estimatedDoneAt - now) / 60000));
-  }
+  const remainingMinutes = countdownMinutes(order, waitMinutes, now);
 
   return (
     <div
       className={`rounded-2xl border-2 p-4 transition-all ${config.card} ${
         isReady ? 'shadow-lg' : 'shadow-sm'
-      }`}
+      } ${mine ? 'ring-2 ring-primary ring-offset-2' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
@@ -323,8 +407,13 @@ function OrderCard({
 
           <div className="min-w-0">
             {/* Never render the raw name — this is a TV in the church lobby. */}
-            <h3 className="font-heading text-xl font-bold leading-tight text-text-dark">
+            <h3 className="flex flex-wrap items-center gap-2 font-heading text-xl font-bold leading-tight text-text-dark">
               {safeDisplayName(order.customer_name)}
+              {mine && (
+                <span className="rounded-full bg-primary px-2 py-0.5 font-accent text-xs font-bold uppercase tracking-wide text-white">
+                  You
+                </span>
+              )}
             </h3>
             <p className="mt-0.5 font-body text-sm text-text-light">
               {totalItems} item{totalItems !== 1 ? 's' : ''}
@@ -364,6 +453,95 @@ function OrderCard({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The pinned card: this phone's own order, above everything else on the board.
+ *
+ * It answers the three things the person holding the phone is actually asking — is it
+ * mine, how far along is it, how long — in that order and at that size. The queue below
+ * answers a different question (who is in front of me), which is why the same order
+ * still appears down there marked "You" rather than being lifted out of the list.
+ *
+ * Green the moment it's ready: this is the one card on the page allowed to change colour
+ * to get someone's attention, because it's the only one that's about them.
+ */
+function MyOrderCard({
+  order,
+  waitMinutes,
+  position,
+  now,
+}: {
+  order: LiveOrder;
+  waitMinutes: number | null;
+  position: number | null;
+  now: number;
+}) {
+  const isReady = order.status === 'ready';
+  const isMaking = order.status === 'in_progress';
+  const remaining = countdownMinutes(order, waitMinutes, now);
+
+  const drinks = (order.order_items ?? [])
+    .map((i) => `${i.quantity > 1 ? `${i.quantity}× ` : ''}${i.menu_item?.name ?? 'Drink'}`)
+    .join(', ');
+
+  // Deliberately never invents a time. A queue estimate that hasn't been computed yet
+  // says what's happening instead of guessing a number that would then change.
+  const headline = isReady
+    ? 'Come and grab it!'
+    : remaining === null
+      ? isMaking
+        ? 'Being made now'
+        : 'In the queue'
+      : remaining === 0
+        ? 'Any moment now'
+        : position === 1
+          ? `You're up next — about ${remaining} min`
+          : `About ${remaining} min`;
+
+  const steps = ['Sent', 'Being made', 'Ready'];
+  const reached = isReady ? 3 : isMaking ? 2 : 1;
+
+  return (
+    <div
+      className={`rounded-3xl px-5 py-6 text-white shadow-xl transition-colors ${
+        isReady ? 'bg-success' : 'bg-primary'
+      }`}
+    >
+      <p className="text-center font-accent text-xs font-bold uppercase tracking-[0.2em] text-white/70">
+        Your order
+      </p>
+
+      <p className="mt-1.5 text-center font-heading text-5xl font-bold leading-none">
+        {isReady ? '✓' : (position ?? '—')}
+      </p>
+      <p className="mt-1 text-center font-accent text-xs font-semibold uppercase tracking-wide text-white/60">
+        {isReady ? 'Ready' : 'in line'}
+      </p>
+
+      <h2 className="mt-3 text-center font-heading text-2xl font-bold leading-tight">
+        {safeDisplayName(order.customer_name)}
+      </h2>
+      {drinks && <p className="mt-1 text-center font-body text-sm text-white/75">{drinks}</p>}
+
+      <div className="mt-5 flex gap-1.5">
+        {steps.map((label, i) => (
+          <div key={label} className="flex-1">
+            <div className={`h-1.5 rounded-full ${i < reached ? 'bg-white' : 'bg-white/25'}`} />
+            <p
+              className={`mt-1.5 text-center font-accent text-[10px] font-semibold uppercase tracking-wide ${
+                i < reached ? 'text-white' : 'text-white/50'
+              }`}
+            >
+              {label}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-4 text-center font-heading text-lg font-bold">{headline}</p>
     </div>
   );
 }

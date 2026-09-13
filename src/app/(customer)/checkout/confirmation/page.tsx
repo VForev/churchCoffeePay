@@ -49,21 +49,28 @@ function ConfirmationContent() {
     return () => clearTimeout(t);
   }, [redirecting, secondsLeft]);
 
-  const placed = (
-    <>
-      <p className="text-text-light font-body mb-1">
-        Thanks, <strong className="text-text-dark">{name}</strong>!
-      </p>
-      {waitMinutes !== null && waitMinutes > 0 ? (
-        <p className="text-text-light font-body mb-2">
-          Your drink should be ready in about{' '}
-          <strong className="text-primary font-accent">~{waitMinutes} min</strong>.
-        </p>
-      ) : (
-        <p className="text-text-light font-body mb-2">Your drink is next up!</p>
-      )}
-    </>
+  const thanks = (
+    <p className="text-text-light font-body mb-1">
+      Thanks, <strong className="text-text-dark">{name}</strong>!
+    </p>
   );
+
+  /**
+   * The wait, as it was when the order went in. Shown only where nothing else on the
+   * screen is reporting it: the giving path carries the live board underneath, whose
+   * pinned card recomputes the same estimate against the real queue. Two numbers for one
+   * drink, differing by a minute because one of them is frozen in a URL, is worse than
+   * one number in one place.
+   */
+  const waitLine =
+    waitMinutes !== null && waitMinutes > 0 ? (
+      <p className="text-text-light font-body mb-2">
+        Your drink should be ready in about{' '}
+        <strong className="text-primary font-accent">~{waitMinutes} min</strong>.
+      </p>
+    ) : (
+      <p className="text-text-light font-body mb-2">Your drink is next up!</p>
+    );
 
   /**
    * The giving path is laid out the other way up from the normal one.
@@ -119,9 +126,10 @@ function ConfirmationContent() {
             <h2 className="mb-1 font-heading text-lg font-bold text-text-dark">
               &#9989; Order placed
             </h2>
-            {placed}
+            {thanks}
             <p className="mb-4 font-body text-sm text-text-light">
-              We&apos;ll call your name when it&apos;s ready.
+              We&apos;ll call your name when it&apos;s ready — it&apos;s at the top of the board
+              below.
             </p>
             <Button onClick={() => router.push('/')} fullWidth variant="ghost">
               Order another drink
@@ -132,7 +140,7 @@ function ConfirmationContent() {
         {/* The queue, underneath everything else. No giving box on it — the ask is
             already at the top of this page, and twice is nagging. */}
         <div className="mt-2">
-          <LiveOrders embedded />
+          <LiveOrders embedded highlightMine />
         </div>
       </div>
     );
@@ -144,7 +152,8 @@ function ConfirmationContent() {
         <Card className="text-center py-10 px-6">
           <div className="text-6xl mb-4">&#9989;</div>
           <h1 className="text-2xl font-heading font-bold text-text-dark mb-2">Order Placed!</h1>
-          {placed}
+          {thanks}
+          {waitLine}
           <p className="text-text-light font-body mb-8 text-sm">
             We&apos;ll call your name when it&apos;s ready.
           </p>

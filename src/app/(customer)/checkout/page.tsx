@@ -7,6 +7,7 @@ import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
 import { getDeviceId } from '@/lib/device';
+import { rememberMyOrder } from '@/lib/my-order';
 import {
   checkSpamLimit,
   fetchSpamSettings,
@@ -315,6 +316,10 @@ function CheckoutForm() {
         }
         throw new Error(orderInsertError(orderError));
       }
+
+      // Safely in the database — from here the live board can pin it to the top of
+      // this phone's screen. Nothing else knows which order is theirs.
+      rememberMyOrder(order.id);
 
       for (const item of orderItems) {
         const { data: orderItem } = await supabase
