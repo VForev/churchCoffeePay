@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { TextArea } from '@/components/ui/Input';
@@ -46,6 +46,16 @@ export default function ModifierSelector({
   const [selections, setSelections] = useState<Record<string, Modifier[]>>({});
   const [instructions, setInstructions] = useState('');
   const [groupSearch, setGroupSearch] = useState<Record<string, string>>({});
+  /**
+   * "This sheet has already added its drink."
+   *
+   * Closing the sheet is a state change, so the button stays mounted and live for the
+   * rest of the tap's frame — two quick taps on "Add to Order" would add the same drink
+   * twice, landing as a second line on the checkout list that's easy to pay for without
+   * noticing. Reset below when the sheet opens, because /tablet keeps this component
+   * mounted between drinks rather than unmounting it the way the customer menu does.
+   */
+  const added = useRef(false);
 
   // Seed each group with its locked options (always included) plus any available default,
   // then let the drink of the day's build override that where it says something.
@@ -85,6 +95,7 @@ export default function ModifierSelector({
     setSelections(initial);
     setInstructions('');
     setGroupSearch({});
+    added.current = false;
   }, [isOpen, item.id, modifierGroups, preselectIds]);
 
   function toggleModifier(group: ModifierGroup, modifier: Modifier) {
@@ -123,6 +134,8 @@ export default function ModifierSelector({
   }
 
   function handleAdd() {
+    if (added.current) return;
+    added.current = true;
     onAddToCart(Object.values(selections).flat(), instructions);
     onClose();
   }

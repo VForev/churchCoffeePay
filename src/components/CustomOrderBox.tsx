@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
+import { insertOrderRow } from '@/lib/order-insert';
 import { getDeviceId } from '@/lib/device';
 import { rememberMyOrder } from '@/lib/my-order';
 import { fetchSpamSettings, isSpamLimitError, orderInsertError } from '@/lib/rate-limit';
@@ -38,11 +39,19 @@ export default function CustomOrderBox({
   const [nameError, setNameError] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  /**
+   * Same guard as /checkout, for the same reason: `submitting` is state and only greys
+   * the button on the next render, while submit() awaits the shop config and the access
+   * code first. Write-ins take no card, which makes them the easiest thing on the site
+   * to send twice by tapping twice.
+   */
+  const sending = useRef(false);
 
   const note = unlock.customOrderNote?.trim() || "We'll do our best — if we can't make it, we won't. Sorry!";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (sending.current) return;
 
     const nameCheck = validateFullName(name);
     if (!nameCheck.ok) {
@@ -56,6 +65,7 @@ export default function CustomOrderBox({
       return;
     }
 
+    sending.current = true;
     setSubmitting(true);
     setError('');
 
@@ -64,6 +74,7 @@ export default function CustomOrderBox({
     const config = await fetchShopConfig();
     if (getShopStatus(config.settings, config.hours).isLocked) {
       clearActiveUnlock();
+      sending.current = false;
       setSubmitting(false);
       setError('Ordering has been closed — your order was not sent.');
       return;
@@ -73,28 +84,29 @@ export default function CustomOrderBox({
     const fresh = await verifyAccessCode(unlock.code);
     if (!fresh || !fresh.allowCustomOrder) {
       clearActiveUnlock();
+      sending.current = false;
       setSubmitting(false);
       setError('This code can no longer place write-in orders — check with the team.');
       return;
     }
 
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        customer_name: name.trim(),
-        status: 'pending',
-        subtotal: 0,
-        discount_amount: 0,
-        tip_amount: 0,
-        total: 0,
-        payment_status: 'free',
-        order_source: 'mobile',
-        device_id: getDeviceId(),
-      })
-      .select()
-      .single();
+    // `device_id` comes from supabase-order-rate-limit.sql; a shop that hasn't run it
+    // has no spam limit, which is the documented behaviour — it must not also mean every
+    // write-in order fails. insertOrderRow drops the column and places the order.
+    const { data: order, error: orderError } = await insertOrderRow<{ id: string }>({
+      customer_name: name.trim(),
+      status: 'pending',
+      subtotal: 0,
+      discount_amount: 0,
+      tip_amount: 0,
+      total: 0,
+      payment_status: 'free',
+      order_source: 'mobile',
+      device_id: getDeviceId(),
+    });
 
     if (orderError || !order) {
+      sending.current = false;
       setSubmitting(false);
       // Write-ins are free and take no card, which makes them the easiest thing on the
       // site to hammer — so the spam limit's own words go straight to the customer here
@@ -118,6 +130,7 @@ export default function CustomOrderBox({
     if (itemError) {
       // Don't leave a blank order sitting on the board if the item failed to attach.
       await supabase.from('orders').delete().eq('id', order.id);
+      sending.current = false;
       setSubmitting(false);
       setError('Something went wrong sending your order. Please try again.');
       return;

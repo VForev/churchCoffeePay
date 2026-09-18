@@ -560,6 +560,68 @@ and nothing more. Reporting it as income, or adding it to the Donations tile (wh
   the insert is retried without it. The card may already have been charged by that point —
   a metric column must never be what loses somebody their order.
 
+## One Tap, One Order
+
+**Every submit path holds a `useRef` lock that is set synchronously, inside the tap,
+before the first `await`.** Not `useState`. This is the rule, and it is not a style
+preference — it is the fix for a customer who ended up with three of her order on the
+barista board.
+
+What happened: `/checkout` disabled its buttons with a `processing` state flag, but state
+only greys a button on the *next render*, and the submit handler awaits the shop config,
+the access code and the spam count before it ever gets there. On church wifi that is a
+second or more with both **Place Order** buttons fully live. She had typed only her first
+name, so the first taps failed `validateFullName` — and the error rendered beside the name
+box at the top of a long phone page, nowhere near the buttons at the bottom, so the button
+read as broken. She added her last initial and tapped the way the page had taught her to.
+Three taps, three concurrent submits, three orders, three charges. The spam limit is why it
+stopped at three rather than going higher.
+
+- **`handleSubmit` is the guard; `placeOrder` is the work.** The guard is the only thing
+  that touches `submitting`/`processing`, and `placeOrder` reports back whether it
+  navigated. Don't call `placeOrder` directly.
+- **The lock is not released on success.** `router.push()` has already been called and
+  re-enabling a live Place Order button behind a route transition is the same bug again.
+- **A validation failure has to be visible from the button that caused it.** The name
+  error is now set in both places and the field is scrolled back into view. An error only
+  the top of the page can see reads as "nothing happened", which is what produces the
+  repeat taps in the first place.
+- Same lock on `/tablet` (`charging`), `CustomOrderBox` (`sending`), and
+  `ModifierSelector`'s **Add to Order** (`added`, reset when the sheet opens because
+  `/tablet` keeps that component mounted between drinks).
+
+### A charged card that never became an order
+
+If Stripe took the money and the `orders` insert then failed, `/checkout` throws
+`ChargedWithoutOrderError`: the buttons **stay down permanently** and a red notice tells
+them to show the screen to the barista and not pay again. Handing the buttons back there
+invites somebody whose money has already gone to pay twice for one coffee. It is a
+deliberate dead end — the only fix is a person at the counter.
+
+### Drinks that don't save
+
+Drink rows go in one at a time after the card is charged, and a failure used to be
+swallowed — a paid order on the board one drink short, with nothing anywhere saying so.
+Now both `/checkout` and `/tablet`:
+
+- count what actually landed, and pass **that** to `markOrderItemsComplete()`. Claiming a
+  drink that never arrived strands the whole order's labels behind a cup that isn't coming
+  (see *One label per cup*).
+- call `flagOrderIssue()` (`src/lib/order-issues.ts`) so the order comes up **red on the
+  barista board** naming what's missing. Best-effort — a shop without
+  `supabase-order-issues.sql` just doesn't get the red.
+
+### Inserting the order row — `src/lib/order-insert.ts`
+
+`giving_intent`, `device_id` and `event_id` all come from migrations a shop may not have
+run, and on the mobile path the card is charged **before** the insert. A rejected column
+there is not a missing metric, it's a charged customer with no drink. `insertOrderRow()`
+tries the full row and drops whichever of those three the database says it hasn't got — a
+rejected insert inserts nothing, which is what makes the retry safe. Anything that is
+*not* one of those three surfaces as the error it is; a failure to write `total` must
+never be papered over by dropping the price. `npm run test:order-insert` covers the error
+parsing.
+
 ## Stopping Spam Orders
 
 Someone hammering the order button — a bored kid, a stuck finger, a joke — puts junk on the

@@ -11,7 +11,8 @@
     "serve": "next build && next start --hostname 0.0.0.0",
     "build:agent-zip": "node scripts/build-agent-zip.mjs",
     "lint": "eslint",
-    "test:profanity": "tsx src/lib/profanity.test.ts"
+    "test:profanity": "tsx src/lib/profanity.test.ts",
+    "test:order-insert": "tsx src/lib/order-insert.test.ts"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^6.1.0",

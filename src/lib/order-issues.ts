@@ -9,6 +9,8 @@
  * The flag is a timestamp, not a boolean, so a report can say *when* it happened.
  */
 
+import { supabase } from './supabase';
+
 export interface IssueFields {
   issue_flagged_at?: string | null;
   issue_note?: string | null;
@@ -53,6 +55,26 @@ export function issueReasons(note: string | null | undefined): string[] {
 
   const matched = ISSUE_REASONS.filter((r) => text.toLowerCase().includes(r.toLowerCase()));
   return matched.length > 0 ? [...matched] : ['Written in by hand'];
+}
+
+/**
+ * Flags an order from code rather than from a barista's tap — used when an order is
+ * placed but doesn't come out whole (a drink row that wouldn't insert after the card
+ * was already charged).
+ *
+ * Best-effort and silent: the order is already paid for and on the board by the time
+ * this runs, so a shop that hasn't run supabase-order-issues.sql must not have its
+ * checkout fail over a flag. The red card is a help to the barista, not the order.
+ */
+export async function flagOrderIssue(orderId: string, note: string): Promise<void> {
+  try {
+    await supabase
+      .from('orders')
+      .update({ issue_flagged_at: new Date().toISOString(), issue_note: note })
+      .eq('id', orderId);
+  } catch {
+    /* never block an order on a flag */
+  }
 }
 
 export function formatIssueTime(dateStr: string): string {

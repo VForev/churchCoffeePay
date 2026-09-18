@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
+import { insertOrderRow } from '@/lib/order-insert';
+import { flagOrderIssue } from '@/lib/order-issues';
 import ModifierSelector from '@/components/menu/ModifierSelector';
 import { fetchItemModifierGroups } from '@/lib/menu';
 import { fetchShopConfig, parseDonationPresets, DEFAULT_SETTINGS } from '@/lib/shop';
@@ -93,6 +95,12 @@ function TabletInner() {
   // UI state
   const [view, setView] = useState<TabletView>('order');
   const [processing, setProcessing] = useState(false);
+  /**
+   * Synchronous twin of `processing`. State only greys the button on the next render,
+   * and two taps inside one render are two payment intents — see the same guard on
+   * /checkout, which is where this actually bit a customer.
+   */
+  const charging = useRef(false);
   const [payError, setPayError] = useState('');
   const [confirmedOrderName, setConfirmedOrderName] = useState('');
 
@@ -219,11 +227,14 @@ function TabletInner() {
   }
 
   async function handlePayment() {
+    if (charging.current) return;
+    charging.current = true;
     setProcessing(true);
     setPayError('');
     try {
       const orderItems = cartItems.map((item) => ({
         menu_item_id: item.menu_item.id,
+        name: item.menu_item.name,
         quantity: item.quantity,
         item_price: item.item_total / item.quantity,
         special_instructions: item.special_instructions || null,
@@ -252,28 +263,38 @@ function TabletInner() {
         stripePaymentId = paymentIntent?.id || null;
       }
 
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          customer_name: customerName.trim(),
-          status: 'pending',
-          subtotal: cart.subtotal,
-          discount_amount: cart.discountAmount,
-          tip_amount: cart.donationAmount,
-          total: cart.total,
-          payment_status: isFreeOrder ? 'free' : 'paid',
-          stripe_payment_id: stripePaymentId,
-          coupon_id: coupon?.id || null,
-          order_source: 'counter',
-          // Stamps which event this order belongs to, so the dashboard can report per-event.
-          event_id: activeEvent?.id ?? null,
-        })
-        .select().single();
+      // insertOrderRow, not a plain insert: `event_id` comes from a migration, and by
+      // this line the customer's card has already been charged at the counter. A column
+      // the database hasn't got must not be what voids a paid order.
+      const { data: order, error: orderError } = await insertOrderRow<{ id: string }>({
+        customer_name: customerName.trim(),
+        status: 'pending',
+        subtotal: cart.subtotal,
+        discount_amount: cart.discountAmount,
+        tip_amount: cart.donationAmount,
+        total: cart.total,
+        payment_status: isFreeOrder ? 'free' : 'paid',
+        stripe_payment_id: stripePaymentId,
+        coupon_id: coupon?.id || null,
+        order_source: 'counter',
+        // Stamps which event this order belongs to, so the dashboard can report per-event.
+        event_id: activeEvent?.id ?? null,
+      });
 
-      if (orderError || !order) throw new Error('Failed to create order');
+      if (orderError || !order) {
+        throw new Error(
+          orderError?.message
+            ? `Failed to create order: ${orderError.message}`
+            : 'Failed to create order',
+        );
+      }
+
+      // A drink row that won't insert used to be swallowed, leaving a paid order on the
+      // board one drink short with nothing saying so. Count what actually landed.
+      const missed: string[] = [];
 
       for (const item of orderItems) {
-        const { data: orderItem } = await supabase
+        const { data: orderItem, error: itemError } = await supabase
           .from('order_items')
           .insert({
             order_id: order.id,
@@ -283,20 +304,32 @@ function TabletInner() {
             special_instructions: item.special_instructions,
           })
           .select().single();
-        if (orderItem && item.modifiers.length > 0) {
-          await supabase.from('order_item_modifiers').insert(
+        if (itemError || !orderItem) {
+          missed.push(item.name);
+          continue;
+        }
+        if (item.modifiers.length > 0) {
+          const { error: modError } = await supabase.from('order_item_modifiers').insert(
             item.modifiers.map((m) => ({
               order_item_id: orderItem.id,
               modifier_id: m.modifier_id,
               price_adjustment: m.price_adjustment,
             })),
           );
+          if (modError) missed.push(`${item.name} (add-ins)`);
         }
       }
 
-      // Every drink is in — the print agent waits for this before printing, so a
-      // three-drink order can't print one cup and stamp itself done.
-      await markOrderItemsComplete(order.id, orderItems.length);
+      // The count that LANDED. The print agent waits for this many drink rows, so
+      // claiming one that never arrived strands the whole order's labels.
+      await markOrderItemsComplete(order.id, orderItems.length - missed.length);
+
+      if (missed.length > 0) {
+        await flagOrderIssue(
+          order.id,
+          `Missing item — did not save: ${missed.join(', ')}. Check with the customer.`,
+        );
+      }
 
       if (coupon) {
         await supabase.from('coupons').update({ times_used: coupon.times_used + 1 }).eq('id', coupon.id);
@@ -307,6 +340,7 @@ function TabletInner() {
     } catch (err) {
       setPayError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
+      charging.current = false;
       setProcessing(false);
     }
   }

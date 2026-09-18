@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
+import { insertOrderRow } from '@/lib/order-insert';
+import { flagOrderIssue } from '@/lib/order-issues';
 import { getDeviceId } from '@/lib/device';
 import { rememberMyOrder } from '@/lib/my-order';
 import {
@@ -35,9 +37,22 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import { ClosedNotice } from '@/components/ShopBanner';
-import { COFFEE_GIFT_AMOUNT, isMissingGivingIntent } from '@/lib/giving';
+import { COFFEE_GIFT_AMOUNT } from '@/lib/giving';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
 import type { Coupon, ShopSettings, OrderingHours } from '@/types';
+
+/** Stable handle for the name box, so a validation failure can scroll it back into view. */
+const NAME_INPUT_ID = 'customer-name';
+
+/**
+ * The card was charged and the order still didn't save.
+ *
+ * Thrown rather than returned so it can't be mistaken for an ordinary failure: an
+ * ordinary failure puts the buttons back, and putting the buttons back here invites
+ * someone whose money has already gone to pay a second time for the same coffee. The
+ * only fix is a person at the counter, so the buttons stay down and the screen says so.
+ */
+class ChargedWithoutOrderError extends Error {}
 
 function CheckoutForm() {
   const router = useRouter();
@@ -48,6 +63,20 @@ function CheckoutForm() {
   const [couponError, setCouponError] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  /**
+   * The re-entrancy guard, and the reason it is a ref and not `processing`.
+   *
+   * `processing` is React state: setting it only disables the buttons on the *next*
+   * render, and handleSubmit awaits several round trips (the shop config, the access
+   * code, the spam count) before it ever gets there. On church wifi that is a window of
+   * a second or more in which the buttons are still live — so a customer who taps three
+   * times because nothing appeared to happen placed three separate orders, each one a
+   * real charge and a real card on the barista board. A ref is written synchronously,
+   * inside the same tap, and is what actually makes a second tap a no-op.
+   */
+  const submitting = useRef(false);
+  /** Set once and never cleared — see ChargedWithoutOrderError. */
+  const [chargedWithoutOrder, setChargedWithoutOrder] = useState(false);
   const [error, setError] = useState('');
   const [nameError, setNameError] = useState('');
   const [queueWait, setQueueWait] = useState<number | null>(null);
@@ -141,6 +170,51 @@ function CheckoutForm() {
   }
 
   /**
+   * One tap, one order. This is the guard; placeOrder() below is the work.
+   *
+   * `processing` alone was never enough. It is React state, so it disables the buttons a
+   * render later — and placeOrder awaits the shop config, the access code and the spam
+   * count before it ever reaches that point. On church wifi that is a second or more in
+   * which both buttons are still live, so a customer who tapped three times because
+   * nothing appeared to happen placed three separate orders, each a real charge and a
+   * real card on the barista board. The ref is written inside the same tap, and is what
+   * actually makes the second tap a no-op.
+   *
+   * On the success path the lock is deliberately NOT released: placeOrder has already
+   * called router.push(), and re-enabling a live "Place Order" button behind a route
+   * transition is the same hazard wearing a different hat.
+   */
+  async function handleSubmit(e: React.FormEvent | null, give: boolean) {
+    e?.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
+    setProcessing(true);
+
+    let placed = false;
+    let charged = false;
+    try {
+      placed = await placeOrder(give);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+      // Money moved, order didn't. Handing the buttons back would let them pay twice for
+      // one coffee, so they stay down and the notice below takes their place.
+      if (err instanceof ChargedWithoutOrderError) {
+        charged = true;
+        setChargedWithoutOrder(true);
+      }
+    } finally {
+      if (!placed && !charged) {
+        submitting.current = false;
+        setProcessing(false);
+      }
+    }
+  }
+
+  /**
+   * Places the order. Returns true once it is in the database and the browser is
+   * navigating away — handleSubmit above reads that to decide whether the buttons come
+   * back. Never call this directly: the guard is what keeps one tap to one order.
+   *
    * `give` is which of the two Place Order buttons was tapped — it does NOT change what
    * the card is charged. The $3 goes to Pushpay, not Stripe, so Stripe only ever sees the
    * drinks and `tip_amount` is always 0.
@@ -151,8 +225,7 @@ function CheckoutForm() {
    * so anyone sent there is gone. Once the order is in the database that costs nothing —
    * sending them there *before* placing it is what used to lose the coffee order.
    */
-  async function handleSubmit(e: React.FormEvent | null, give: boolean) {
-    e?.preventDefault();
+  async function placeOrder(give: boolean): Promise<boolean> {
     // Nothing is ever added to the card payment here; see above.
     cartStore.setDonation(0);
     // A copy, not the store's own object: `getState()` returns the live mutable state, and
@@ -164,9 +237,15 @@ function CheckoutForm() {
     // This name goes up on the lobby TV, so it has to pass before we take money.
     const nameCheck = validateFullName(cart.customer_name);
     if (!nameCheck.ok) {
-      setNameError(nameCheck.error ?? 'Please enter a valid name');
-      setError('');
-      return;
+      const message = nameCheck.error ?? 'Please enter a valid name';
+      setNameError(message);
+      // Shown at the button as well as at the field, and the field is scrolled back into
+      // view. The name box is at the top of a long phone page and the buttons are at the
+      // bottom: an error that only appears up there reads as "the button did nothing",
+      // which is exactly how someone ends up tapping Place Order over and over.
+      setError(message);
+      document.getElementById(NAME_INPUT_ID)?.scrollIntoView({ block: 'center' });
+      return false;
     }
     setNameError('');
 
@@ -184,7 +263,7 @@ function CheckoutForm() {
       setSettings(freshConfig.settings);
       setHours(freshConfig.hours);
       setError('Ordering has been closed — your order was not placed.');
-      return;
+      return false;
     }
 
     if (!freshStatus.isOpen) {
@@ -196,7 +275,7 @@ function CheckoutForm() {
         setSettings(freshConfig.settings);
         setHours(freshConfig.hours);
         setError('Ordering just closed — your order was not placed.');
-        return;
+        return false;
       }
       // Keep the latest details (the code's category may have changed).
       setActiveUnlock(stillValid);
@@ -211,7 +290,7 @@ function CheckoutForm() {
             ? `Only ${stillValid.allowedCategoryName} can be ordered right now — remove "${blocked.menu_item.name}" to continue.`
             : 'One of your items can’t be ordered right now.',
         );
-        return;
+        return false;
       }
     }
 
@@ -222,15 +301,15 @@ function CheckoutForm() {
     const spamBlock = await checkSpamLimit(cart.customer_name);
     if (spamBlock) {
       setError(spamBlock);
-      return;
+      return false;
     }
 
-    setProcessing(true);
     setError('');
 
     try {
       const orderItems = cart.items.map((item) => ({
         menu_item_id: item.menu_item.id,
+        name: item.menu_item.name,
         quantity: item.quantity,
         item_price: item.item_total / item.quantity,
         special_instructions: item.special_instructions || null,
@@ -284,45 +363,45 @@ function CheckoutForm() {
 
       // `giving_intent` is which button they tapped, and it is the *choice*, not the
       // money — Pushpay never tells us whether the $3 arrived (see src/lib/giving.ts).
-      // It's written as a second attempt rather than part of the row above because the
-      // column comes from a migration: on a database that hasn't run
-      // supabase-giving-intent.sql the insert is retried without it. The card may already
-      // have been charged by this point, so a missing metric column must never be what
-      // loses somebody their order. The failed attempt inserts nothing, so the retry
-      // can't double-order.
-      let inserted = await supabase
-        .from('orders')
-        .insert({ ...orderRow, giving_intent: give })
-        .select()
-        .single();
-
-      if (inserted.error && isMissingGivingIntent(inserted.error)) {
-        inserted = await supabase.from('orders').insert(orderRow).select().single();
-      }
-
-      const { data: order, error: orderError } = inserted;
+      //
+      // It, `device_id` and `event_id` all come from migrations a shop may not have run,
+      // and by this line the card has already been charged. insertOrderRow() drops
+      // whichever of the three this database turns out not to have and inserts the rest
+      // — a rejected insert inserts nothing, so the retry can't double-order. A missing
+      // metric column must never be what loses somebody their coffee.
+      const { data: order, error: orderError } = await insertOrderRow<{ id: string }>({
+        ...orderRow,
+        giving_intent: give,
+      });
 
       // The trigger can still refuse this if two tabs were submitted together and raced
       // past the pre-check above. Its Postgres error must never reach the screen raw —
       // and if the card was already charged, saying so is the only honest thing to do.
       if (orderError || !order) {
-        if (isSpamLimitError(orderError)) {
-          const spam = await fetchSpamSettings();
-          throw new Error(
-            stripePaymentId
-              ? `${spamBlockMessage(spam)} Your card was charged — please show this to the barista at the counter.`
-              : spamBlockMessage(spam),
+        const reason = isSpamLimitError(orderError)
+          ? spamBlockMessage(await fetchSpamSettings())
+          : orderInsertError(orderError);
+
+        if (stripePaymentId) {
+          throw new ChargedWithoutOrderError(
+            `${reason} Your card WAS charged $${cart.total.toFixed(2)} — please show this screen ` +
+              'to the barista at the counter. Do not pay again.',
           );
         }
-        throw new Error(orderInsertError(orderError));
+        throw new Error(reason);
       }
 
       // Safely in the database — from here the live board can pin it to the top of
       // this phone's screen. Nothing else knows which order is theirs.
       rememberMyOrder(order.id);
 
+      // Drinks go in one at a time, and a failure here used to be swallowed: the order
+      // was paid for and on the board, just short a drink, with nothing anywhere saying
+      // so. Count what actually landed instead.
+      const missed: string[] = [];
+
       for (const item of orderItems) {
-        const { data: orderItem } = await supabase
+        const { data: orderItem, error: itemError } = await supabase
           .from('order_items')
           .insert({
             order_id: order.id,
@@ -334,20 +413,39 @@ function CheckoutForm() {
           .select()
           .single();
 
-        if (orderItem && item.modifiers.length > 0) {
-          await supabase.from('order_item_modifiers').insert(
+        if (itemError || !orderItem) {
+          missed.push(item.name);
+          continue;
+        }
+
+        if (item.modifiers.length > 0) {
+          const { error: modError } = await supabase.from('order_item_modifiers').insert(
             item.modifiers.map((m) => ({
               order_item_id: orderItem.id,
               modifier_id: m.modifier_id,
               price_adjustment: m.price_adjustment,
             }))
           );
+          // The drink is on the board but its add-ins aren't — an oat-milk latte that
+          // reads as a plain latte. Worth the barista's attention, not a lost order.
+          if (modError) missed.push(`${item.name} (add-ins)`);
         }
       }
 
-      // Every drink is in — the print agent waits for this before printing, so a
-      // three-drink order can't print one cup and stamp itself done.
-      await markOrderItemsComplete(order.id, orderItems.length);
+      // The COUNT THAT LANDED, not the count we meant to insert. The print agent waits
+      // for this many drink rows before it prints, so claiming a drink that never
+      // arrived leaves the whole order's labels stuck behind a cup that isn't coming.
+      await markOrderItemsComplete(order.id, orderItems.length - missed.length);
+
+      // Red card on the barista board, with what's missing on it. Best-effort — the
+      // order is already paid for, so a shop without the issues migration just doesn't
+      // get the red.
+      if (missed.length > 0) {
+        await flagOrderIssue(
+          order.id,
+          `Missing item — did not save: ${missed.join(', ')}. Check with the customer.`,
+        );
+      }
 
       if (cart.coupon) {
         await supabase
@@ -413,9 +511,11 @@ function CheckoutForm() {
       router.push(
         `/checkout/confirmation?name=${encodeURIComponent(customerName)}${waitParam}${giveParam}`,
       );
+      return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-      setProcessing(false);
+      // Re-thrown so handleSubmit — which owns the buttons — is the single place that
+      // decides whether this tap is finished with them.
+      throw err instanceof Error ? err : new Error('Something went wrong');
     }
   }
 
@@ -458,6 +558,7 @@ function CheckoutForm() {
         <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
           <Card>
             <Input
+              id={NAME_INPUT_ID}
               label="First & Last Name"
               placeholder="e.g. Sarah K"
               value={cart.customer_name}
@@ -650,7 +751,18 @@ function CheckoutForm() {
               card the same amount — the drinks — because the $3 is a Pushpay gift, not a
               Stripe line. The only difference is where the confirmation screen sends them
               next. See src/lib/giving.ts for why the $3 can't happen on this page. */}
-          {orderingClosed ? (
+          {chargedWithoutOrder ? (
+            /* Deliberately a dead end. Every way forward from here charges them twice. */
+            <div className="rounded-2xl border-2 border-danger/40 bg-danger/5 px-5 py-4 text-center">
+              <p className="font-heading font-bold text-danger">
+                Your payment went through, but the order didn&apos;t save
+              </p>
+              <p className="mt-2 font-body text-sm text-text">
+                Please show this screen to the barista at the counter — they can make your
+                drink. Don&apos;t pay again.
+              </p>
+            </div>
+          ) : orderingClosed ? (
             <Button type="button" fullWidth size="lg" disabled>
               Ordering Is Closed
             </Button>
