@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
 import { insertOrderRow } from '@/lib/order-insert';
+import { useSubmitLock, type SubmitOutcome } from '@/lib/submit-lock';
 import { flagOrderIssue } from '@/lib/order-issues';
 import { getDeviceId } from '@/lib/device';
 import { rememberMyOrder } from '@/lib/my-order';
@@ -64,17 +65,11 @@ function CheckoutForm() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   /**
-   * The re-entrancy guard, and the reason it is a ref and not `processing`.
-   *
-   * `processing` is React state: setting it only disables the buttons on the *next*
-   * render, and handleSubmit awaits several round trips (the shop config, the access
-   * code, the spam count) before it ever gets there. On church wifi that is a window of
-   * a second or more in which the buttons are still live — so a customer who taps three
-   * times because nothing appeared to happen placed three separate orders, each one a
-   * real charge and a real card on the barista board. A ref is written synchronously,
-   * inside the same tap, and is what actually makes a second tap a no-op.
+   * One tap, one order. `processing` only changes what the button says; this is what
+   * makes a second tap a no-op, because it is set synchronously inside the tap rather
+   * than a render later. See src/lib/submit-lock.ts for the incident behind it.
    */
-  const submitting = useRef(false);
+  const submitLock = useSubmitLock();
   /** Set once and never cleared — see ChargedWithoutOrderError. */
   const [chargedWithoutOrder, setChargedWithoutOrder] = useState(false);
   const [error, setError] = useState('');
@@ -186,28 +181,26 @@ function CheckoutForm() {
    */
   async function handleSubmit(e: React.FormEvent | null, give: boolean) {
     e?.preventDefault();
-    if (submitting.current) return;
-    submitting.current = true;
-    setProcessing(true);
 
-    let placed = false;
-    let charged = false;
-    try {
-      placed = await placeOrder(give);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-      // Money moved, order didn't. Handing the buttons back would let them pay twice for
-      // one coffee, so they stay down and the notice below takes their place.
-      if (err instanceof ChargedWithoutOrderError) {
-        charged = true;
-        setChargedWithoutOrder(true);
+    await submitLock.run(async (): Promise<SubmitOutcome> => {
+      setProcessing(true);
+      try {
+        // True once the order is in the database and the browser is navigating away.
+        if (await placeOrder(give)) return 'finished';
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Something went wrong');
+        // Money moved, the order didn't. Handing the buttons back would let them pay
+        // twice for one coffee, so they stay down and the notice below takes their place.
+        if (err instanceof ChargedWithoutOrderError) {
+          setChargedWithoutOrder(true);
+          return 'finished';
+        }
       }
-    } finally {
-      if (!placed && !charged) {
-        submitting.current = false;
-        setProcessing(false);
-      }
-    }
+      // A correctable stop — a name needing a last initial, a declined card, the shop
+      // having closed. Nothing irreversible happened, so the buttons come back.
+      setProcessing(false);
+      return 'try-again';
+    });
   }
 
   /**

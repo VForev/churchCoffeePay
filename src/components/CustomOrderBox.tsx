@@ -1,10 +1,11 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
 import { insertOrderRow } from '@/lib/order-insert';
+import { useSubmitLock, type SubmitOutcome } from '@/lib/submit-lock';
 import { getDeviceId } from '@/lib/device';
 import { rememberMyOrder } from '@/lib/my-order';
 import { fetchSpamSettings, isSpamLimitError, orderInsertError } from '@/lib/rate-limit';
@@ -45,13 +46,12 @@ export default function CustomOrderBox({
    * code first. Write-ins take no card, which makes them the easiest thing on the site
    * to send twice by tapping twice.
    */
-  const sending = useRef(false);
+  const sendLock = useSubmitLock();
 
   const note = unlock.customOrderNote?.trim() || "We'll do our best — if we can't make it, we won't. Sorry!";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (sending.current) return;
 
     const nameCheck = validateFullName(name);
     if (!nameCheck.ok) {
@@ -65,7 +65,16 @@ export default function CustomOrderBox({
       return;
     }
 
-    sending.current = true;
+    await sendLock.run(sendOrder);
+  }
+
+  /**
+   * Everything past the first await. It is a separate function so the lock wraps it
+   * whole — this used to be four hand-written `sending.current = false` lines, one per
+   * bail-out, and the fifth bail-out somebody adds later is a button that never comes
+   * back. Returning 'try-again' is now the only way out that re-arms it.
+   */
+  async function sendOrder(): Promise<SubmitOutcome> {
     setSubmitting(true);
     setError('');
 
@@ -74,20 +83,18 @@ export default function CustomOrderBox({
     const config = await fetchShopConfig();
     if (getShopStatus(config.settings, config.hours).isLocked) {
       clearActiveUnlock();
-      sending.current = false;
       setSubmitting(false);
       setError('Ordering has been closed — your order was not sent.');
-      return;
+      return 'try-again';
     }
 
     // Re-verify the code is still active and still allows write-ins before we place it.
     const fresh = await verifyAccessCode(unlock.code);
     if (!fresh || !fresh.allowCustomOrder) {
       clearActiveUnlock();
-      sending.current = false;
       setSubmitting(false);
       setError('This code can no longer place write-in orders — check with the team.');
-      return;
+      return 'try-again';
     }
 
     // `device_id` comes from supabase-order-rate-limit.sql; a shop that hasn't run it
@@ -106,7 +113,6 @@ export default function CustomOrderBox({
     });
 
     if (orderError || !order) {
-      sending.current = false;
       setSubmitting(false);
       // Write-ins are free and take no card, which makes them the easiest thing on the
       // site to hammer — so the spam limit's own words go straight to the customer here
@@ -116,7 +122,7 @@ export default function CustomOrderBox({
           ? orderInsertError(orderError, await fetchSpamSettings())
           : 'Something went wrong sending your order. Please try again.',
       );
-      return;
+      return 'try-again';
     }
 
     const { error: itemError } = await supabase.from('order_items').insert({
@@ -130,10 +136,9 @@ export default function CustomOrderBox({
     if (itemError) {
       // Don't leave a blank order sitting on the board if the item failed to attach.
       await supabase.from('orders').delete().eq('id', order.id);
-      sending.current = false;
       setSubmitting(false);
       setError('Something went wrong sending your order. Please try again.');
-      return;
+      return 'try-again';
     }
 
     // One drink, and it's now safely in — lets the printer print immediately
@@ -145,6 +150,9 @@ export default function CustomOrderBox({
 
     const waitParam = queueWait !== null ? `&wait=${queueWait + 1}` : '';
     router.push(`/checkout/confirmation?name=${encodeURIComponent(name.trim())}${waitParam}`);
+    // Held: the order is sent and the browser is navigating. The button must not come
+    // back underneath a route transition.
+    return 'finished';
   }
 
   return (

@@ -562,10 +562,11 @@ and nothing more. Reporting it as income, or adding it to the Donations tile (wh
 
 ## One Tap, One Order
 
-**Every submit path holds a `useRef` lock that is set synchronously, inside the tap,
-before the first `await`.** Not `useState`. This is the rule, and it is not a style
-preference — it is the fix for a customer who ended up with three of her order on the
-barista board.
+**Every submit path goes through `useSubmitLock()` from `src/lib/submit-lock.ts`, which
+is claimed synchronously, inside the tap, before the first `await`.** This is the rule,
+and it is not a style preference — it is the fix for a customer who ended up with three of
+her order on the barista board. `npm run test:submit-lock` is the regression test, and its
+first case is the incident itself: three taps, a slow network, one order.
 
 What happened: `/checkout` disabled its buttons with a `processing` state flag, but state
 only greys a button on the *next render*, and the submit handler awaits the shop config,
@@ -577,18 +578,31 @@ read as broken. She added her last initial and tapped the way the page had taugh
 Three taps, three concurrent submits, three orders, three charges. The spam limit is why it
 stopped at three rather than going higher.
 
-- **`handleSubmit` is the guard; `placeOrder` is the work.** The guard is the only thing
-  that touches `submitting`/`processing`, and `placeOrder` reports back whether it
-  navigated. Don't call `placeOrder` directly.
-- **The lock is not released on success.** `router.push()` has already been called and
-  re-enabling a live Place Order button behind a route transition is the same bug again.
+- **`lock.run(work)` releases the lock only if `work` returns `'try-again'`.** Anything
+  else — including a thrown error — holds it. That default is deliberate and it is the
+  money-safe direction: a button stuck down is a customer who talks to the barista, a
+  button handed back too early is a customer charged twice. Say `'try-again'` for the
+  correctable stops (a declined card, a name needing a last initial, the shop having
+  closed since the page loaded) and nothing else.
+- **`handleSubmit` is the guard; `placeOrder` is the work.** `placeOrder` reports whether
+  it navigated. Don't call it directly.
+- **Success holds the lock.** `router.push()` has already been called and re-enabling a
+  live Place Order button behind a route transition is the same bug again. `/tablet` is
+  the one screen that comes back to the same button for a new transaction, so it — and
+  only it — calls `lock.release()`, from `resetForNextOrder()`.
+- **Never write `lock.release()` inside a `catch`.** That is the duplicate-charge bug
+  wearing a different hat; you want `'try-again'`.
+- **The bail-outs live in one function behind the lock.** `CustomOrderBox.sendOrder()` has
+  four of them, and when they were four hand-written `sending.current = false` lines the
+  fifth one somebody adds later was a button that never came back.
 - **A validation failure has to be visible from the button that caused it.** The name
   error is now set in both places and the field is scrolled back into view. An error only
   the top of the page can see reads as "nothing happened", which is what produces the
   repeat taps in the first place.
-- Same lock on `/tablet` (`charging`), `CustomOrderBox` (`sending`), and
-  `ModifierSelector`'s **Add to Order** (`added`, reset when the sheet opens because
-  `/tablet` keeps that component mounted between drinks).
+- `ModifierSelector`'s **Add to Order** keeps a plain `added` ref instead — it is
+  synchronous, so there is no in-flight window, only the frame before the sheet unmounts.
+  It resets when the sheet opens, because `/tablet` keeps that component mounted between
+  drinks.
 
 ### A charged card that never became an order
 

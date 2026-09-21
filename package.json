@@ -12,7 +12,9 @@
     "build:agent-zip": "node scripts/build-agent-zip.mjs",
     "lint": "eslint",
     "test:profanity": "tsx src/lib/profanity.test.ts",
-    "test:order-insert": "tsx src/lib/order-insert.test.ts"
+    "test:order-insert": "tsx src/lib/order-insert.test.ts",
+    "test:submit-lock": "tsx src/lib/submit-lock.test.ts",
+    "test": "npm run test:profanity && npm run test:order-insert && npm run test:submit-lock"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^6.1.0",
@@ -34,6 +36,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
