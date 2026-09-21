@@ -558,7 +558,7 @@ function ItemOptionsModal({ item, onClose }: { item: MenuItem; onClose: () => vo
                 {linked && groupMods.length > 0 && (
                   <div className="mt-4 space-y-2 border-t border-gray-100 pt-3">
                     {!group.allow_multiple && lockedCount > 1 && (
-                      <p className="rounded-lg bg-warning/10 px-3 py-2 font-body text-xs text-amber-800">
+                      <p className="rounded-lg bg-warning/10 px-3 py-2 font-body text-xs text-text-dark">
                         {group.name} lets the customer pick only one, so locking more than one
                         option won&apos;t work — only the first will apply.
                       </p>

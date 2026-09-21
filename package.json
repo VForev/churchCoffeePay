@@ -14,7 +14,8 @@
     "test:profanity": "tsx src/lib/profanity.test.ts",
     "test:order-insert": "tsx src/lib/order-insert.test.ts",
     "test:submit-lock": "tsx src/lib/submit-lock.test.ts",
-    "test": "npm run test:profanity && npm run test:order-insert && npm run test:submit-lock"
+    "test:theme": "tsx src/lib/theme.test.ts",
+    "test": "npm run test:profanity && npm run test:order-insert && npm run test:submit-lock && npm run test:theme"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^6.1.0",

@@ -68,15 +68,15 @@ function countdownMinutes(
 const STATUS_CONFIG = {
   pending: {
     label: 'Up Next',
-    card: 'bg-amber-50 border-amber-400',
-    badge: 'bg-amber-500 text-white',
+    card: 'bg-warning/10 border-warning',
+    badge: 'bg-warning text-white',
     dot: 'bg-white',
-    numberChip: 'bg-amber-500 text-white',
-    time: 'text-amber-900',
+    numberChip: 'bg-warning text-white',
+    time: 'text-text-dark',
   },
   in_progress: {
     label: 'Being Made',
-    card: 'bg-blue-50 border-primary',
+    card: 'bg-primary/10 border-primary',
     badge: 'bg-primary text-white',
     dot: 'bg-white animate-pulse',
     numberChip: 'bg-primary text-white',
@@ -84,7 +84,7 @@ const STATUS_CONFIG = {
   },
   ready: {
     label: 'Ready!',
-    card: 'bg-emerald-50 border-success',
+    card: 'bg-success/10 border-success',
     badge: 'bg-success text-white',
     dot: 'bg-white animate-pulse',
     numberChip: 'bg-success text-white',

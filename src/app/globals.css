@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * The values every screen is drawn from.
+ *
+ * These are the DEFAULTS, not the truth: /admin/theme writes a second :root block into
+ * the page (see src/lib/theme.ts) which lands after this file and wins on the cascade.
+ * That is the whole theming mechanism — a component never names a colour, a radius or a
+ * font, only the token, and the token's value is what changes at runtime.
+ *
+ * The colours below are the Navy scheme, character for character the same as
+ * THEME_PRESETS['navy'], so a database that has never run supabase-theme.sql looks
+ * exactly like one that has.
+ * ────────────────────────────────────────────────────────────────────────── */
+
 :root {
   --color-primary: #4054B2;
   --color-primary-light: #5A6FCC;
@@ -16,6 +29,26 @@
   --color-text-light: #7A7A7A;
   --color-danger: #DC2626;
   --color-warning: #F59E0B;
+
+  /* The greys, named. Tailwind's own values — `border-gray-200` and friends resolve to
+     these, so setting them at /admin/theme is what lets a dark scheme have card edges.
+     See the note in themeCss() in src/lib/theme.ts. */
+  --color-muted: #F9FAFB;
+  --color-line-soft: #F3F4F6;
+  --color-line: #E5E7EB;
+
+  /* Buttons only. `rounded-full` compiles to a hard-coded calc(infinity * 1px), so a
+     "square corners" look could never reach them; Button asks for this instead. Chips,
+     status dots and the spinner keep rounded-full — they want to stay circles. */
+  --radius-button: 9999px;
+
+  /* The three type roles. next/font loads the faces and exposes them as --font-kumbh /
+     --font-nunito / --font-roboto on <html>; a font pairing chosen at /admin/theme
+     replaces the three lines below wholesale. The literal names after each var() are the
+     fallback for a browser that somehow has the family installed but not the webfont. */
+  --app-heading: var(--font-kumbh), 'Kumbh Sans', ui-sans-serif, system-ui, sans-serif;
+  --app-body: var(--font-nunito), 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  --app-accent: var(--font-roboto), 'Roboto', ui-sans-serif, system-ui, sans-serif;
 }
 
 @theme inline {
@@ -34,18 +67,25 @@
   --color-text-light: var(--color-text-light);
   --color-danger: var(--color-danger);
   --color-warning: var(--color-warning);
-  --font-heading: 'Kumbh Sans', sans-serif;
-  --font-body: 'Nunito', sans-serif;
-  --font-accent: 'Roboto', sans-serif;
+  --color-muted: var(--color-muted);
+  --color-line-soft: var(--color-line-soft);
+  --color-line: var(--color-line);
+
+  /* var(), not a literal: `@theme inline` inlines whatever is written here into every
+     utility, so a literal family name here would mean `font-heading` never reached the
+     font next/font actually loads — and no pairing could ever change it. */
+  --font-heading: var(--app-heading);
+  --font-body: var(--app-body);
+  --font-accent: var(--app-accent);
 }
 
 body {
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: var(--font-body);
+  font-family: var(--app-body);
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-heading);
+  font-family: var(--app-heading);
   color: var(--color-text-dark);
 }

@@ -4,19 +4,19 @@ import "./globals.css";
 import ThemeProvider from "@/components/ThemeProvider";
 
 const kumbhSans = Kumbh_Sans({
-  variable: "--font-heading",
+  variable: "--font-kumbh",
   subsets: ["latin"],
   weight: ["400", "600", "700"],
 });
 
 const nunito = Nunito({
-  variable: "--font-body",
+  variable: "--font-nunito",
   subsets: ["latin"],
   weight: ["400", "600", "700"],
 });
 
 const roboto = Roboto({
-  variable: "--font-accent",
+  variable: "--font-roboto",
   subsets: ["latin"],
   weight: ["400", "500", "600"],
 });

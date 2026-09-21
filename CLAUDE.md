@@ -141,6 +141,12 @@ per-colour overrides, and puts it on the realtime publication so a save repaints
 open screen. Until it runs, the app looks exactly as it does now (the Navy preset is the
 same set of values hard-coded in `globals.css`) and the page says to run this file.
 
+**`supabase-theme-looks.sql`** — Required for the **non-colour half** of `/admin/theme`:
+corners, shadows, text size, roominess, page background and the font pairing. Adds one
+`look JSONB` column to `theme_settings`, defaulting to exactly the current app. Run
+`supabase-theme.sql` first. Until it runs colours still save — `saveTheme()` retries
+without the column and says so on screen — and every screen uses the standard look.
+
 **`supabase-giving-intent.sql`** — Required for the **$3 gift metric** on `/admin`
 (*The $3 Coffee & Tea gift* panel). Adds `orders.giving_intent` — which of the two Place
 Order buttons the customer tapped. Until it runs, checkout quietly drops the column from
@@ -191,7 +197,7 @@ trigger that actually enforces the limit. Until it runs there is no limit at all
 | `/admin/labels` | Cup label layout — roll size, what's on the label, text sizes, live preview, test print |
 | `/admin/print-setup` | Non-technical, step-by-step guide to installing the printer software on the shop PC; downloads the agent bundle |
 | `/admin/specialty` | **Drink of the Day** — the seasonal special at the top of the customer menu: big card or one line, with its build and an end date |
-| `/admin/theme` | **Look & Colours** — pick a colour scheme or change any individual colour; live preview, saves to every screen at once |
+| `/admin/theme` | **Look & Colours** — 17 colour schemes (light, dark and seasonal), any individual colour, and the six things that aren't colours: corners, shadows, text size, roominess, page background, fonts. Plus **Surprise me** and a shareable look code. Previews on the page itself; saves to every screen at once |
 | `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, **lock everything**, donation on/off, coupon box on/off, **spam-order limit** |
 
 ---
@@ -223,7 +229,9 @@ src/
 │   ├── order-issues.ts              # Problem-order flag: reasons, hasIssue(), error copy
 │   ├── logo.ts                      # Church mark as base64; shared with the print agent
 │   ├── giving.ts                    # Pushpay handle, token and link
-│   ├── theme.ts                     # Colour tokens, the schemes, load/save
+│   ├── theme.ts                    # Tokens, load/save, look codes; re-exports the two below
+│   ├── theme-presets.ts            # The 17 colour schemes, and the rules they all obey
+│   ├── theme-looks.ts              # Corners, shadows, text size, roominess, background, fonts
 │   ├── specialty.ts                 # Drink of the day — settings and what to show
 │   ├── my-order.ts                  # Which orders on the board are this phone's
 │   ├── supabase.ts                  # Supabase client
@@ -269,7 +277,7 @@ Based on [lotgchurch.com](https://www.lotgchurch.com/).
 ### Color Palette
 
 **These are the defaults, not the truth.** They're the `Navy` scheme, and every one of
-them is editable at `/admin/theme` — see *Colours and Themes* below. Components are
+them is editable at `/admin/theme` — see *Look and Colours* below. Components are
 written in terms of the token (`bg-primary`, `text-success`), never a hex value, which is
 what makes that possible.
 
@@ -286,11 +294,27 @@ what makes that possible.
 | `--color-text` | `#54595F` | Body text |
 | `--color-danger` | `#DC2626` | Red — errors, delete actions |
 | `--color-warning` | `#F59E0B` | Amber — pending orders |
+| `--color-muted` | `#F9FAFB` | Quiet fills — row strips, hover backgrounds (`bg-gray-50`) |
+| `--color-line-soft` | `#F3F4F6` | The faint hairline around most cards (`border-gray-100`) |
+| `--color-line` | `#E5E7EB` | Input borders and stronger card edges (`border-gray-200/300`) |
+
+The last three are mapped onto Tailwind's own `--color-gray-*` ramp at runtime, which is
+what lets the ~175 places that say `border-gray-200` rather than naming a token follow the
+scheme — and what makes the dark schemes possible. `--color-white` is deliberately left
+alone; see *Dark mode works now* under **Look and Colours**.
 
 ### Fonts
-- **Headings:** Kumbh Sans (`font-heading`)
-- **Body:** Nunito (`font-body`)
-- **Accents/UI:** Roboto (`font-accent`)
+
+Also editable — `/admin/theme` → **Fonts** offers eight pairings. The defaults:
+
+- **Headings:** Kumbh Sans (`font-heading`, `--app-heading`)
+- **Body:** Nunito (`font-body`, `--app-body`)
+- **Accents/UI:** Roboto (`font-accent`, `--app-accent`)
+
+next/font loads those three and exposes them as `--font-kumbh` / `--font-nunito` /
+`--font-roboto`; `globals.css` composes them into the three `--app-*` stacks, and a chosen
+pairing replaces those. **Don't put a literal family name in `@theme inline`** — that's
+what used to stop `font-heading` reaching the loaded font at all.
 
 ---
 
@@ -348,61 +372,165 @@ above the fold for an ad. The cup label doesn't call it out either; a seasonal b
 printed as a numbered recipe on the sticker is a separate job (it needs the order item to
 remember it was the special).
 
-## Colours and Themes
+## Look and Colours
 
-The whole app can be recoloured from **`/admin/theme`** — a scheme, or any single colour
-on top of it — and the change reaches the customer menu, the tablet, the barista board and
-the lobby TV the moment it's saved. Migration: `supabase-theme.sql`.
+The whole app can be recoloured **and reshaped** from **`/admin/theme`** — a colour
+scheme, any single colour on top of it, and six settings that aren't colours at all — and
+the change reaches the customer menu, the tablet, the barista board and the lobby TV the
+moment it's saved. Migrations: `supabase-theme.sql`, then `supabase-theme-looks.sql`.
+
+**It is built for somebody who doesn't write code.** Every control is a labelled choice
+with a sentence saying what it does and what it costs; there is a **Surprise me** button,
+a **Back to how it was** button that returns the original app exactly, and a **look code**
+— the entire theme as one string — so two people can try things separately and send each
+other the result. Nothing on the page can break an order.
 
 ### How it works, in one paragraph
 
-Every colour on every screen is one of **fifteen tokens** declared in `globals.css` and
-read by Tailwind (`bg-primary`, `text-success`, `border-danger`…). Tailwind v4 compiles
-those utilities to `background-color: var(--color-primary)`, so changing the *value* of
-the variable at runtime recolours the app without a single component knowing a theme
-exists. `ThemeProvider` (mounted once in the root layout) writes one `<style>` holding a
-second `:root { … }` block; it lands after `globals.css` in document order and wins on the
-cascade. **That is the whole mechanism** — if you find yourself adding a hex value to a
-component, you've stepped outside it.
+Tailwind v4 compiles its utilities down to CSS variables, and that is the whole
+mechanism:
 
-### The schemes
+```
+bg-primary      →  background-color: var(--color-primary)
+border-gray-200 →  border-color: var(--color-gray-200)
+rounded-2xl     →  border-radius: var(--radius-2xl)
+text-sm         →  font-size: var(--text-sm)
+p-4             →  padding: calc(var(--spacing) * 4)
+font-heading    →  font-family: var(--app-heading)
+```
 
-`THEME_PRESETS` in **`src/lib/theme.ts`** is the one definition of them:
+So changing the **value** of those variables at runtime repaints and reshapes the app
+without a single component knowing a theme exists. `ThemeProvider` (mounted once in the
+root layout) writes one `<style>` holding a second `:root { … }` block; it lands after
+`globals.css` in document order and wins on the cascade. **If you find yourself adding a
+hex value, a `rounded-` class or a font name to a component to make a theme work, you
+have stepped outside the mechanism.**
 
-| Scheme | What it is |
+### The default emits no CSS at all
+
+Every option list has exactly one entry whose CSS is an empty string, and that entry is
+the default — so a shop that never opens the page is running the untouched Tailwind
+values. `npm run test:theme` checks this against `globals.css` itself rather than against
+a copy of the numbers: the Navy preset must equal the `:root` block character for
+character, `lookCss(DEFAULT_LOOK)` must be `''`, and the default font pairing must request
+nothing from Google. That test exists because "the default still looks the same" is easy
+to break and impossible to notice — the person it breaks for is a customer on a Sunday.
+
+### The colour schemes
+
+`THEME_PRESETS` in **`src/lib/theme-presets.ts`** is the one definition, in four groups:
+
+| | |
 |---|---|
-| **Navy — how it is now** | The default, and what a database with no theme row gets. Identical to the values hard-coded in `globals.css`. |
-| **Coffee House** | The warm browns off the church website. |
-| **Slate** | Blue-grey for buttons — furthest from the olive and the red, so ready / sold out / tappable can't be confused. |
-| **Brown** | Closest to the church site itself; slate takes over "being made". |
-| **Red** | The boldest. Costs you red for problems: errors and sold-out fall back to bark, because red is doing the tapping. |
+| **Church** | Navy (the default), Coffee House, Slate, Brown, Red. Every colour is one of the ten on the church colour sheet — nothing invented, which is the only reason they sit beside the church's own materials without clashing. |
+| **Other light** | Ocean, Forest, Sunrise, Lavender, High contrast. |
+| **Dark** | Midnight, Espresso, Charcoal. |
+| **For fun** | Bubblegum, Autumn, Christmas, Newsprint. |
 
-Every colour in the four church schemes is one of the ten on the church colour sheet.
-Nothing is invented, which is the only reason they sit beside the church's own materials
-without clashing.
+Three rules every preset obeys, written out at the top of that file:
 
-### Things worth knowing before changing it
+1. **`primary`, `secondary`, `success`, `warm`, `danger` and `warning` all carry white
+   text.** `text-white` stays literally white in every scheme, so a pale `primary` is an
+   invisible button. This one cannot be bent.
+2. **The five page tokens move together** — `bg`, `surface`, `muted`, `line-soft`, `line`.
+   Cards lift off the page in light and dark alike, and `line` has to be visible against
+   `surface` or every card edge disappears.
+3. **Each blurb says what the scheme costs.** Red and Christmas spend red on the buttons,
+   so problems fall back to bark. Forest puts primary next to success, so Ready leans on
+   its badge. Newsprint makes all three barista columns grey. A scheme with no stated cost
+   usually means nobody looked.
 
-- **The scheme and the overrides are stored separately** (`theme_settings.preset` and
-  `.overrides`). "Slate, but with a warmer page" stays Slate — so a preset can be
-  corrected later without wiping the shop's own edits, and clearing one colour puts it
-  back to the scheme's value rather than to navy blue.
-- **A missing migration is Navy, not grey.** Every read in `theme.ts` falls back to the
-  built-in preset, so a database that never ran `supabase-theme.sql` looks exactly as it
-  does today.
+### Dark mode works now — and here is what made it possible
+
+The old note here said dark backgrounds weren't supported, because "around 150 hairlines
+and two dozen surfaces are still literal light greys". That turned out to be half right
+and the half that was wrong is the useful half:
+
+- **The greys were never the problem.** `border-gray-200` compiles to
+  `var(--color-gray-200)`, so the whole literal grey ramp is themeable from the same
+  `:root` block with **no component changes at all**. Three tokens (`muted`, `line-soft`,
+  `line`) are mapped onto `--color-gray-50/100/200/300` in `themeCss()`. On every light
+  scheme they hold Tailwind's own values, so nothing moved.
+- **`bg-white` was never the card colour.** Cards already said `bg-surface`. Of the
+  thirty-odd `bg-white`s in the app, almost all are a status dot or a button sitting *on*
+  a coloured fill — and all ninety-nine `text-white`s are labels on coloured buttons. So
+  **`--color-white` is deliberately not touched.** Flipping it would black out button text
+  to fix a problem that didn't exist.
+- **What did need changing were the literal palette colours** — `bg-amber-50`,
+  `text-amber-900`, `bg-blue-50`, `bg-emerald-50` on the lobby TV, the closed/access-code
+  notice, the warning badge and the danger button's hover. Those are status colours the
+  theme already had tokens for, and they now use them. Text that sat *on* an amber tint
+  became `text-text-dark`: dark amber on pale amber was fine, dark amber on **dark** amber
+  is invisible, and the heading colour reads correctly on both. **There are no literal
+  palette colours left outside the theme editor itself** — worth keeping that way.
+
+Two things still stay light on a dark scheme, both on purpose: the cup-label preview at
+`/admin/labels` (the label is paper, and paper is white), and `text-white` (see above).
+The dark schemes carry an on-screen note saying so.
+
+### The six things that aren't colours
+
+`src/lib/theme-looks.ts`. All six are stored in one `look` JSONB column, because they are
+chosen and saved together and none is ever queried on its own.
+
+| Setting | What it moves |
+|---|---|
+| **Corners** | The `--radius-*` ramp. Square / slightly soft / rounded (default) / very round. |
+| **Shadows** | Redefines `--tw-shadow` inside `.shadow-sm` and friends. Flat / soft (default) / lifted / dramatic. |
+| **Text size** | The `--text-*` ramp, ±8–18%. Line heights are unitless ratios, so they follow on their own. |
+| **Roominess** | `--spacing`. One variable behind every `p-4`, `gap-2` and `mt-6` in the app. |
+| **Page background** | `body` *and* `.bg-bg`. Plain (default) / gradient / corner glow / dots / graph paper / stripes, all built from the scheme's own colours via `color-mix`. |
+| **Fonts** | `--app-heading` / `--app-body` / `--app-accent`. Eight pairings. |
+
+Things worth knowing before changing any of it:
+
+- **`rounded-full` compiles to a hard-coded `calc(infinity * 1px)`, not a variable**, so
+  Corners could never have reached the buttons. `--radius-button` is declared in
+  `globals.css`, defaults to a pill, and `Button` asks for it. Everything else that is
+  `rounded-full` — status dots, chips, the spinner — genuinely wants to stay a circle and
+  is left alone.
+- **The font utilities used to inline a literal family name.** `@theme inline` inlines
+  whatever is written in it, so `--font-heading: 'Kumbh Sans', sans-serif` meant
+  `font-heading` never reached the face next/font actually loads (only the `h1`–`h6` rule
+  and `body`, which used `var()`, did). They now go through `--app-heading` and friends,
+  which is both the fix and the hook the pairings hang on. next/font's own variables were
+  renamed `--font-kumbh` / `--font-nunito` / `--font-roboto` to make room.
+- **Roominess has a deliberately narrow range.** `--spacing` also scales `w-12` and
+  `h-12`; much past ±10% and fixed-size things start to look wrong.
+- **Text size stops at +18%.** Past roughly 1.2× the barista board stops fitting three
+  columns on a tablet, which is worse than small text.
+- **A non-default font costs one stylesheet request to Google Fonts.** The default pairing
+  is already served by next/font from our own domain, so `fontHref()` returns `null` for
+  it and the provider renders no `<link>` at all. A shop that never touches this page pays
+  nothing for any of this.
+
+### Things worth knowing about the whole thing
+
+- **The scheme, the overrides and the look are stored separately.** "Slate, but with a
+  warmer page and square corners" stays Slate — so a preset can be corrected later without
+  wiping the shop's own edits, and clearing one colour puts it back to the scheme's value
+  rather than to navy blue.
+- **A missing migration is the current app, not grey.** Every read falls back to Navy and
+  the default look. If only `supabase-theme-looks.sql` is outstanding, `saveTheme()`
+  retries the write without that column so the **colours still save**, and returns a note
+  naming the file — losing a colour change to a migration nobody ran is the worse half of
+  that trade.
 - **The first paint comes from localStorage.** The theme lives in the database, so it
   isn't known when the page first renders — without the cache a customer watches the menu
   change colour under them on every load. It can only be wrong for one paint, right after
   an admin changes it.
 - **Only hex is ever written into the page.** `themeCss()` filters every value through
-  `isHexColor()` before it becomes CSS.
-- **`/admin/theme` previews on itself.** The page renders its own `<style>` after the
-  provider's, so unsaved edits paint that screen and nowhere else. A colour picker that
-  only tints a swatch is how you save something nobody looked at.
-- **Dark backgrounds aren't supported yet.** Around 150 hairlines and two dozen surfaces
-  are still literal light greys (`border-gray-100`, `bg-white`), so a dark page colour
-  reads as broken rather than dark. Real dark mode means replacing those with tokens
-  first; the admin page says so out loud rather than letting someone find out on a Sunday.
+  `isHexColor()`; `normalizeLook()` filters every look setting down to a known option id,
+  so a hand-edited database row can't put anything into the page that the editor couldn't
+  have produced. Both are covered by `npm run test:theme`.
+- **`/admin/theme` previews on itself, and that means the whole screen.** The page renders
+  its own `<style>` after the provider's, so unsaved edits paint that screen and nowhere
+  else — the sidebar, the cards, the buttons, the corners. A colour picker that only tints
+  a little swatch is how you save something nobody looked at.
+- **A look code is the whole theme in base64** — scheme, overrides and look. It exists so
+  somebody can try something on their own screen and send six lines to whoever has the
+  admin password, instead of reading eighteen hex values down the phone. Loading one only
+  changes that page; it still takes a Save.
 
 ## Order Workflow
 
@@ -1333,12 +1461,28 @@ For Netlify:
 3. Choose **Big card** or **One line**, set **Show until**, tick *Show a drink of the day*
 4. Save. If the barista 86s one of those add-ins, the card says so on its own
 
-**Change the app's colours:**
+**Change how the app looks:**
 1. Go to `/admin/theme`
-2. Pick a scheme, or change any single colour under **Change a colour** — the page
-   repaints as you go
-3. **Save colours.** Every open screen, including the lobby TV, has it a second later
-4. Keep the page colour light — see *Colours and Themes* above for why
+2. Pick a scheme (light, dark or seasonal), or press **🎲 Surprise me** to get a whole
+   random look. The page repaints as you go — the sidebar and these cards included
+3. Set the things that aren't colours under **Shape and size** — corners, shadows, text
+   size, roominess, page background — and a pairing under **Fonts**
+4. Change any individual colour under **Change a colour**
+5. **Save colours.** Every open screen, including the lobby TV, has it a second later
+6. Nothing is saved until you press Save, and **Back to how it was** returns the original
+   Navy app exactly — so try as much as you like
+
+**Let somebody try a look without giving them the admin password:**
+1. They can't — but you can hand the result around. At `/admin/theme` → **Share a look**,
+   press *Copy this look* and send them the code
+2. They paste it back with their own changes; you put it in the box and press *Load it*
+3. It only changes your page until you Save
+
+**Put the app in dark mode:**
+1. `/admin/theme` → **Scheme** → **Dark schemes** → Midnight, Espresso or Charcoal
+2. Read the note that appears under them, then walk one screen of the customer menu and
+   one of the barista board before service
+3. The cup-label preview at `/admin/labels` stays white on purpose — the label is paper
 
 **See how many people said they'd give the $3:**
 1. Go to `/admin` and pick a time range

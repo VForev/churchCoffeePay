@@ -142,16 +142,16 @@ export function ClosedNotice({
       <div className="flex items-start gap-3">
         <span className="text-2xl leading-none">☕</span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-heading text-lg font-bold text-amber-900">
+          <h2 className="font-heading text-lg font-bold text-text-dark">
             We&apos;re not taking orders right now
           </h2>
-          <p className="mt-1 font-body text-sm text-amber-800">{settings.closed_message}</p>
+          <p className="mt-1 font-body text-sm text-text">{settings.closed_message}</p>
           {status.nextOpensAt && (
-            <p className="mt-2 font-accent text-sm font-bold text-amber-900">
+            <p className="mt-2 font-accent text-sm font-bold text-text-dark">
               Ordering opens {status.nextOpensAt}.
             </p>
           )}
-          <p className="mt-2 font-body text-xs text-amber-800/80">
+          <p className="mt-2 font-body text-xs text-text-light">
             You can still browse the menu below.
           </p>
           {/* A lock is deliberately absolute — no access code gets past it, so we don't
@@ -189,7 +189,7 @@ function AccessCodeBox({ onUnlock }: { onUnlock: (unlock: AccessUnlock) => void 
     return (
       <button
         onClick={() => setOpen(true)}
-        className="mt-3 cursor-pointer font-accent text-sm font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950"
+        className="mt-3 cursor-pointer font-accent text-sm font-semibold text-text-dark underline underline-offset-2 hover:text-text"
       >
         Have an access code?
       </button>
@@ -207,14 +207,14 @@ function AccessCodeBox({ onUnlock }: { onUnlock: (unlock: AccessUnlock) => void 
             if (error) setError('');
           }}
           placeholder="Enter access code"
-          className="w-full rounded-xl border-2 border-amber-300 bg-white px-4 py-2.5 font-mono text-sm text-amber-950 placeholder:font-body placeholder:text-amber-800/50 focus:border-amber-500 focus:outline-none"
+          className="w-full rounded-xl border-2 border-warning/50 bg-surface px-4 py-2.5 font-mono text-sm text-text-dark placeholder:font-body placeholder:text-text-light focus:border-warning focus:outline-none"
         />
         {error && <p className="mt-1.5 font-body text-xs text-danger">{error}</p>}
       </div>
       <button
         type="submit"
         disabled={checking || !code.trim()}
-        className="cursor-pointer rounded-xl bg-amber-900 px-5 py-2.5 font-accent text-sm font-bold text-white transition-colors hover:bg-amber-950 disabled:opacity-50"
+        className="cursor-pointer rounded-xl bg-warm px-5 py-2.5 font-accent text-sm font-bold text-white transition-colors hover:bg-warm-light disabled:opacity-50"
       >
         {checking ? 'Checking…' : 'Unlock'}
       </button>

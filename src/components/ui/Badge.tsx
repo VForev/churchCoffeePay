@@ -15,7 +15,7 @@ const variantStyles: Record<BadgeVariant, string> = {
   primary: 'bg-primary/10 text-primary',
   secondary: 'bg-secondary/10 text-secondary',
   success: 'bg-success/10 text-success',
-  warning: 'bg-warning/10 text-amber-700',
+  warning: 'bg-warning/10 text-text-dark',
   danger: 'bg-danger/10 text-danger',
   neutral: 'bg-gray-100 text-text-light',
 };

@@ -316,7 +316,7 @@ export default function AdminOrdersPage() {
             onClick={() => { clearSelection(); setShowArchived(!showArchived); }}
             className={`text-sm font-accent px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
               showArchived
-                ? 'bg-warning/10 border-warning/30 text-amber-700'
+                ? 'bg-warning/10 border-warning/30 text-text-dark'
                 : 'bg-gray-50 border-gray-200 text-text-light hover:bg-gray-100'
             }`}
           >
@@ -466,7 +466,7 @@ export default function AdminOrdersPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="border border-warning/30 text-amber-700 hover:bg-warning/5"
+                    className="border border-warning/30 text-text-dark hover:bg-warning/5"
                     onClick={() => openBulk('archive')}
                   >
                     Archive {selected.size}
@@ -617,7 +617,7 @@ export default function AdminOrdersPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="border border-warning/30 text-amber-700 hover:bg-warning/5"
+                          className="border border-warning/30 text-text-dark hover:bg-warning/5"
                           onClick={() => setConfirmModal({ type: 'archive', order })}
                         >
                           Archive
