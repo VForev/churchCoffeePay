@@ -16,6 +16,7 @@ import {
   issueSaveError,
   formatIssueTime,
 } from '@/lib/order-issues';
+import { compareQueue } from '@/lib/priority';
 import type {
   Order,
   OrderItem,
@@ -93,11 +94,12 @@ function isMissingTimingColumn(error: { code?: string; message?: string } | null
   );
 }
 
-// Wait time for a given order: items in orders placed before it + items in this order
+// Wait time for a given order: items in orders ahead of it in the queue + items in this
+// order. "Ahead" is compareQueue's answer, so a priority order's wait skips the line too.
 function calcWaitMinutes(allOrders: FullOrder[], targetOrder: FullOrder): number {
   const active = allOrders
     .filter((o) => o.status === 'pending' || o.status === 'in_progress')
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    .sort(compareQueue);
 
   let itemsAhead = 0;
   for (const o of active) {
@@ -487,8 +489,9 @@ export default function BaristaPage() {
   const matching = searching ? orders.filter((o) => orderMatches(o, search)) : orders;
 
   const ordersByStatus: Record<ColumnKey, FullOrder[]> = {
-    pending: matching.filter((o) => o.status === 'pending'),
-    in_progress: matching.filter((o) => o.status === 'in_progress'),
+    // Priority orders sit at the top of their column — the next card to grab.
+    pending: matching.filter((o) => o.status === 'pending').sort(compareQueue),
+    in_progress: matching.filter((o) => o.status === 'in_progress').sort(compareQueue),
     ready: matching.filter((o) => o.status === 'ready'),
   };
 
@@ -913,6 +916,12 @@ function OrderCard({
             )}
             {deleteButton}
           </div>
+        </div>
+      )}
+
+      {order.is_priority && order.status !== 'ready' && (
+        <div className="bg-warm py-2 pl-4 pr-12 font-accent text-sm font-extrabold uppercase tracking-wider text-white">
+          ⚡ Priority — make this next
         </div>
       )}
 

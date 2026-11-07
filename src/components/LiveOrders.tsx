@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { fetchShopConfig, getShopStatus, DEFAULT_SETTINGS } from '@/lib/shop';
 import { safeDisplayName } from '@/lib/profanity';
 import { getMyOrderIds } from '@/lib/my-order';
+import { compareQueue } from '@/lib/priority';
 import ShopBanner from '@/components/ShopBanner';
 import GivingBox from '@/components/GivingBox';
 import type { Order, OrderItem, ShopSettings, OrderingHours } from '@/types';
@@ -30,11 +31,12 @@ interface LiveOrder extends Order {
 }
 
 // Wait time: 1 minute per item. For a given order:
-// waitMinutes = (items in all pending/in_progress orders BEFORE this one) + (items in this order)
+// waitMinutes = (items in all pending/in_progress orders AHEAD of this one) + (items in this order)
+// "Ahead" is compareQueue's order — the same one /barista uses, priority orders included.
 function calculateWaitMinutes(allOrders: LiveOrder[], currentOrder: LiveOrder): number {
   const sorted = [...allOrders]
     .filter((o) => o.status === 'pending' || o.status === 'in_progress')
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    .sort(compareQueue);
 
   const thisOrderItems = currentOrder.order_items?.reduce((s, i) => s + i.quantity, 0) ?? 1;
 
@@ -182,7 +184,11 @@ export default function LiveOrders({
   }, [fetchOrders, loadConfig]);
 
   const readyOrders = orders.filter((o) => o.status === 'ready');
-  const queueOrders = orders.filter((o) => o.status === 'pending' || o.status === 'in_progress');
+  // Same order as the wait maths, so position 1 is the order with the shortest wait.
+  // Priority orders aren't badged here: the TV is public, and the line just moves.
+  const queueOrders = orders
+    .filter((o) => o.status === 'pending' || o.status === 'in_progress')
+    .sort(compareQueue);
 
   function queuePosition(order: LiveOrder): number {
     return queueOrders.indexOf(order) + 1;

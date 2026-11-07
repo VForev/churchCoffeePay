@@ -488,8 +488,8 @@ export default function AdminSettingsPage() {
             </span>
             <p className="font-body text-xs text-text-light">
               {settings.coupons_enabled
-                ? 'The coupon box shows at checkout and on the tablet.'
-                : 'The coupon box is hidden everywhere. Existing codes still work if re-enabled.'}
+                ? 'The coupon box shows at checkout and on the tablet. Priority codes go in the same box.'
+                : 'The coupon box is hidden everywhere — priority codes too, since they use the same box. Existing codes still work if re-enabled.'}
             </p>
           </div>
         </label>

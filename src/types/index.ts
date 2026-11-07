@@ -161,6 +161,11 @@ export interface Order {
    * src/lib/giving.ts before reporting it anywhere.
    */
   giving_intent?: boolean | null;
+  /**
+   * Placed with a priority code — goes ahead of every order not yet started. Optional:
+   * added by supabase-priority-orders.sql. Sort the queue through src/lib/priority.ts.
+   */
+  is_priority?: boolean;
   archived_at: string | null;
   /**
    * When the cup labels were printed. NULL means "not printed yet" — the print
@@ -239,6 +244,8 @@ export interface Coupon {
   times_used: number;
   is_active: boolean;
   expires_at: string | null;
+  /** A priority code: orders placed with it jump the queue (supabase-priority-orders.sql). */
+  is_priority?: boolean;
   created_at: string;
 }
 

@@ -1,25 +1,26 @@
 /**
  * Inserting the `orders` row, on a database that may be a migration or two behind.
  *
- * Three columns on that row come from migrations a shop might not have run:
+ * Four columns on that row come from migrations a shop might not have run:
  * `giving_intent` (supabase-giving-intent.sql), `device_id`
- * (supabase-order-rate-limit.sql) and `event_id`. On the mobile checkout path the
+ * (supabase-order-rate-limit.sql), `is_priority` (supabase-priority-orders.sql) and
+ * `event_id`. On the mobile checkout path the
  * insert happens *after* Stripe has taken the money, so a rejected column there is not
  * a missing metric — it is a charged customer with no order and no drink. None of these
- * three is ever worth that.
+ * four is ever worth that.
  *
  * So the insert walks down: it tries the full row, and each time PostgREST says a column
  * isn't there it drops that one column and tries again. A rejected insert inserts
  * nothing, which is what makes the retry safe — it can never double-order.
  *
- * Anything that is NOT one of those three is returned as the error it is. A failure to
+ * Anything that is NOT one of those four is returned as the error it is. A failure to
  * write `total` must surface, not be papered over by dropping the price.
  */
 
 import { supabase } from './supabase';
 
 /** Columns an order can be placed without. Everything else is load-bearing. */
-const OPTIONAL_COLUMNS = new Set(['giving_intent', 'device_id', 'event_id']);
+const OPTIONAL_COLUMNS = new Set(['giving_intent', 'device_id', 'event_id', 'is_priority']);
 
 /**
  * The column name in a "that column doesn't exist here" error, or null for any other

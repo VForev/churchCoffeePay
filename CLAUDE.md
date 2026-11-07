@@ -158,6 +158,10 @@ this file. Orders placed before it can't be back-filled.
 trigger that actually enforces the limit. Until it runs there is no limit at all, and
 `/admin/settings` says so when you try to save one.
 
+**`supabase-priority-orders.sql`** — Required for **priority codes** (see *Priority Codes*
+below). Adds `coupons.is_priority` and `orders.is_priority`. Until it runs no code can be
+marked priority (`/admin/coupons` says to run this file) and no order is expedited.
+
 ### Seed data
 `supabase-seed.sql` — Loads sample categories, modifier groups, modifiers, and menu items to get started.
 
@@ -191,7 +195,7 @@ trigger that actually enforces the limit. Until it runs there is no limit at all
 | `/admin/menu` | Create/edit/delete categories and menu items; reorder with ▲/▼ |
 | `/admin/modifiers` | Manage modifier groups (Size, Milk, Syrups, etc.) and individual options; reorder with ▲/▼ |
 | `/admin/events` | Event pricing profiles — activate "Everything Free" mode or custom pricing |
-| `/admin/coupons` | Coupon codes — percentage, fixed amount, or free order discounts |
+| `/admin/coupons` | Coupon codes — percentage, fixed amount, or free order discounts — and **priority codes** that put an order at the front of the line |
 | `/admin/inventory` | Track stock levels, set low-stock thresholds, log restocks |
 | `/admin/orders` | Full order history — expand rows, filter by status, search by name, archive or delete |
 | `/admin/labels` | Cup label layout — roll size, what's on the label, text sizes, live preview, test print |
@@ -227,6 +231,7 @@ src/
 │   ├── rate-limit.ts                # Spam-order limit, around the database trigger
 │   ├── device.ts                    # Random per-browser id, used only by the spam limit
 │   ├── order-issues.ts              # Problem-order flag: reasons, hasIssue(), error copy
+│   ├── priority.ts                  # Priority codes — compareQueue(), the one queue order
 │   ├── logo.ts                      # Church mark as base64; shared with the print agent
 │   ├── giving.ts                    # Pushpay handle, token and link
 │   ├── theme.ts                    # Tokens, load/save, look codes; re-exports the two below
@@ -1328,6 +1333,35 @@ because it's the only one that is about the reader.
 
 ---
 
+## Priority Codes
+
+Some people need their coffee *before* they're on — the pastor before preaching, the
+worship team between sets. A **priority code** puts their order at the front of the line.
+
+**It is a coupon with one extra tick box**, not a separate system: `/admin/coupons` → the
+code → *⚡ Priority*. It's typed into the same code box at checkout and on `/tablet`, so
+there's no second empty field inviting everyone else to wonder how to skip the line. It can
+also carry a discount; set the discount to 0 for skip-the-line only. Max uses and expiry work
+exactly as they do for any coupon — a one-off code is `max_uses = 1`.
+
+- **`compareQueue()` in `src/lib/priority.ts` is the one definition of who is next.** Being
+  made first, then priority orders, then everyone else, oldest first within each. `/barista`
+  sorts its Pending and Making columns with it, and **both** wait-time calculations walk the
+  queue in that order — so the card at the top, the wait on it, and the position on the TV
+  can never disagree.
+- **A priority order never jumps a drink already being made.** That cup is physically ahead
+  of it; ranking it behind would quote the half-poured customer a wait that isn't real. (A
+  side effect, true with or without priority: Making orders now count ahead of Pending ones
+  in the wait maths, which is what was always physically happening.)
+- **The barista sees it; the lobby TV doesn't.** A brown *⚡ Priority — make this next* bar
+  on the card, until it's Ready. `/live` just shows the line moving — badging it on a public
+  screen invites a conversation nobody wants mid-rush.
+- **Turning coupons off at `/admin/settings` hides priority codes too**, because they share
+  the box. The settings page says so.
+- `is_priority` is only sent on the insert when it's true, and `insertOrderRow()` drops it if
+  the column is missing — on the checkout path the card is already charged, and an
+  expedite flag is never worth losing an order over.
+
 ## Coupons On/Off
 
 `/admin/settings` → **Coupons**. Untick it and the coupon box disappears from both `/checkout` and `/tablet` — useful when you aren't running any codes, since an empty coupon field just makes people feel they're missing a deal.
@@ -1490,6 +1524,12 @@ For Netlify:
    how many were never asked (counter orders never see the two buttons)
 3. Remember what it is: the button they tapped, not money received. Pushpay never tells us
    whether the gift arrived
+
+**Let someone skip the line (pastor, worship team):**
+1. Run `supabase-priority-orders.sql` once
+2. `/admin/coupons` → **+ Coupon**, give it a code, tick **⚡ Priority**, discount 0
+3. Give them the code. They type it in the code box at checkout; their order goes to the
+   top of Pending with a *Priority* bar
 
 **Change how many orders one person can place:**
 1. Go to `/admin/settings` → **Stopping spam orders**

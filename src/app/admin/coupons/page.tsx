@@ -7,6 +7,8 @@ import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
+import { describeCoupon } from '@/lib/priority';
+import { missingColumnName } from '@/lib/order-insert';
 import type { Coupon, DiscountType } from '@/types';
 
 export default function AdminCouponsPage() {
@@ -26,26 +28,32 @@ export default function AdminCouponsPage() {
   async function saveCoupon() {
     if (!editCoupon) return;
     setSaving(true);
-    if (editCoupon.id) {
-      await supabase.from('coupons').update({
-        code: editCoupon.code?.toUpperCase(),
-        discount_type: editCoupon.discount_type,
-        discount_value: editCoupon.discount_value,
-        max_uses: editCoupon.max_uses || null,
-        is_active: editCoupon.is_active,
-        expires_at: editCoupon.expires_at || null,
-      }).eq('id', editCoupon.id);
-    } else {
-      await supabase.from('coupons').insert({
-        code: editCoupon.code?.toUpperCase(),
-        discount_type: editCoupon.discount_type || 'percentage',
-        discount_value: editCoupon.discount_value || 0,
-        max_uses: editCoupon.max_uses || null,
-        is_active: true,
-        expires_at: editCoupon.expires_at || null,
-      });
+    const row = {
+      code: editCoupon.code?.toUpperCase(),
+      discount_type: editCoupon.discount_type || 'percentage',
+      discount_value: editCoupon.discount_value || 0,
+      max_uses: editCoupon.max_uses || null,
+      is_active: editCoupon.id ? editCoupon.is_active : true,
+      expires_at: editCoupon.expires_at || null,
+      // Only written when ticked (or being unticked), so an ordinary coupon still saves on
+      // a database that hasn't run supabase-priority-orders.sql.
+      ...((editCoupon.is_priority || coupons.find((c) => c.id === editCoupon.id)?.is_priority) && {
+        is_priority: !!editCoupon.is_priority,
+      }),
+    };
+    const { error } = editCoupon.id
+      ? await supabase.from('coupons').update(row).eq('id', editCoupon.id)
+      : await supabase.from('coupons').insert(row);
+    setSaving(false);
+    if (error) {
+      alert(
+        missingColumnName(error) === 'is_priority'
+          ? 'Priority codes need supabase-priority-orders.sql. Run it in the Supabase SQL editor, then save again.'
+          : `Could not save this code: ${error.message}`,
+      );
+      return;
     }
-    setSaving(false); setEditCoupon(null); fetchData();
+    setEditCoupon(null); fetchData();
   }
 
   async function toggleActive(coupon: Coupon) {
@@ -72,7 +80,7 @@ export default function AdminCouponsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-heading font-bold text-text-dark">Coupon Codes</h1>
+        <h1 className="text-2xl font-heading font-bold text-text-dark">Coupon &amp; Priority Codes</h1>
         <Button size="sm" onClick={() => setEditCoupon({ code: '', discount_type: 'percentage', discount_value: 0, is_active: true })}>
           + Coupon
         </Button>
@@ -88,11 +96,10 @@ export default function AdminCouponsPage() {
                   <Badge variant={coupon.is_active ? 'success' : 'neutral'}>
                     {coupon.is_active ? 'Active' : 'Disabled'}
                   </Badge>
+                  {coupon.is_priority && <Badge variant="warning">⚡ Priority</Badge>}
                 </div>
                 <p className="text-sm text-text-light mt-1">
-                  {coupon.discount_type === 'percentage' && `${coupon.discount_value}% off`}
-                  {coupon.discount_type === 'fixed_amount' && `$${coupon.discount_value.toFixed(2)} off`}
-                  {coupon.discount_type === 'free_item' && 'Free order'}
+                  {describeCoupon(coupon)}
                   {' '}&middot; Used {coupon.times_used}{coupon.max_uses ? `/${coupon.max_uses}` : ''} times
                   {coupon.expires_at && ` &middot; Expires ${new Date(coupon.expires_at).toLocaleDateString()}`}
                 </p>
@@ -136,6 +143,20 @@ export default function AdminCouponsPage() {
                 onChange={(e) => setEditCoupon({ ...editCoupon, discount_value: parseFloat(e.target.value) })}
               />
             )}
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3">
+              <input
+                type="checkbox"
+                checked={!!editCoupon.is_priority}
+                onChange={(e) => setEditCoupon({ ...editCoupon, is_priority: e.target.checked })}
+                className="mt-1 h-4 w-4 accent-primary"
+              />
+              <span>
+                <span className="block font-accent font-semibold text-text-dark">⚡ Priority — move the order to the front of the line</span>
+                <span className="block text-sm text-text-light">
+                  For people who need their coffee before they&apos;re on — the pastor, the worship team. The order goes ahead of everything not yet started, and the barista sees it marked Priority. Set the discount to 0 if it should only skip the line.
+                </span>
+              </span>
+            </label>
             <Input label="Max Uses (leave empty for unlimited)" type="number" min="1" value={editCoupon.max_uses || ''} onChange={(e) => setEditCoupon({ ...editCoupon, max_uses: e.target.value ? parseInt(e.target.value) : null })} />
             <Input label="Expiration Date" type="date" value={editCoupon.expires_at ? editCoupon.expires_at.split('T')[0] : ''} onChange={(e) => setEditCoupon({ ...editCoupon, expires_at: e.target.value ? new Date(e.target.value).toISOString() : null })} />
             <div className="flex justify-end gap-2 pt-2">

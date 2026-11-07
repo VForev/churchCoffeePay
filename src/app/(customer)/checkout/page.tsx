@@ -7,6 +7,7 @@ import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
 import { insertOrderRow } from '@/lib/order-insert';
+import { describeCoupon } from '@/lib/priority';
 import { useSubmitLock, type SubmitOutcome } from '@/lib/submit-lock';
 import { flagOrderIssue } from '@/lib/order-issues';
 import { getDeviceId } from '@/lib/device';
@@ -141,7 +142,7 @@ function CheckoutForm() {
       .single();
 
     if (error || !data) {
-      setCouponError('Invalid coupon code');
+      setCouponError("That code isn't valid");
       setCouponLoading(false);
       return;
     }
@@ -352,6 +353,9 @@ function CheckoutForm() {
         order_source: 'mobile',
         event_id: activeEventId,
         device_id: getDeviceId(),
+        // Only sent when true, so a shop without supabase-priority-orders.sql never
+        // pays a retry for it.
+        ...(cart.coupon?.is_priority && { is_priority: true }),
       };
 
       // `giving_intent` is which button they tapped, and it is the *choice*, not the
@@ -655,18 +659,17 @@ function CheckoutForm() {
 
           {settings.coupons_enabled && (
           <Card>
-            <h3 className="mb-3 font-heading font-bold text-text-dark">Coupon Code</h3>
+            <h3 className="mb-3 font-heading font-bold text-text-dark">Have a Code?</h3>
             {cart.coupon ? (
               <div className="flex items-center justify-between rounded-xl bg-success/5 p-3">
                 <div>
                   <span className="font-accent font-semibold text-success">{cart.coupon.code}</span>
-                  <span className="ml-2 text-sm text-text-light">
-                    {cart.coupon.discount_type === 'percentage' &&
-                      `${cart.coupon.discount_value}% off`}
-                    {cart.coupon.discount_type === 'fixed_amount' &&
-                      `$${cart.coupon.discount_value.toFixed(2)} off`}
-                    {cart.coupon.discount_type === 'free_item' && 'Free order'}
-                  </span>
+                  <span className="ml-2 text-sm text-text-light">{describeCoupon(cart.coupon)}</span>
+                  {cart.coupon.is_priority && (
+                    <p className="mt-0.5 text-sm font-semibold text-text-dark">
+                      ⚡ Your order goes to the front of the line
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"

@@ -277,6 +277,7 @@ function TabletInner() {
           stripe_payment_id: stripePaymentId,
           coupon_id: coupon?.id || null,
           order_source: 'counter',
+          ...(coupon?.is_priority && { is_priority: true }),
           // Stamps which event this order belongs to, so the dashboard can report per-event.
           event_id: activeEvent?.id ?? null,
         });
@@ -559,14 +560,14 @@ function TabletInner() {
               <div className="pt-3 border-t border-gray-100">
                 {coupon ? (
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-success font-accent font-semibold">{coupon.code} applied</span>
+                    <span className="text-success font-accent font-semibold">{coupon.code} applied{coupon.is_priority && ' · ⚡ Priority'}</span>
                     <button onClick={() => setCoupon(null)} className="text-xs text-danger cursor-pointer hover:underline">Remove</button>
                   </div>
                 ) : (
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="Coupon code"
+                      placeholder="Coupon or priority code"
                       value={couponCode}
                       onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(''); }}
                       className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-body focus:outline-none focus:border-primary min-w-0"
