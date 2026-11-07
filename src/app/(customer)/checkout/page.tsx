@@ -7,7 +7,7 @@ import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
 import { insertOrderRow } from '@/lib/order-insert';
-import { describeCoupon } from '@/lib/priority';
+import { describeCode, isUnlockOnly, lookupCode, recordCodeUses } from '@/lib/codes';
 import { useSubmitLock, type SubmitOutcome } from '@/lib/submit-lock';
 import { flagOrderIssue } from '@/lib/order-issues';
 import { getDeviceId } from '@/lib/device';
@@ -38,10 +38,10 @@ import {
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
-import { ClosedNotice } from '@/components/ShopBanner';
+import { ClosedNotice, ORDER_CODE_BOX_ID } from '@/components/ShopBanner';
 import { COFFEE_GIFT_AMOUNT } from '@/lib/giving';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
-import type { Coupon, ShopSettings, OrderingHours } from '@/types';
+import type { ShopSettings, OrderingHours } from '@/types';
 
 /** Stable handle for the name box, so a validation failure can scroll it back into view. */
 const NAME_INPUT_ID = 'customer-name';
@@ -64,6 +64,7 @@ function CheckoutForm() {
   const [couponCode, setCouponCode] = useState('');
   const [couponError, setCouponError] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
+  const [couponNote, setCouponNote] = useState('');
   const [processing, setProcessing] = useState(false);
   /**
    * One tap, one order. `processing` only changes what the button says; this is what
@@ -122,47 +123,40 @@ function CheckoutForm() {
     load();
   }, []);
 
-  // Same for a coupon applied before the admin turned coupons off.
-  useEffect(() => {
-    if (configLoaded && !settings.coupons_enabled && cart.coupon) {
-      cartStore.removeCoupon();
-    }
-  }, [configLoaded, settings.coupons_enabled, cart.coupon]);
+  // Turning coupons off at /admin/settings only hides the empty code box. A code that's
+  // already been typed in stays — it may be the same code that opened the shop and made
+  // the order priority, and quietly stripping that is worse than one leftover discount.
+  // To stop a code working, switch the code itself off at /admin/coupons.
 
+  /**
+   * The code box on the page. One typed code does every job it has: its discount and
+   * priority go in the cart, and if it opens ordering that's remembered too, so it still
+   * counts if the shop closes before they tap Place Order.
+   */
   async function applyCoupon() {
     if (!couponCode.trim()) return;
     setCouponLoading(true);
     setCouponError('');
+    setCouponNote('');
 
-    const { data, error } = await supabase
-      .from('coupons')
-      .select('*')
-      .eq('code', couponCode.trim().toUpperCase())
-      .eq('is_active', true)
-      .single();
-
-    if (error || !data) {
-      setCouponError("That code isn't valid");
-      setCouponLoading(false);
-      return;
-    }
-
-    const coupon = data as Coupon;
-
-    if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
-      setCouponError('Coupon has expired');
-      setCouponLoading(false);
-      return;
-    }
-
-    if (coupon.max_uses && coupon.times_used >= coupon.max_uses) {
-      setCouponError('Coupon has reached maximum uses');
-      setCouponLoading(false);
-      return;
-    }
-
-    cartStore.applyCoupon(coupon);
+    const result = await lookupCode(couponCode);
     setCouponLoading(false);
+
+    if (!result.ok) {
+      setCouponError(result.error);
+      return;
+    }
+    if (result.unlock) {
+      setActiveUnlock(result.unlock);
+      setUnlock(result.unlock);
+    }
+    if (result.coupon && !isUnlockOnly(result.coupon)) {
+      cartStore.applyCoupon(result.coupon);
+      setCouponCode('');
+    } else {
+      // Valid, but there's nothing for it to do while the shop is open.
+      setCouponNote('Code accepted — there’s nothing to take off this order.');
+    }
   }
 
   /**
@@ -353,9 +347,10 @@ function CheckoutForm() {
         order_source: 'mobile',
         event_id: activeEventId,
         device_id: getDeviceId(),
-        // Only sent when true, so a shop without supabase-priority-orders.sql never
-        // pays a retry for it.
-        ...(cart.coupon?.is_priority && { is_priority: true }),
+        // Priority comes from either code: the one in the code box, or the one that
+        // opened the shop. Only sent when true, so a shop without supabase-codes.sql
+        // never pays a retry for it.
+        ...((cart.coupon?.is_priority || getActiveUnlock()?.isPriority) && { is_priority: true }),
       };
 
       // `giving_intent` is which button they tapped, and it is the *choice*, not the
@@ -444,12 +439,17 @@ function CheckoutForm() {
         );
       }
 
-      if (cart.coupon) {
-        await supabase
-          .from('coupons')
-          .update({ times_used: cart.coupon.times_used + 1 })
-          .eq('id', cart.coupon.id);
-      }
+      // Who used which code — the record /admin/coupons searches. Also what counts the
+      // use toward a code's max uses.
+      await recordCodeUses({
+        orderId: order.id,
+        customerName: cart.customer_name,
+        source: 'mobile',
+        coupon: cart.coupon,
+        unlock: getActiveUnlock(),
+        shopClosed: !freshStatus.isOpen,
+        discountAmount: cart.discount_amount,
+      });
 
       // Deduct inventory
       for (const item of cart.items) {
@@ -535,7 +535,13 @@ function CheckoutForm() {
       <main className="mx-auto max-w-xl px-4 py-6">
         {orderingClosed && (
           <div className="mb-6">
-            <ClosedNotice settings={settings} status={status} onUnlock={setUnlock} />
+            <ClosedNotice
+              settings={settings}
+              status={status}
+              onUnlock={setUnlock}
+              onCode={cartStore.applyCoupon}
+              atCheckout
+            />
           </div>
         )}
 
@@ -657,14 +663,17 @@ function CheckoutForm() {
             )}
           </Card>
 
-          {settings.coupons_enabled && (
+          {/* While closed, the code box lives in the notice at the top — one box, not two. */}
+          {!orderingClosed && (settings.coupons_enabled || cart.coupon) && (
           <Card>
             <h3 className="mb-3 font-heading font-bold text-text-dark">Have a Code?</h3>
             {cart.coupon ? (
               <div className="flex items-center justify-between rounded-xl bg-success/5 p-3">
                 <div>
                   <span className="font-accent font-semibold text-success">{cart.coupon.code}</span>
-                  <span className="ml-2 text-sm text-text-light">{describeCoupon(cart.coupon)}</span>
+                  <span className="ml-2 text-sm text-text-light">
+                    {describeCode(cart.coupon, 'customer')}
+                  </span>
                   {cart.coupon.is_priority && (
                     <p className="mt-0.5 text-sm font-semibold text-text-dark">
                       ⚡ Your order goes to the front of the line
@@ -684,7 +693,10 @@ function CheckoutForm() {
                 <Input
                   placeholder="Enter code"
                   value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    setCouponCode(e.target.value.toUpperCase());
+                    setCouponNote('');
+                  }}
                   error={couponError}
                 />
                 <Button
@@ -698,6 +710,7 @@ function CheckoutForm() {
                 </Button>
               </div>
             )}
+            {couponNote && <p className="mt-2 text-sm text-success">{couponNote}</p>}
           </Card>
           )}
 
@@ -758,6 +771,23 @@ function CheckoutForm() {
                 drink. Don&apos;t pay again.
               </p>
             </div>
+          ) : orderingClosed && !status.isLocked ? (
+            /* Not a dead button: the code box is at the top of a long phone page, and a
+               disabled button down here reads as "broken" to someone who has a code. */
+            <Button
+              type="button"
+              fullWidth
+              size="lg"
+              variant="ghost"
+              className="border-2 border-warning/50"
+              onClick={() => {
+                const box = document.getElementById(ORDER_CODE_BOX_ID);
+                box?.scrollIntoView({ block: 'center' });
+                box?.querySelector('input')?.focus();
+              }}
+            >
+              Enter Your Code Above to Order
+            </Button>
           ) : orderingClosed ? (
             <Button type="button" fullWidth size="lg" disabled>
               Ordering Is Closed

@@ -9,7 +9,8 @@
 -- Until this runs, nothing changes: codes can't be marked priority (the admin page says
 -- to run this file) and no order is ever expedited.
 --
--- Safe to re-run.
+-- Superseded by supabase-codes.sql, which includes both of these columns — run that one.
+-- Kept because it's already been run on some databases. Safe to re-run.
 
 alter table coupons add column if not exists is_priority boolean not null default false;
 alter table orders  add column if not exists is_priority boolean not null default false;

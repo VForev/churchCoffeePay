@@ -158,9 +158,14 @@ this file. Orders placed before it can't be back-filled.
 trigger that actually enforces the limit. Until it runs there is no limit at all, and
 `/admin/settings` says so when you try to save one.
 
-**`supabase-priority-orders.sql`** — Required for **priority codes** (see *Priority Codes*
-below). Adds `coupons.is_priority` and `orders.is_priority`. Until it runs no code can be
-marked priority (`/admin/coupons` says to run this file) and no order is expedited.
+**`supabase-codes.sql`** — Required for **one kind of code** (see *Codes* below): merges
+access codes into `coupons` (copying every existing one over), adds priority
+(`coupons.is_priority`, `orders.is_priority`), and creates `code_uses` — the record of who
+used which code — back-filled from every order that already used a coupon. A trigger on
+`code_uses` counts each use toward `times_used`. Includes everything in
+`supabase-priority-orders.sql`, which is superseded. Until it runs, discounts work as
+before, unlocks still come from the old `access_codes` table, no code can be priority, and
+nothing is recorded — `/admin/coupons` says so.
 
 ### Seed data
 `supabase-seed.sql` — Loads sample categories, modifier groups, modifiers, and menu items to get started.
@@ -195,7 +200,7 @@ marked priority (`/admin/coupons` says to run this file) and no order is expedit
 | `/admin/menu` | Create/edit/delete categories and menu items; reorder with ▲/▼ |
 | `/admin/modifiers` | Manage modifier groups (Size, Milk, Syrups, etc.) and individual options; reorder with ▲/▼ |
 | `/admin/events` | Event pricing profiles — activate "Everything Free" mode or custom pricing |
-| `/admin/coupons` | Coupon codes — percentage, fixed amount, or free order discounts — and **priority codes** that put an order at the front of the line |
+| `/admin/coupons` | **Codes** — each one opens ordering while closed, puts the order at the front of the line, takes money off, or any mix. Plus **Who used which code**, searchable by code or name. (`/admin/access-codes` redirects here once `supabase-codes.sql` has run) |
 | `/admin/inventory` | Track stock levels, set low-stock thresholds, log restocks |
 | `/admin/orders` | Full order history — expand rows, filter by status, search by name, archive or delete |
 | `/admin/labels` | Cup label layout — roll size, what's on the label, text sizes, live preview, test print |
@@ -1162,7 +1167,10 @@ The rule lives in one place — `canOrderNow(status, hasUnlock)` in `src/lib/sho
 rather than re-writing the condition, or a lock will be honoured on one page and missed on
 another.
 
-When closed, the menu is still fully browsable but the cart button reads **"Ordering Is Closed"** and checkout is blocked. Checkout also **re-checks the schedule at submit time**, so an order can't slip through on a page that's been sitting open since before closing.
+When closed (but not locked), drinks can still go in the cart and the bottom bar reads
+**Continue — Enter Your Code**: the code is asked for **at checkout**, in the closed notice
+at the top, with the box already open. Nothing is placed without one. When **locked**, the
+drinks can't be tapped at all, as before. Checkout also **re-checks the schedule at submit time**, so an order can't slip through on a page that's been sitting open since before closing.
 
 Times are compared against the **device's local clock** — fine for a walk-up stand where staff and customers are in the same timezone.
 
@@ -1333,16 +1341,57 @@ because it's the only one that is about the reader.
 
 ---
 
-## Priority Codes
+## Codes — one kind, three jobs
 
-Some people need their coffee *before* they're on — the pastor before preaching, the
-worship team between sets. A **priority code** puts their order at the front of the line.
+Coupons, access codes and priority codes used to be separate things. They are **one kind
+of code** now (`supabase-codes.sql`), edited at **`/admin/coupons`** ("Codes"), and a code
+can do any mix of three jobs:
 
-**It is a coupon with one extra tick box**, not a separate system: `/admin/coupons` → the
-code → *⚡ Priority*. It's typed into the same code box at checkout and on `/tablet`, so
-there's no second empty field inviting everyone else to wonder how to skip the line. It can
-also carry a discount; set the discount to 0 for skip-the-line only. Max uses and expiry work
-exactly as they do for any coupon — a one-off code is `max_uses = 1`.
+| Job | What it does |
+|---|---|
+| **🔓 Opens ordering** | Lets them order while the shop is closed — optionally one category only, optionally with the write-in box. **Never past Lock Everything.** |
+| **⚡ Priority** | The order goes to the front of the line (see below). |
+| **💲 Discount** | Percentage, fixed amount, or a free order. "No discount" is stored as 0% off. |
+
+So `PASTOR` can open the shop on a Tuesday *and* put the order first *and* make it free.
+Max uses and expiry apply to every job, including opening ordering.
+
+- **One box, and it does everything the code does.** `lookupCode()` in `src/lib/codes.ts`
+  is the box: wherever a code is typed (the closed notice, the checkout code card), the
+  unlock is remembered *and* the discount/priority goes in the cart. An unlock-only code
+  stays out of the cart's code slot, so a separate discount code can still go in.
+- **The code is asked for at checkout.** While closed, the menu lets drinks into the cart;
+  checkout opens with the code box ready, and its button scrolls back to it.
+- **`codesMigrated()` in `src/lib/access-code.ts` decides where unlocks come from.** Before
+  the migration, the old `access_codes` table. After it, **never** — the old table is left
+  in place with every code still in it, and reading it would let a code an admin has since
+  switched off keep opening the shop.
+- **Turning coupons off at `/admin/settings` only hides the empty box while open.** A code
+  already typed in stays, because it may be the same code that opened the shop and made
+  the order priority. To stop a code, disable the code.
+
+### Who used which code
+
+**`code_uses`** gets a row for every code on every order — `/checkout`, `/tablet` and
+write-ins alike — with the name, when, phone or counter, and what it actually did on that
+order (opened ordering, priority, how much off). `recordCodeUses()` in `src/lib/codes.ts`
+writes it.
+
+- Searched at the bottom of `/admin/coupons`: type a code to see everyone who used it, or a
+  name to see every code they used. Each code's **Who used it** link does the first. A
+  summary line counts uses and distinct people.
+- **It's a copy, not a join.** `code` holds the text, and the foreign keys are `SET NULL`,
+  so deleting a code or an order never erases who used it.
+- **Recording a use is what counts it.** A trigger on `code_uses` bumps
+  `coupons.times_used` in one statement, so two phones taking a code's last use at once
+  can't both read the old count. Without the migration the old client-side increment runs
+  instead, so max uses still hold.
+- **Best-effort.** It runs after the order is in (and on `/checkout`, after the card is
+  charged); a failure is a missing line in a report, never a lost order.
+- Back-filled from `orders.coupon_id` for coupons. Unlocks were never recorded before, so
+  the history of those starts when the migration runs.
+
+### Priority orders
 
 - **`compareQueue()` in `src/lib/priority.ts` is the one definition of who is next.** Being
   made first, then priority orders, then everyone else, oldest first within each. `/barista`
@@ -1356,8 +1405,8 @@ exactly as they do for any coupon — a one-off code is `max_uses = 1`.
 - **The barista sees it; the lobby TV doesn't.** A brown *⚡ Priority — make this next* bar
   on the card, until it's Ready. `/live` just shows the line moving — badging it on a public
   screen invites a conversation nobody wants mid-rush.
-- **Turning coupons off at `/admin/settings` hides priority codes too**, because they share
-  the box. The settings page says so.
+- Priority comes from **either** code on the order — the one in the code box or the one
+  that opened the shop — and a write-in placed with a priority code is priority too.
 - `is_priority` is only sent on the insert when it's true, and `insertOrderRow()` drops it if
   the column is missing — on the checkout path the card is already charged, and an
   expedite flag is never worth losing an order over.
@@ -1366,7 +1415,7 @@ exactly as they do for any coupon — a one-off code is `max_uses = 1`.
 
 `/admin/settings` → **Coupons**. Untick it and the coupon box disappears from both `/checkout` and `/tablet` — useful when you aren't running any codes, since an empty coupon field just makes people feel they're missing a deal.
 
-Turning it off doesn't delete anything. Codes at `/admin/coupons` stay exactly as they are and start working again the moment you re-enable the box. If a coupon was already applied to a cart when you flip it off, it's dropped from that cart.
+Turning it off doesn't delete anything. Codes at `/admin/coupons` stay exactly as they are and start working again the moment you re-enable the box. It only hides the box **while ordering is open** — when closed, the box still appears so codes that open ordering keep working — and a code already in a cart stays there (see *Codes* above).
 
 ---
 
@@ -1525,11 +1574,16 @@ For Netlify:
 3. Remember what it is: the button they tapped, not money received. Pushpay never tells us
    whether the gift arrived
 
-**Let someone skip the line (pastor, worship team):**
-1. Run `supabase-priority-orders.sql` once
-2. `/admin/coupons` → **+ Coupon**, give it a code, tick **⚡ Priority**, discount 0
-3. Give them the code. They type it in the code box at checkout; their order goes to the
-   top of Pending with a *Priority* bar
+**Let someone skip the line, or order while closed (pastor, worship team):**
+1. Run `supabase-codes.sql` once
+2. `/admin/coupons` → **+ New Code**, give it a code and say who it's for
+3. Tick what it does — **🔓 Opens ordering**, **⚡ Priority**, a discount, or several
+4. Give them the code. They pick their drinks and type it at checkout; a priority order
+   goes to the top of Pending with a *Priority* bar
+
+**See who used a code:**
+1. `/admin/coupons` → the code → **Who used it**, or scroll to **Who used which code**
+2. Type a code to see everyone who used it, or a name to see every code they used
 
 **Change how many orders one person can place:**
 1. Go to `/admin/settings` → **Stopping spam orders**

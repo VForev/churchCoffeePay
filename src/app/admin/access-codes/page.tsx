@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { codesMigrated } from '@/lib/access-code';
 import Button from '@/components/ui/Button';
 import Input, { TextArea } from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
@@ -9,7 +11,18 @@ import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
 import type { AccessCode, Category } from '@/types';
 
+/**
+ * The old access-code editor. Since supabase-codes.sql, access codes are just codes with
+ * "Opens ordering" ticked at /admin/coupons, so once that has run this page sends you
+ * there. It stays only for a database that hasn't run it yet.
+ */
 export default function AdminAccessCodesPage() {
+  const router = useRouter();
+  useEffect(() => {
+    codesMigrated().then((done) => {
+      if (done) router.replace('/admin/coupons');
+    });
+  }, [router]);
   const [codes, setCodes] = useState<AccessCode[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,6 +115,10 @@ export default function AdminAccessCodesPage() {
         Let a specific group order while the shop is closed to everyone else — a brothers&apos;
         meeting during youth service, or security on shift. Give them a code; the menu stays closed
         for everyone without one. Turn a code off the moment their window is over.
+      </p>
+      <p className="mb-6 max-w-2xl rounded-xl border-2 border-warning/40 bg-warning/10 px-4 py-3 font-body text-sm text-text-dark">
+        Run <strong>supabase-codes.sql</strong> to merge these into <strong>Codes</strong>, where one
+        code can also be priority or a discount, and every use is recorded.
       </p>
 
       <div className="space-y-3">

@@ -6,6 +6,7 @@ import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
 import { insertOrderRow } from '@/lib/order-insert';
+import { recordCodeUses } from '@/lib/codes';
 import { useSubmitLock, type SubmitOutcome } from '@/lib/submit-lock';
 import { flagOrderIssue } from '@/lib/order-issues';
 import ModifierSelector from '@/components/menu/ModifierSelector';
@@ -332,9 +333,16 @@ function TabletInner() {
           );
         }
 
-        if (coupon) {
-          await supabase.from('coupons').update({ times_used: coupon.times_used + 1 }).eq('id', coupon.id);
-        }
+        // Who used which code, for /admin/coupons — and what counts it toward max uses.
+        await recordCodeUses({
+          orderId: order.id,
+          customerName,
+          source: 'counter',
+          coupon,
+          unlock: null,
+          shopClosed: false,
+          discountAmount: cart.discountAmount,
+        });
 
         setConfirmedOrderName(customerName.trim());
         setView('confirmation');

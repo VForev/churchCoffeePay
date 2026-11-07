@@ -70,9 +70,13 @@ export default function MenuPage() {
   // phone that typed a code five minutes ago would carry on ordering straight through it.
   const unlock = status.isLocked ? null : enteredUnlock;
   const canOrder = canOrderNow(status, !!unlock);
+  // Closed (but not locked) with no code yet: drinks can still go in the cart, because
+  // the code is asked for at checkout — nobody should have to find it before they've
+  // even picked a drink. Checkout is still the gate; nothing is placed without the code.
+  const codeAtCheckout = !status.isOpen && !status.isLocked && !unlock;
   // A code may be limited to one category (e.g. teas), so ordering is decided per item.
   const canOrderItem = (item: MenuItem) =>
-    canOrderNow(status, unlockAllowsCategory(unlock, item.category_id));
+    codeAtCheckout || canOrderNow(status, unlockAllowsCategory(unlock, item.category_id));
 
   const fetchQueueWait = useCallback(async () => {
     const { data: activeOrders } = await supabase
@@ -269,7 +273,12 @@ export default function MenuPage() {
 
         {!status.isOpen && !unlock && (
           <div className="mt-3">
-            <ClosedNotice settings={settings} status={status} onUnlock={setUnlock} />
+            <ClosedNotice
+              settings={settings}
+              status={status}
+              onUnlock={setUnlock}
+              onCode={cartStore.applyCoupon}
+            />
           </div>
         )}
 
@@ -332,14 +341,19 @@ export default function MenuPage() {
 
       {/* The one way out of the menu on a phone, and it goes straight to the payment
           page — there is no cart drawer in between. See goToCheckout above. */}
-      {cart.itemCount > 0 && canOrder && (
+      {cart.itemCount > 0 && (canOrder || codeAtCheckout) && (
         <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-100 bg-surface/90 p-4 backdrop-blur-sm sm:hidden">
           <button
             onClick={goToCheckout}
             className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary py-3 font-accent font-semibold text-white"
           >
-            {cart.total === 0 ? 'Place Your Order' : 'Pay & Place Your Order'} ({cart.itemCount})
-            {cart.total > 0 && (
+            {codeAtCheckout
+              ? 'Continue — Enter Your Code'
+              : cart.total === 0
+                ? 'Place Your Order'
+                : 'Pay & Place Your Order'}{' '}
+            ({cart.itemCount})
+            {cart.total > 0 && !codeAtCheckout && (
               <span className="text-sm opacity-75">${cart.total.toFixed(2)}</span>
             )}
           </button>

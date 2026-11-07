@@ -3,7 +3,7 @@
  *
  * Four columns on that row come from migrations a shop might not have run:
  * `giving_intent` (supabase-giving-intent.sql), `device_id`
- * (supabase-order-rate-limit.sql), `is_priority` (supabase-priority-orders.sql) and
+ * (supabase-order-rate-limit.sql), `is_priority` (supabase-codes.sql) and
  * `event_id`. On the mobile checkout path the
  * insert happens *after* Stripe has taken the money, so a rejected column there is not
  * a missing metric — it is a charged customer with no order and no drink. None of these

@@ -20,6 +20,7 @@ import {
   type AccessUnlock,
 } from '@/lib/access-code';
 import { fetchShopConfig, getShopStatus } from '@/lib/shop';
+import { recordCodeUses } from '@/lib/codes';
 
 /**
  * Free-text "write your own order" box, shown only when an access code allows it
@@ -81,7 +82,8 @@ export default function CustomOrderBox({
     // A lock stops write-ins too, and this page may have been sitting open since before
     // it went on — so ask the database, not the state we loaded with.
     const config = await fetchShopConfig();
-    if (getShopStatus(config.settings, config.hours).isLocked) {
+    const shopStatus = getShopStatus(config.settings, config.hours);
+    if (shopStatus.isLocked) {
       clearActiveUnlock();
       setSubmitting(false);
       setError('Ordering has been closed — your order was not sent.');
@@ -110,6 +112,8 @@ export default function CustomOrderBox({
       payment_status: 'free',
       order_source: 'mobile',
       device_id: getDeviceId(),
+      // The code that unlocked the write-in box can also be a priority code.
+      ...(fresh.isPriority && { is_priority: true }),
     });
 
     if (orderError || !order) {
@@ -144,6 +148,16 @@ export default function CustomOrderBox({
     // One drink, and it's now safely in — lets the printer print immediately
     // instead of waiting to see whether more drinks are still arriving.
     await markOrderItemsComplete(order.id, 1);
+
+    await recordCodeUses({
+      orderId: order.id,
+      customerName: name,
+      source: 'mobile',
+      coupon: null,
+      unlock: fresh,
+      shopClosed: !shopStatus.isOpen,
+      discountAmount: 0,
+    });
 
     // Same as a paid order: the live board pins this to the top of their own screen.
     rememberMyOrder(order.id);

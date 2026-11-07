@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import type { ShopSettings } from '@/types';
+import type { Coupon, ShopSettings } from '@/types';
 import type { ShopStatus } from '@/lib/shop';
-import { verifyAccessCode, setActiveUnlock, type AccessUnlock } from '@/lib/access-code';
+import { setActiveUnlock, type AccessUnlock } from '@/lib/access-code';
+import { describeCode, isUnlockOnly, lookupCode } from '@/lib/codes';
 
 interface ShopBannerProps {
   settings: ShopSettings;
@@ -124,19 +125,33 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
   );
 }
 
+/** Id of the code box, so the checkout's disabled button can scroll back to it. */
+export const ORDER_CODE_BOX_ID = 'order-code-box';
+
 /**
  * Full-width notice shown when ordering is closed, explaining what to do instead.
+ *
+ * On the menu it says "pick your drinks, the code comes at checkout" — nobody with a
+ * code should have to find it before they've even chosen a drink. At checkout
+ * (`atCheckout`) the code box is already open, because that is now the one moment it's
+ * asked for.
  */
 export function ClosedNotice({
   settings,
   status,
   onUnlock,
+  onCode,
+  atCheckout = false,
 }: {
   settings: ShopSettings;
   status: ShopStatus;
-  /** When provided, shows an access-code box so an approved group can unlock ordering. */
+  /** When provided, shows a code box so an approved group can unlock ordering. */
   onUnlock?: (unlock: AccessUnlock) => void;
+  /** Receives a code's discount / priority, so one typed code does every job it has. */
+  onCode?: (coupon: Coupon) => void;
+  atCheckout?: boolean;
 }) {
+  const codesWork = !!onUnlock && !status.isLocked;
   return (
     <div className="rounded-2xl border-2 border-warning/40 bg-warning/10 px-5 py-4">
       <div className="flex items-start gap-3">
@@ -152,20 +167,34 @@ export function ClosedNotice({
             </p>
           )}
           <p className="mt-2 font-body text-xs text-text-light">
-            You can still browse the menu below.
+            {!codesWork
+              ? 'You can still browse the menu below.'
+              : atCheckout
+                ? 'Have a code? Enter it here to place your order.'
+                : 'You can still pick your drinks. Have a code? You’ll enter it when you place your order.'}
           </p>
-          {/* A lock is deliberately absolute — no access code gets past it, so we don't
-              offer the box and send someone hunting for a code that won't work. */}
-          {onUnlock && !status.isLocked && <AccessCodeBox onUnlock={onUnlock} />}
+          {/* A lock is deliberately absolute — no code gets past it, so we don't offer the
+              box and send someone hunting for a code that won't work. */}
+          {codesWork && onUnlock && (
+            <AccessCodeBox onUnlock={onUnlock} onCode={onCode} startOpen={atCheckout} />
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-/** "Have an access code?" — an approved group unlocks ordering while the shop is closed. */
-function AccessCodeBox({ onUnlock }: { onUnlock: (unlock: AccessUnlock) => void }) {
-  const [open, setOpen] = useState(false);
+/** "Have a code?" — an approved group unlocks ordering while the shop is closed. */
+function AccessCodeBox({
+  onUnlock,
+  onCode,
+  startOpen,
+}: {
+  onUnlock: (unlock: AccessUnlock) => void;
+  onCode?: (coupon: Coupon) => void;
+  startOpen: boolean;
+}) {
+  const [open, setOpen] = useState(startOpen);
   const [code, setCode] = useState('');
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState('');
@@ -175,14 +204,25 @@ function AccessCodeBox({ onUnlock }: { onUnlock: (unlock: AccessUnlock) => void 
     if (!code.trim()) return;
     setChecking(true);
     setError('');
-    const unlock = await verifyAccessCode(code);
+    const result = await lookupCode(code);
     setChecking(false);
-    if (!unlock) {
-      setError('That code isn’t valid. Double-check it with whoever gave it to you.');
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
-    setActiveUnlock(unlock);
-    onUnlock(unlock);
+    // The code's other jobs ride along whether or not it opens ordering. An unlock-only
+    // code stays out of the cart's code box, so a discount code can still go in there.
+    if (result.coupon && !isUnlockOnly(result.coupon)) onCode?.(result.coupon);
+    if (!result.unlock) {
+      setError(
+        result.coupon && !isUnlockOnly(result.coupon)
+          ? `That code is good for ${describeCode(result.coupon, 'customer').toLowerCase()}, but it doesn’t open ordering while we’re closed.`
+          : 'That code doesn’t open ordering while we’re closed.',
+      );
+      return;
+    }
+    setActiveUnlock(result.unlock);
+    onUnlock(result.unlock);
   }
 
   if (!open) {
@@ -191,13 +231,13 @@ function AccessCodeBox({ onUnlock }: { onUnlock: (unlock: AccessUnlock) => void 
         onClick={() => setOpen(true)}
         className="mt-3 cursor-pointer font-accent text-sm font-semibold text-text-dark underline underline-offset-2 hover:text-text"
       >
-        Have an access code?
+        Have a code?
       </button>
     );
   }
 
   return (
-    <form onSubmit={submit} className="mt-3 flex flex-wrap items-start gap-2">
+    <form id={ORDER_CODE_BOX_ID} onSubmit={submit} className="mt-3 flex flex-wrap items-start gap-2">
       <div className="min-w-0 flex-1">
         <input
           autoFocus
@@ -206,7 +246,7 @@ function AccessCodeBox({ onUnlock }: { onUnlock: (unlock: AccessUnlock) => void 
             setCode(e.target.value.toUpperCase());
             if (error) setError('');
           }}
-          placeholder="Enter access code"
+          placeholder="Enter your code"
           className="w-full rounded-xl border-2 border-warning/50 bg-surface px-4 py-2.5 font-mono text-sm text-text-dark placeholder:font-body placeholder:text-text-light focus:border-warning focus:outline-none"
         />
         {error && <p className="mt-1.5 font-body text-xs text-danger">{error}</p>}

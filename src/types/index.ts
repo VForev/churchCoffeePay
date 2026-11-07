@@ -163,7 +163,7 @@ export interface Order {
   giving_intent?: boolean | null;
   /**
    * Placed with a priority code — goes ahead of every order not yet started. Optional:
-   * added by supabase-priority-orders.sql. Sort the queue through src/lib/priority.ts.
+   * added by supabase-codes.sql. Sort the queue through src/lib/priority.ts.
    */
   is_priority?: boolean;
   archived_at: string | null;
@@ -244,9 +244,37 @@ export interface Coupon {
   times_used: number;
   is_active: boolean;
   expires_at: string | null;
-  /** A priority code: orders placed with it jump the queue (supabase-priority-orders.sql). */
+  /** A priority code: orders placed with it jump the queue (supabase-codes.sql). */
   is_priority?: boolean;
+  /**
+   * The access-code half, merged in by supabase-codes.sql — all optional, because a
+   * database that hasn't run it has none of them. Read them through src/lib/codes.ts.
+   */
+  /** Who it's for, e.g. "Pastor Mike" — admin-facing only. */
+  label?: string;
+  /** Lets this code order while the shop is closed (never past Lock Everything). */
+  unlocks_ordering?: boolean;
+  /** When set, the unlock only covers this one category. NULL = whole menu. */
+  allowed_category_id?: string | null;
+  /** When true, unlocking also shows the free-text "write your own order" box. */
+  allow_custom_order?: boolean;
+  custom_order_note?: string | null;
   created_at: string;
+}
+
+/** One code on one order — the "who used which code" record (supabase-codes.sql). */
+export interface CodeUse {
+  id: string;
+  coupon_id: string | null;
+  /** A copy of the code's text, so deleting the code doesn't blank its history. */
+  code: string;
+  order_id: string | null;
+  customer_name: string;
+  order_source: OrderSource | null;
+  unlocked: boolean;
+  priority: boolean;
+  discount_amount: number;
+  used_at: string;
 }
 
 export type DiscountType = 'percentage' | 'fixed_amount' | 'free_item';
