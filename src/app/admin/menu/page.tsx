@@ -45,7 +45,11 @@ export default function AdminMenuPage() {
     setLoading(false);
   }
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    // Loads data; state is only set once the query comes back, which the rule can't see.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData();
+  }, []);
 
   async function saveItem() {
     if (!editItem) return;
@@ -392,6 +396,8 @@ function ItemOptionsModal({ item, onClose }: { item: MenuItem; onClose: () => vo
   }, [item.id]);
 
   useEffect(() => {
+    // Loads data; state is only set once the query comes back, which the rule can't see.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 

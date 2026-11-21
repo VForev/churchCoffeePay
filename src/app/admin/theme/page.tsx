@@ -71,6 +71,8 @@ export default function ThemeAdminPage() {
   }, []);
 
   useEffect(() => {
+    // Loads data; state is only set once the query comes back, which the rule can't see.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 

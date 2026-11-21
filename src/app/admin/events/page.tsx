@@ -21,7 +21,11 @@ export default function AdminEventsPage() {
     setLoading(false);
   }
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    // Loads data; state is only set once the query comes back, which the rule can't see.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData();
+  }, []);
 
   async function saveEvent() {
     if (!editEvent) return;

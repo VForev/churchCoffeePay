@@ -104,6 +104,8 @@ export default function AdminLabelsPage() {
       const raw = localStorage.getItem(PREVIEW_STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as { content?: PreviewContent; sampleIndex?: number };
+        // Restoring the saved preview after mount; localStorage doesn't exist during the server render.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (saved.content) setPreviewContent({ ...DEFAULT_PREVIEW_CONTENT, ...saved.content });
         if (typeof saved.sampleIndex === 'number') setSampleIndex(saved.sampleIndex);
       }
@@ -675,6 +677,8 @@ function NumberField({
   // Re-sync when the value changes from elsewhere (initial load, "Reset to defaults"),
   // but not from our own keystrokes echoing back — that would fight what you're typing.
   useEffect(() => {
+    // Re-syncing the text box from a value changed elsewhere; guarded so it never fights typing.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setText((cur) => (Number(cur) === value ? cur : String(value)));
   }, [value]);
 

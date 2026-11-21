@@ -263,6 +263,8 @@ export default function AdminDashboard() {
   useEffect(() => {
     // A half-filled custom range would query a nonsense window, so wait for both ends.
     if (range === 'custom' && (!customFrom || !customTo)) return;
+    // Loads data; state is only set once the query comes back, which the rule can't see.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, [fetchData, range, customFrom, customTo]);
 

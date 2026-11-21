@@ -98,7 +98,11 @@ export default function AdminOrdersPage() {
     setLoading(false);
   }
 
-  useEffect(() => { fetchOrders(); }, [dateFilter, showArchived]);
+  useEffect(() => {
+    fetchOrders();
+    // Refetches when the filters change; fetchOrders reads both of them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFilter, showArchived]);
 
   async function archiveOrder(order: FullOrder) {
     setActionError(null);

@@ -179,7 +179,7 @@ nothing is recorded — `/admin/coupons` says so.
 | Route | Description |
 |-------|-------------|
 | `/` | Main menu page — customers browse categories and items, add to cart |
-| `/checkout` | "Place Your Coffee Order" — customer name, the **editable** drinks list, coupon, donation, Stripe card payment. **This is the only review screen; the menu goes straight here** (see *Straight to Payment* below). The word "checkout" is deliberately gone from the UI: customers read it as "order already placed" and bail. Name requires **first + last name, last initial is enough** (`validateFullName` in `src/lib/profanity.ts`) — one letter is what tells two Sarahs apart when the barista calls the order. |
+| `/checkout` | "Place Your Coffee Order" — customer name, the **editable** drinks list, code box, and the two Place Order buttons. **Free orders only — there is no card box** (see *Phone orders are free* below). **This is the only review screen; the menu goes straight here** (see *Straight to Payment* below). The word "checkout" is deliberately gone from the UI: customers read it as "order already placed" and bail. Name requires **first + last name, last initial is enough** (`validateFullName` in `src/lib/profanity.ts`) — one letter is what tells two Sarahs apart when the barista calls the order. |
 | `/checkout/confirmation` | Order confirmation screen after successful payment — plus the Pushpay giving box |
 
 ### Staff
@@ -244,6 +244,8 @@ src/
 │   ├── theme-looks.ts              # Corners, shadows, text size, roominess, background, fonts
 │   ├── specialty.ts                 # Drink of the day — settings and what to show
 │   ├── my-order.ts                  # Which orders on the board are this phone's
+│   ├── queue.ts                     # Drinks in the queue (the "~N min wait") — one query
+│   ├── inventory.ts                 # Batched stock deduction after an order
 │   ├── supabase.ts                  # Supabase client
 │   ├── access.ts                    # Admin service-role client
 │   └── utils.ts                     # formatPrice, generateId, cn()
@@ -312,6 +314,17 @@ The last three are mapped onto Tailwind's own `--color-gray-*` ramp at runtime, 
 what lets the ~175 places that say `border-gray-200` rather than naming a token follow the
 scheme — and what makes the dark schemes possible. `--color-white` is deliberately left
 alone; see *Dark mode works now* under **Look and Colours**.
+
+### Base styles live in `@layer base` — keep them there
+
+`body` and the `h1`–`h6` colour rule in `globals.css` are inside `@layer base`. They used to
+sit loose in the file, and **unlayered CSS beats every Tailwind utility regardless of
+specificity** — so for months every `text-primary`, `text-white` or `text-success` on a
+heading silently rendered black (the white banner title, the barista header, the navy shop
+name). Anything new and global goes in `@layer base` or as an `@utility`, never loose.
+
+A heading on a coloured fill still needs its own `text-white`: the base rule colours the
+heading directly, which beats any colour it would inherit from the container.
 
 ### Fonts
 
@@ -583,9 +596,10 @@ The review didn't disappear, it moved onto the page that was always going to be 
   and **+ Add another** back to the menu. This is not optional polish. With the drawer
   gone this is the only place a mis-tapped drink can be fixed, and without it the fix
   would be starting the order over.
-- **The menu's Order button is disabled while the cart is empty** (nothing to pay for),
-  and the phone's bottom bar reads **Pay & Place Your Order** with the total, or **Place
-  Your Order** when the event is free.
+- **The menu's Order button is disabled while the cart is empty**, and the phone's
+  floating bottom bar reads **Place Your Order** with the drink count (or **Continue —
+  Enter Your Code** while closed). Adding a drink shows a short "Latte added" toast and
+  bumps the count — the sheet closing is otherwise the only sign anything happened.
 - **`/tablet` is untouched.** The counter POS has its own two-panel cart, because the
   barista is building someone else's order out loud and reads it back to them.
 
@@ -742,18 +756,28 @@ stopped at three rather than going higher.
   It resets when the sheet opens, because `/tablet` keeps that component mounted between
   drinks.
 
-### A charged card that never became an order
+### Phone orders are free — `/checkout` takes no cards
 
-If Stripe took the money and the `orders` insert then failed, `/checkout` throws
-`ChargedWithoutOrderError`: the buttons **stay down permanently** and a red notice tells
-them to show the screen to the barista and not pay again. Handing the buttons back there
-invites somebody whose money has already gone to pay twice for one coffee. It is a
-deliberate dead end — the only fix is a person at the counter.
+**There is no card box on `/checkout`, and nothing on it talks to Stripe.** Phone orders
+at this coffee bar are always free (an *Everything Free* event, a free menu, or a code that
+takes the whole order off). The card box had in fact been missing since September — every
+paid phone order was failing at the button — and the decision was to make that the design
+rather than restore it.
+
+- **A cart with a price is refused, not placed unpaid.** If one ever reaches checkout (the
+  free event got switched off, say), the page says *phone orders are free-only — please
+  order at the counter* and both buttons stay down. `/tablet` still takes cards.
+- **Once the order row is in, the tap always ends on the confirmation screen.** Everything
+  after the insert — drinks, add-ins, labels, code uses, inventory — is wrapped so that a
+  throw can't hand the buttons back, and the best-effort bookkeeping runs under
+  `Promise.allSettled`, never `Promise.all`. A returned button there is a second order.
+- `ChargedWithoutOrderError` is gone with Stripe; there's no charge for an order to be
+  missing from. If phone payments ever come back, bring it back with them (git history).
 
 ### Drinks that don't save
 
-Drink rows go in one at a time after the card is charged, and a failure used to be
-swallowed — a paid order on the board one drink short, with nothing anywhere saying so.
+Drink rows go in one at a time after the order row, and a failure used to be
+swallowed — an order on the board one drink short, with nothing anywhere saying so.
 Now both `/checkout` and `/tablet`:
 
 - count what actually landed, and pass **that** to `markOrderItemsComplete()`. Claiming a
@@ -766,7 +790,7 @@ Now both `/checkout` and `/tablet`:
 ### Inserting the order row — `src/lib/order-insert.ts`
 
 `giving_intent`, `device_id` and `event_id` all come from migrations a shop may not have
-run, and on the mobile path the card is charged **before** the insert. A rejected column
+run, and on `/tablet` the card is charged **before** the insert. A rejected column
 there is not a missing metric, it's a charged customer with no drink. `insertOrderRow()`
 tries the full row and drops whichever of those three the database says it hasn't got — a
 rejected insert inserts nothing, which is what makes the retry safe. Anything that is
@@ -795,12 +819,9 @@ trigger.**
   (`src/lib/device.ts`) — not a fingerprint, not a login, just "the same browser as five
   seconds ago". Clearing storage doesn't hand anyone a fresh allowance, because the name
   still matches. Nothing here catches someone with two phones, and nothing needs to.
-- **Checkout checks BEFORE charging.** The trigger fires on the insert, which in the
-  checkout flow happens *after* Stripe has taken the money — being refused there would mean
-  a charged customer with no order. So `checkSpamLimit()` reads the count up front, and
-  that's the path customers actually hit. If the two are ever raced (two tabs submitted
-  together) and the card was already charged, the message says so and sends them to the
-  barista rather than swallowing it.
+- **Checkout checks up front.** `checkSpamLimit()` reads the count before the insert, so
+  the customer gets the friendly message — that's the path they actually hit. If two tabs
+  race past it, the trigger's refusal is turned into the same message, never shown raw.
 - **Write-in orders matter most.** `CustomOrderBox` takes no card at all, which makes it the
   easiest thing on the site to hammer — the limit's own words go straight to the customer
   there.
@@ -1205,7 +1226,7 @@ boxes and they do different things.**
 
 ### The $3 Coffee & Tea gift — two buttons, then Pushpay
 
-`/checkout` ends in **two buttons**, and both charge the card the same amount (the drinks):
+`/checkout` ends in **two buttons**, and both place the same free order:
 
 - **☕ Place Order & Give $3** — places the order, lands on the confirmation screen, and
   **redirects itself to Pushpay after a 3-second countdown** with the $3 filled in. *Go
@@ -1218,8 +1239,8 @@ Which button was tapped is saved on the order as `giving_intent` and reported at
 The ask is a choice *between the buttons* rather than a box further up the page, so nobody
 reaches the bottom having missed it, and declining takes one tap.
 
-**The $3 does not go through Stripe.** `orders.tip_amount` is always 0 on this path;
-Stripe only ever sees the drinks. The gift goes to the church's Pushpay Coffee & Tea fund
+**The $3 does not go through Stripe.** `orders.tip_amount` is always 0 on this path. The
+gift goes to the church's Pushpay Coffee & Tea fund
 and never touches our database.
 
 #### Order first, then Pushpay — this ordering is the whole design
@@ -1422,7 +1443,9 @@ Turning it off doesn't delete anything. Codes at `/admin/coupons` stay exactly a
 ## Inventory Tracking
 
 - Link ingredients to menu items and modifiers at `/admin/inventory`
-- Stock automatically deducts when orders are placed
+- Stock automatically deducts when orders are placed — `deductInventory()` in
+  `src/lib/inventory.ts`: one read of every ingredient the order touches, one update per
+  inventory item, one log insert. Best-effort and never throws; the order is already in.
 - Low-stock alerts appear on the admin dashboard
 - Manually log restocks with notes
 

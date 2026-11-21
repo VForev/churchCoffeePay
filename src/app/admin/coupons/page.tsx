@@ -83,7 +83,11 @@ export default function AdminCodesPage() {
     setLoading(false);
   }
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    // Loads data; state is only set once the query comes back, which the rule can't see.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData();
+  }, []);
 
   // The usage search, debounced so typing a name doesn't fire a query per letter.
   useEffect(() => {
