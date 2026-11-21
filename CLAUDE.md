@@ -62,11 +62,14 @@ STRIPE_WEBHOOK_SECRET=                # whsec_... from Stripe webhook settings
 ACCESS_SECRET=         # Random hex string for access control
 SESSION_SIGNING_KEY=   # Random hex string for session signing
 
-# Twilio (SMS — optional)
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_PHONE_NUMBER=
+# Telnyx (SMS "your order is ready" — optional; leave blank and the box never appears)
+TELNYX_API_KEY=                # KEY… from Telnyx Portal → API Keys (server-only)
+TELNYX_FROM_NUMBER=            # your Telnyx number, E.164: +18885551234
+TELNYX_MESSAGING_PROFILE_ID=   # optional — the profile that number is assigned to
 ```
+
+The old `TWILIO_*` variables and the `twilio` package are unused — nothing in `src/` ever
+sent a text through them. Texting is Telnyx (see *Text When Ready* below).
 
 ---
 
@@ -167,6 +170,11 @@ used which code — back-filled from every order that already used a coupon. A t
 before, unlocks still come from the old `access_codes` table, no code can be priority, and
 nothing is recorded — `/admin/coupons` says so.
 
+**`supabase-sms-notifications.sql`** — Required for **"Text me when my order is ready"**.
+Creates `order_sms` with row level security on and **no policies**, so the public anon key
+can neither read nor write a phone number. Until it runs, the box still shows (if Telnyx is
+configured) but numbers don't save and nobody is texted — the console says which file to run.
+
 ### Seed data
 `supabase-seed.sql` — Loads sample categories, modifier groups, modifiers, and menu items to get started.
 
@@ -181,6 +189,7 @@ nothing is recorded — `/admin/coupons` says so.
 | `/` | Main menu page — customers browse categories and items, add to cart |
 | `/checkout` | "Place Your Coffee Order" — customer name, the **editable** drinks list, coupon, donation, Stripe card payment. **This is the only review screen; the menu goes straight here** (see *Straight to Payment* below). The word "checkout" is deliberately gone from the UI: customers read it as "order already placed" and bail. Name requires **first + last name, last initial is enough** (`validateFullName` in `src/lib/profanity.ts`) — one letter is what tells two Sarahs apart when the barista calls the order. |
 | `/checkout/confirmation` | Order confirmation screen after successful payment — plus the Pushpay giving box |
+| `/text-messages` | Public SMS terms & privacy — the opt-in link Telnyx/carriers require. Linked from the text box |
 
 ### Staff
 
@@ -233,6 +242,8 @@ src/
 │   ├── cart-store.ts                # Client-side cart state (observer pattern)
 │   ├── shop.ts                      # Open/closed/locked logic — canOrderNow() lives here
 │   ├── order-timing.ts              # How long an order took — the only place it's computed
+│   ├── sms.ts                       # "Text me when ready" — phone parsing, message, client calls
+│   ├── telnyx.ts                    # Server-only Telnyx send (API routes only)
 │   ├── rate-limit.ts                # Spam-order limit, around the database trigger
 │   ├── device.ts                    # Random per-browser id, used only by the spam limit
 │   ├── order-issues.ts              # Problem-order flag: reasons, hasIssue(), error copy
@@ -541,6 +552,43 @@ Things worth knowing before changing any of it:
   somebody can try something on their own screen and send six lines to whoever has the
   admin password, instead of reading eighteen hex values down the phone. Loading one only
   changes that page; it still takes a Save.
+
+## Text When Ready (Telnyx SMS)
+
+A customer can tick **Text me when my order is ready** on `/checkout` (or the barista ticks it
+on `/tablet` when the customer asks), and gets **one** text when the barista taps **Mark
+Ready**. Migration: `supabase-sms-notifications.sql`. Env: `TELNYX_API_KEY`,
+`TELNYX_FROM_NUMBER` (and optionally `TELNYX_MESSAGING_PROFILE_ID`). With no keys,
+`GET /api/sms` says disabled and the box never renders — nothing else changes.
+
+```
+checkout / tablet ──(order inserted)──▶ POST /api/sms/subscribe {orderId, phone} ─▶ order_sms
+barista Making→Ready ─────────────────▶ POST /api/sms/order-ready {orderId} ─▶ Telnyx /v2/messages
+```
+
+- **Phone numbers never go on `orders`.** That table is `Allow all access` to the anon key,
+  which ships in every browser — a number there is a number anyone can download. They live
+  in `order_sms` (RLS on, no policies) and only the service-role API routes touch it. The
+  number is set to NULL the moment the text is sent.
+- **One text per order, whatever the barista does.** `/api/sms/order-ready` checks the order
+  really is `ready` in the database, then *claims* the row with a conditional update
+  (`waiting|failed → sending`) before sending, so two barista screens can't both text. Sent
+  is final: back to Making and Ready again doesn't text twice. A failed send is retried on
+  the next Mark Ready.
+- **It never blocks an order.** Subscribing happens after the order (and charge) succeeded
+  and is best-effort; the barista call is fire-and-forget. The only thing the barista sees
+  is a failure: *Couldn't text Sarah K — call their name.*
+- **Subscribe is guarded**: only orders under 15 minutes old that are still pending/making,
+  first number wins. The worst misuse is one "your order is ready" text per real order.
+- **The opt-in box's shape is a carrier requirement**, not a design choice:
+  `src/components/ReadyTextOptIn.tsx` — separate checkbox, unchecked by default, names the
+  sender, frequency, "msg & data rates", STOP/HELP, links `/text-messages`. Telnyx's
+  toll-free verification / 10DLC review checks this. Change the wording and the page
+  together, or the number can be suspended.
+- **The message is plain ASCII** (`readyMessage()`); an emoji or curly quote switches the
+  SMS to UCS-2 and can double its cost. `npm run test:sms` checks it stays one segment.
+- US/Canada numbers only (`normalizeUsPhone()`).
+- Write-in orders (`CustomOrderBox`) don't offer the box yet.
 
 ## Order Workflow
 

@@ -13,6 +13,8 @@ import ModifierSelector from '@/components/menu/ModifierSelector';
 import { fetchItemModifierGroups } from '@/lib/menu';
 import { fetchShopConfig, parseDonationPresets, DEFAULT_SETTINGS } from '@/lib/shop';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
+import { fetchSmsEnabled, normalizeUsPhone, phoneError, subscribeToReadyText } from '@/lib/sms';
+import ReadyTextOptIn from '@/components/ReadyTextOptIn';
 import { cn } from '@/lib/utils';
 import { generateId } from '@/lib/utils';
 import type {
@@ -90,6 +92,15 @@ function TabletInner() {
   const [couponCode, setCouponCode] = useState('');
   const [couponError, setCouponError] = useState('');
   const [nameError, setNameError] = useState('');
+  // "Text me when it's ready" — the barista asks, the customer gives the number
+  const [smsEnabled, setSmsEnabled] = useState(false);
+  const [textMe, setTextMe] = useState(false);
+  const [textPhone, setTextPhone] = useState('');
+  const [textPhoneError, setTextPhoneError] = useState('');
+
+  useEffect(() => {
+    fetchSmsEnabled().then(setSmsEnabled);
+  }, []);
 
   // Shop settings (donation label / on-off)
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
@@ -211,6 +222,14 @@ function TabletInner() {
       return;
     }
     setNameError('');
+    if (smsEnabled && textMe) {
+      const problem = phoneError(textPhone);
+      if (problem) {
+        setTextPhoneError(problem);
+        return;
+      }
+    }
+    setTextPhoneError('');
     setView('payment');
   }
 
@@ -289,6 +308,13 @@ function TabletInner() {
               ? `Failed to create order: ${orderError.message}`
               : 'Failed to create order',
           );
+        }
+
+        // "Text me when it's ready" — best-effort; a failure costs a text, never the order.
+        const textTo = smsEnabled && textMe ? normalizeUsPhone(textPhone) : null;
+        if (textTo) {
+          const smsError = await subscribeToReadyText(order.id, textTo);
+          if (smsError) console.warn('Ready text not set up:', smsError);
         }
 
         // A drink row that won't insert used to be swallowed, leaving a paid order on the
@@ -370,6 +396,9 @@ function TabletInner() {
     setCouponCode('');
     setCouponError('');
     setNameError('');
+    setTextMe(false);
+    setTextPhone('');
+    setTextPhoneError('');
     setPayError('');
     setView('order');
   }
@@ -662,6 +691,25 @@ function TabletInner() {
               />
               {nameError && <p className="mt-2 text-sm font-body text-danger">{nameError}</p>}
             </div>
+
+            {smsEnabled && (
+              <div className="bg-surface rounded-2xl p-5 shadow-sm">
+                <ReadyTextOptIn
+                  large
+                  checked={textMe}
+                  onCheckedChange={(on) => {
+                    setTextMe(on);
+                    setTextPhoneError('');
+                  }}
+                  phone={textPhone}
+                  onPhoneChange={(value) => {
+                    setTextPhone(value);
+                    if (textPhoneError) setTextPhoneError('');
+                  }}
+                  error={textPhoneError}
+                />
+              </div>
+            )}
 
             <button
               onClick={goToPayment}

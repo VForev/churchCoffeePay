@@ -17,6 +17,7 @@ import {
   formatIssueTime,
 } from '@/lib/order-issues';
 import { compareQueue } from '@/lib/priority';
+import { notifyOrderReady } from '@/lib/sms';
 import type {
   Order,
   OrderItem,
@@ -378,13 +379,16 @@ export default function BaristaPage() {
         .select('id');
       if (retryError) showConflict(`Could not update ${order.customer_name}'s order: ${retryError.message}`);
       else if (!retry || retry.length === 0) showConflict(`${order.customer_name}'s order was already moved on another screen.`);
+      else textIfReady(order, from, newStatus);
       fetchOrders();
       return;
     }
 
     if (error) {
       showConflict(`Could not update ${order.customer_name}'s order: ${error.message}`);
-    } else if (!data || data.length === 0) {
+    } else if (data && data.length > 0) {
+      textIfReady(order, from, newStatus);
+    } else {
       // No row matched. Either another screen moved it, or this one was tapped twice —
       // check where it actually ended up before crying conflict at an impatient barista.
       const { data: current } = await supabase
@@ -401,6 +405,25 @@ export default function BaristaPage() {
       }
     }
     fetchOrders();
+  }
+
+  /**
+   * "Your order is ready" text, for customers who asked for one at checkout.
+   *
+   * Only on Making → Ready, and only from the screen whose write actually landed. Undoing
+   * an "Order Picked Up" also lands on Ready, and must not text again — the server would
+   * refuse anyway (it sends at most once per order), but there's no reason to ask.
+   * Fire-and-forget: the card has already moved, and a slow Telnyx must never hold it up.
+   * The only thing the barista hears about is a text that failed, so they know to call
+   * the name instead.
+   */
+  function textIfReady(order: FullOrder, from: OrderStatus, to: OrderStatus) {
+    if (to !== 'ready' || from !== 'in_progress') return;
+    notifyOrderReady(order.id).then((result) => {
+      if (result.error) {
+        showConflict(`Couldn't text ${order.customer_name} — call their name. (${result.error})`);
+      }
+    });
   }
 
   /**

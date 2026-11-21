@@ -41,6 +41,8 @@ import Card from '@/components/ui/Card';
 import { ClosedNotice, ORDER_CODE_BOX_ID } from '@/components/ShopBanner';
 import { COFFEE_GIFT_AMOUNT } from '@/lib/giving';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
+import { fetchSmsEnabled, normalizeUsPhone, phoneError, subscribeToReadyText } from '@/lib/sms';
+import ReadyTextOptIn, { READY_TEXT_PHONE_ID } from '@/components/ReadyTextOptIn';
 import type { ShopSettings, OrderingHours } from '@/types';
 
 /** Stable handle for the name box, so a validation failure can scroll it back into view. */
@@ -77,6 +79,15 @@ function CheckoutForm() {
   const [error, setError] = useState('');
   const [nameError, setNameError] = useState('');
   const [queueWait, setQueueWait] = useState<number | null>(null);
+  /** "Text me when it's ready" — only offered once the server says Telnyx is set up. */
+  const [smsEnabled, setSmsEnabled] = useState(false);
+  const [textMe, setTextMe] = useState(false);
+  const [textPhone, setTextPhone] = useState('');
+  const [textPhoneError, setTextPhoneError] = useState('');
+
+  useEffect(() => {
+    fetchSmsEnabled().then(setSmsEnabled);
+  }, []);
 
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
   const [hours, setHours] = useState<OrderingHours[]>([]);
@@ -237,6 +248,21 @@ function CheckoutForm() {
     }
     setNameError('');
 
+    // Same rule as the name: a bad number is caught before money moves, and the error is
+    // shown at the button as well as at the box.
+    const wantsText = smsEnabled && textMe;
+    if (wantsText) {
+      const problem = phoneError(textPhone);
+      if (problem) {
+        setTextPhoneError(problem);
+        setError(problem);
+        document.getElementById(READY_TEXT_PHONE_ID)?.scrollIntoView({ block: 'center' });
+        return false;
+      }
+    }
+    setTextPhoneError('');
+    const textTo = wantsText ? normalizeUsPhone(textPhone) : null;
+
     // Re-check against the live schedule — the shop may have closed while this page sat open.
     // If closed, an access code can still let this order through, but only after we
     // re-verify it against the DB so a code disabled mid-service can't slip past.
@@ -386,6 +412,13 @@ function CheckoutForm() {
       // Safely in the database — from here the live board can pin it to the top of
       // this phone's screen. Nothing else knows which order is theirs.
       rememberMyOrder(order.id);
+
+      // "Text me when it's ready". Best-effort and never thrown: the card is charged and
+      // the order is in, so a failure here costs a text, not a coffee.
+      if (textTo) {
+        const smsError = await subscribeToReadyText(order.id, textTo);
+        if (smsError) console.warn('Ready text not set up:', smsError);
+      }
 
       // Drinks go in one at a time, and a failure here used to be swallowed: the order
       // was paid for and on the board, just short a drink, with nothing anywhere saying
@@ -582,6 +615,24 @@ function CheckoutForm() {
               your order.
             </p>
           </Card>
+
+          {smsEnabled && (
+            <Card>
+              <ReadyTextOptIn
+                checked={textMe}
+                onCheckedChange={(on) => {
+                  setTextMe(on);
+                  setTextPhoneError('');
+                }}
+                phone={textPhone}
+                onPhoneChange={(value) => {
+                  setTextPhone(value);
+                  if (textPhoneError) setTextPhoneError('');
+                }}
+                error={textPhoneError}
+              />
+            </Card>
+          )}
 
           {/* The order is reviewed here and nowhere else. The menu page used to open a
               cart drawer first — a whole screen showing this same list — so this list has
