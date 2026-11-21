@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { stripePromise } from '@/lib/stripe';
 import { supabase } from '@/lib/supabase';
 import { markOrderItemsComplete } from '@/lib/label-print';
 import { insertOrderRow } from '@/lib/order-insert';
@@ -12,6 +10,8 @@ import { useSubmitLock, type SubmitOutcome } from '@/lib/submit-lock';
 import { flagOrderIssue } from '@/lib/order-issues';
 import { getDeviceId } from '@/lib/device';
 import { rememberMyOrder } from '@/lib/my-order';
+import { fetchQueueDrinkCount } from '@/lib/queue';
+import { deductInventory } from '@/lib/inventory';
 import {
   checkSpamLimit,
   fetchSpamSettings,
@@ -47,33 +47,31 @@ import type { ShopSettings, OrderingHours } from '@/types';
 const NAME_INPUT_ID = 'customer-name';
 
 /**
- * The card was charged and the order still didn't save.
+ * "Place Your Coffee Order" — the phone's one review screen, and where the order goes in.
  *
- * Thrown rather than returned so it can't be mistaken for an ordinary failure: an
- * ordinary failure puts the buttons back, and putting the buttons back here invites
- * someone whose money has already gone to pay a second time for the same coffee. The
- * only fix is a person at the counter, so the buttons stay down and the screen says so.
+ * **Phone orders are free.** There is no card box on this page and nothing here talks to
+ * Stripe: drinks are free at this coffee bar (an "Everything Free" event, a free menu, or
+ * a code that takes the whole order off). Should a cart ever arrive here with a price on
+ * it — the free event was switched off, say — the page says so and sends them to the
+ * counter, where /tablet still takes cards. It never places an unpaid order for a drink
+ * that has a price.
  */
-class ChargedWithoutOrderError extends Error {}
-
-function CheckoutForm() {
+export default function CheckoutPage() {
   const router = useRouter();
   const cart = useCart();
-  const stripe = useStripe();
-  const elements = useElements();
   const [couponCode, setCouponCode] = useState('');
   const [couponError, setCouponError] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponNote, setCouponNote] = useState('');
   const [processing, setProcessing] = useState(false);
+  /** Which of the two buttons is in flight, so only that one shows the spinner. */
+  const [processingGive, setProcessingGive] = useState<boolean | null>(null);
   /**
    * One tap, one order. `processing` only changes what the button says; this is what
    * makes a second tap a no-op, because it is set synchronously inside the tap rather
    * than a render later. See src/lib/submit-lock.ts for the incident behind it.
    */
   const submitLock = useSubmitLock();
-  /** Set once and never cleared — see ChargedWithoutOrderError. */
-  const [chargedWithoutOrder, setChargedWithoutOrder] = useState(false);
   const [error, setError] = useState('');
   const [nameError, setNameError] = useState('');
   const [queueWait, setQueueWait] = useState<number | null>(null);
@@ -88,39 +86,28 @@ function CheckoutForm() {
   // Carried over from the menu page in memory — survives the menu → checkout hop, but a
   // page restart wipes it (see access-code.ts), which is what re-asks for the code.
   const [unlock, setUnlock] = useState<AccessUnlock | null>(() => getActiveUnlock());
-  const isFreeOrder = cart.total === 0;
   const cartItemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+  /** Something in the cart has a price, and this page doesn't take cards. */
+  const needsPayment = cart.items.length > 0 && cart.total > 0;
 
   useEffect(() => {
-    async function load() {
-      const [config, { data: activeOrders }, { data: activeEvent }] = await Promise.all([
+    let cancelled = false;
+    (async () => {
+      const [config, queue, { data: activeEvent }] = await Promise.all([
         fetchShopConfig(),
-        supabase
-          .from('orders')
-          .select('id')
-          .in('status', ['pending', 'in_progress'])
-          .is('archived_at', null),
+        fetchQueueDrinkCount(),
         supabase.from('events').select('id').eq('is_active', true).limit(1).maybeSingle(),
       ]);
-
+      if (cancelled) return;
       setSettings(config.settings);
       setHours(config.hours);
       setActiveEventId(activeEvent?.id ?? null);
+      setQueueWait(queue);
       setConfigLoaded(true);
-
-      if (!activeOrders || activeOrders.length === 0) {
-        setQueueWait(0);
-        return;
-      }
-
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('quantity')
-        .in('order_id', activeOrders.map((o) => o.id));
-
-      setQueueWait(items?.reduce((sum, i) => sum + i.quantity, 0) ?? 0);
-    }
-    load();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Turning coupons off at /admin/settings only hides the empty code box. A code that's
@@ -166,34 +153,28 @@ function CheckoutForm() {
    * render later — and placeOrder awaits the shop config, the access code and the spam
    * count before it ever reaches that point. On church wifi that is a second or more in
    * which both buttons are still live, so a customer who tapped three times because
-   * nothing appeared to happen placed three separate orders, each a real charge and a
-   * real card on the barista board. The ref is written inside the same tap, and is what
-   * actually makes the second tap a no-op.
+   * nothing appeared to happen placed three separate orders, each a real card on the
+   * barista board. The ref is written inside the same tap, and is what actually makes
+   * the second tap a no-op.
    *
    * On the success path the lock is deliberately NOT released: placeOrder has already
    * called router.push(), and re-enabling a live "Place Order" button behind a route
    * transition is the same hazard wearing a different hat.
    */
-  async function handleSubmit(e: React.FormEvent | null, give: boolean) {
-    e?.preventDefault();
-
+  async function handleSubmit(give: boolean) {
     await submitLock.run(async (): Promise<SubmitOutcome> => {
       setProcessing(true);
+      setProcessingGive(give);
       try {
         // True once the order is in the database and the browser is navigating away.
         if (await placeOrder(give)) return 'finished';
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Something went wrong');
-        // Money moved, the order didn't. Handing the buttons back would let them pay
-        // twice for one coffee, so they stay down and the notice below takes their place.
-        if (err instanceof ChargedWithoutOrderError) {
-          setChargedWithoutOrder(true);
-          return 'finished';
-        }
       }
-      // A correctable stop — a name needing a last initial, a declined card, the shop
-      // having closed. Nothing irreversible happened, so the buttons come back.
+      // A correctable stop — a name needing a last initial, the shop having closed, an
+      // insert that was refused. Nothing was placed, so the buttons come back.
       setProcessing(false);
+      setProcessingGive(null);
       return 'try-again';
     });
   }
@@ -203,9 +184,8 @@ function CheckoutForm() {
    * navigating away — handleSubmit above reads that to decide whether the buttons come
    * back. Never call this directly: the guard is what keeps one tap to one order.
    *
-   * `give` is which of the two Place Order buttons was tapped — it does NOT change what
-   * the card is charged. The $3 goes to Pushpay, not Stripe, so Stripe only ever sees the
-   * drinks and `tip_amount` is always 0.
+   * `give` is which of the two Place Order buttons was tapped. The $3 goes to Pushpay on
+   * the next screen, never through this page, so `tip_amount` is always 0.
    *
    * The order is placed FIRST and the Pushpay handoff happens after, on the confirmation
    * screen. That ordering is the whole design: Pushpay can only take money on its own
@@ -214,15 +194,16 @@ function CheckoutForm() {
    * sending them there *before* placing it is what used to lose the coffee order.
    */
   async function placeOrder(give: boolean): Promise<boolean> {
-    // Nothing is ever added to the card payment here; see above.
+    // Nothing is ever added to the order here; see above.
     cartStore.setDonation(0);
     // A copy, not the store's own object: `getState()` returns the live mutable state, and
-    // this function is long — it awaits Stripe and several inserts. Anything that touched
-    // the cart meanwhile would otherwise change the totals underneath a charge in flight.
+    // this function is long — it awaits several queries and inserts. Anything that touched
+    // the cart meanwhile would otherwise change what's being placed underneath it.
     const cart = { ...cartStore.getState() };
-    const isFreeOrder = cart.total === 0;
 
-    // This name goes up on the lobby TV, so it has to pass before we take money.
+    if (cart.items.length === 0) return false;
+
+    // This name goes up on the lobby TV, so it has to pass before anything is placed.
     const nameCheck = validateFullName(cart.customer_name);
     if (!nameCheck.ok) {
       const message = nameCheck.error ?? 'Please enter a valid name';
@@ -232,10 +213,16 @@ function CheckoutForm() {
       // bottom: an error that only appears up there reads as "the button did nothing",
       // which is exactly how someone ends up tapping Place Order over and over.
       setError(message);
-      document.getElementById(NAME_INPUT_ID)?.scrollIntoView({ block: 'center' });
+      document.getElementById(NAME_INPUT_ID)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return false;
     }
     setNameError('');
+
+    // No card box on this page — see the comment on CheckoutPage.
+    if (cart.total > 0) {
+      setError('Phone orders are free-only right now. Please order at the counter.');
+      return false;
+    }
 
     // Re-check against the live schedule — the shop may have closed while this page sat open.
     // If closed, an access code can still let this order through, but only after we
@@ -244,7 +231,7 @@ function CheckoutForm() {
     const freshStatus = getShopStatus(freshConfig.settings, freshConfig.hours);
 
     // A lock beats everything, including a code entered before the lock went on. This is
-    // the last gate before money moves, so it's checked here as well as on the page.
+    // the last gate before the order goes in, so it's checked here as well as on the page.
     if (freshStatus.isLocked) {
       clearActiveUnlock();
       setUnlock(null);
@@ -282,10 +269,8 @@ function CheckoutForm() {
       }
     }
 
-    // Spam limit, checked BEFORE the card is charged. The database trigger is what
-    // actually enforces it (see src/lib/rate-limit.ts), but it fires on the insert —
-    // which happens after Stripe has taken the money. Being refused at that point would
-    // leave a charged customer with no order, so the count is read here first.
+    // Spam limit, read up front so the customer gets the friendly message. The database
+    // trigger is what actually enforces it (see src/lib/rate-limit.ts).
     const spamBlock = await checkSpamLimit(cart.customer_name);
     if (spamBlock) {
       setError(spamBlock);
@@ -294,102 +279,69 @@ function CheckoutForm() {
 
     setError('');
 
-    try {
-      const orderItems = cart.items.map((item) => ({
-        menu_item_id: item.menu_item.id,
-        name: item.menu_item.name,
-        quantity: item.quantity,
-        item_price: item.item_total / item.quantity,
-        special_instructions: item.special_instructions || null,
-        modifiers: item.selected_modifiers.map((m) => ({
-          modifier_id: m.id,
-          price_adjustment: m.price_adjustment,
-        })),
-      }));
+    const orderItems = cart.items.map((item) => ({
+      menu_item_id: item.menu_item.id,
+      name: item.menu_item.name,
+      quantity: item.quantity,
+      item_price: item.item_total / item.quantity,
+      special_instructions: item.special_instructions || null,
+      modifiers: item.selected_modifiers.map((m) => ({
+        modifier_id: m.id,
+        price_adjustment: m.price_adjustment,
+      })),
+    }));
 
-      let stripePaymentId: string | null = null;
+    const orderRow = {
+      customer_name: cart.customer_name.trim(),
+      status: 'pending',
+      subtotal: cart.subtotal,
+      discount_amount: cart.discount_amount,
+      tip_amount: 0,
+      total: 0,
+      payment_status: 'free',
+      stripe_payment_id: null,
+      coupon_id: cart.coupon?.id || null,
+      order_source: 'mobile',
+      event_id: activeEventId,
+      device_id: getDeviceId(),
+      // Priority comes from either code: the one in the code box, or the one that
+      // opened the shop. Only sent when true, so a shop without supabase-codes.sql
+      // never pays a retry for it.
+      ...((cart.coupon?.is_priority || getActiveUnlock()?.isPriority) && { is_priority: true }),
+    };
 
-      if (!isFreeOrder) {
-        const res = await fetch('/api/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount: Math.round(cart.total * 100) }),
-        });
+    // `giving_intent` is which button they tapped, and it is the *choice*, not the
+    // money — Pushpay never tells us whether the $3 arrived (see src/lib/giving.ts).
+    //
+    // It, `device_id` and `event_id` all come from migrations a shop may not have run.
+    // insertOrderRow() drops whichever of the three this database turns out not to have
+    // and inserts the rest — a rejected insert inserts nothing, so the retry can't
+    // double-order. A missing metric column must never be what loses somebody their coffee.
+    const { data: order, error: orderError } = await insertOrderRow<{ id: string }>({
+      ...orderRow,
+      giving_intent: give,
+    });
 
-        if (!res.ok) throw new Error('Failed to create payment');
-
-        const { clientSecret } = await res.json();
-
-        if (!stripe || !elements) throw new Error('Stripe not loaded');
-
-        const cardElement = elements.getElement(CardElement);
-        if (!cardElement) throw new Error('Card element not found');
-
-        const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-          payment_method: { card: cardElement },
-        });
-
-        if (stripeError) throw new Error(stripeError.message);
-
-        stripePaymentId = paymentIntent?.id || null;
-      }
-
-      const orderRow = {
-        customer_name: cart.customer_name.trim(),
-        status: 'pending',
-        subtotal: cart.subtotal,
-        discount_amount: cart.discount_amount,
-        tip_amount: cart.donation_amount,
-        total: cart.total,
-        payment_status: isFreeOrder ? 'free' : 'paid',
-        stripe_payment_id: stripePaymentId,
-        coupon_id: cart.coupon?.id || null,
-        order_source: 'mobile',
-        event_id: activeEventId,
-        device_id: getDeviceId(),
-        // Priority comes from either code: the one in the code box, or the one that
-        // opened the shop. Only sent when true, so a shop without supabase-codes.sql
-        // never pays a retry for it.
-        ...((cart.coupon?.is_priority || getActiveUnlock()?.isPriority) && { is_priority: true }),
-      };
-
-      // `giving_intent` is which button they tapped, and it is the *choice*, not the
-      // money — Pushpay never tells us whether the $3 arrived (see src/lib/giving.ts).
-      //
-      // It, `device_id` and `event_id` all come from migrations a shop may not have run,
-      // and by this line the card has already been charged. insertOrderRow() drops
-      // whichever of the three this database turns out not to have and inserts the rest
-      // — a rejected insert inserts nothing, so the retry can't double-order. A missing
-      // metric column must never be what loses somebody their coffee.
-      const { data: order, error: orderError } = await insertOrderRow<{ id: string }>({
-        ...orderRow,
-        giving_intent: give,
-      });
-
-      // The trigger can still refuse this if two tabs were submitted together and raced
-      // past the pre-check above. Its Postgres error must never reach the screen raw —
-      // and if the card was already charged, saying so is the only honest thing to do.
-      if (orderError || !order) {
-        const reason = isSpamLimitError(orderError)
+    // The trigger can still refuse this if two tabs were submitted together and raced
+    // past the pre-check above. Its Postgres error must never reach the screen raw.
+    if (orderError || !order) {
+      throw new Error(
+        isSpamLimitError(orderError)
           ? spamBlockMessage(await fetchSpamSettings())
-          : orderInsertError(orderError);
+          : orderInsertError(orderError),
+      );
+    }
 
-        if (stripePaymentId) {
-          throw new ChargedWithoutOrderError(
-            `${reason} Your card WAS charged $${cart.total.toFixed(2)} — please show this screen ` +
-              'to the barista at the counter. Do not pay again.',
-          );
-        }
-        throw new Error(reason);
-      }
+    // Safely in the database — from here the live board can pin it to the top of
+    // this phone's screen. Nothing else knows which order is theirs.
+    rememberMyOrder(order.id);
 
-      // Safely in the database — from here the live board can pin it to the top of
-      // this phone's screen. Nothing else knows which order is theirs.
-      rememberMyOrder(order.id);
-
+    // From here on the order exists. Whatever happens next, this tap ends on the
+    // confirmation screen — handing the buttons back now would invite a second order.
+    try {
       // Drinks go in one at a time, and a failure here used to be swallowed: the order
-      // was paid for and on the board, just short a drink, with nothing anywhere saying
-      // so. Count what actually landed instead.
+      // was on the board, just short a drink, with nothing anywhere saying so. Count what
+      // actually landed instead.
       const missed: string[] = [];
 
       for (const item of orderItems) {
@@ -402,7 +354,7 @@ function CheckoutForm() {
             item_price: item.item_price,
             special_instructions: item.special_instructions,
           })
-          .select()
+          .select('id')
           .single();
 
         if (itemError || !orderItem) {
@@ -416,7 +368,7 @@ function CheckoutForm() {
               order_item_id: orderItem.id,
               modifier_id: m.modifier_id,
               price_adjustment: m.price_adjustment,
-            }))
+            })),
           );
           // The drink is on the board but its add-ins aren't — an oat-milk latte that
           // reads as a plain latte. Worth the barista's attention, not a lost order.
@@ -427,126 +379,89 @@ function CheckoutForm() {
       // The COUNT THAT LANDED, not the count we meant to insert. The print agent waits
       // for this many drink rows before it prints, so claiming a drink that never
       // arrived leaves the whole order's labels stuck behind a cup that isn't coming.
-      await markOrderItemsComplete(order.id, orderItems.length - missed.length);
-
-      // Red card on the barista board, with what's missing on it. Best-effort — the
-      // order is already paid for, so a shop without the issues migration just doesn't
-      // get the red.
-      if (missed.length > 0) {
-        await flagOrderIssue(
+      // The bookkeeping after it is independent and best-effort, so it runs side by side
+      // rather than one round trip after another in front of the confirmation screen.
+      // allSettled, never all: the order is already in, and one of these throwing must not
+      // hand the buttons back for a second tap that would place it twice.
+      await Promise.allSettled([
+        markOrderItemsComplete(order.id, orderItems.length - missed.length),
+        // Red card on the barista board, with what's missing on it. Best-effort — a shop
+        // without the issues migration just doesn't get the red.
+        missed.length > 0
+          ? flagOrderIssue(
+              order.id,
+              `Missing item — did not save: ${missed.join(', ')}. Check with the customer.`,
+            )
+          : null,
+        // Who used which code — the record /admin/coupons searches. Also what counts the
+        // use toward a code's max uses.
+        recordCodeUses({
+          orderId: order.id,
+          customerName: cart.customer_name,
+          source: 'mobile',
+          coupon: cart.coupon,
+          unlock: getActiveUnlock(),
+          shopClosed: !freshStatus.isOpen,
+          discountAmount: cart.discount_amount,
+        }),
+        deductInventory(
           order.id,
-          `Missing item — did not save: ${missed.join(', ')}. Check with the customer.`,
-        );
-      }
-
-      // Who used which code — the record /admin/coupons searches. Also what counts the
-      // use toward a code's max uses.
-      await recordCodeUses({
-        orderId: order.id,
-        customerName: cart.customer_name,
-        source: 'mobile',
-        coupon: cart.coupon,
-        unlock: getActiveUnlock(),
-        shopClosed: !freshStatus.isOpen,
-        discountAmount: cart.discount_amount,
-      });
-
-      // Deduct inventory
-      for (const item of cart.items) {
-        const { data: itemIngredients } = await supabase
-          .from('item_ingredients')
-          .select('*, inventory_item:inventory_items(*)')
-          .eq('menu_item_id', item.menu_item.id);
-
-        if (itemIngredients) {
-          for (const ingredient of itemIngredients) {
-            const amount = ingredient.quantity_used * item.quantity;
-            await supabase
-              .from('inventory_items')
-              .update({ current_stock: ingredient.inventory_item.current_stock - amount })
-              .eq('id', ingredient.inventory_item_id);
-
-            await supabase.from('inventory_log').insert({
-              inventory_item_id: ingredient.inventory_item_id,
-              change_amount: -amount,
-              reason: 'order',
-              order_id: order.id,
-            });
-          }
-        }
-
-        for (const mod of item.selected_modifiers) {
-          const { data: modIngredients } = await supabase
-            .from('item_ingredients')
-            .select('*, inventory_item:inventory_items(*)')
-            .eq('modifier_id', mod.id);
-
-          if (modIngredients) {
-            for (const ingredient of modIngredients) {
-              const amount = ingredient.quantity_used * item.quantity;
-              await supabase
-                .from('inventory_items')
-                .update({ current_stock: ingredient.inventory_item.current_stock - amount })
-                .eq('id', ingredient.inventory_item_id);
-
-              await supabase.from('inventory_log').insert({
-                inventory_item_id: ingredient.inventory_item_id,
-                change_amount: -amount,
-                reason: 'order',
-                order_id: order.id,
-              });
-            }
-          }
-        }
-      }
-
-      const customerName = cart.customer_name.trim();
-      cartStore.clear();
-      const estimatedWait = queueWait !== null ? queueWait + cartItemCount : null;
-      const waitParam = estimatedWait !== null ? `&wait=${estimatedWait}` : '';
-      const giveParam = give ? '&give=1' : '';
-      router.push(
-        `/checkout/confirmation?name=${encodeURIComponent(customerName)}${waitParam}${giveParam}`,
-      );
-      return true;
-    } catch (err) {
-      // Re-thrown so handleSubmit — which owns the buttons — is the single place that
-      // decides whether this tap is finished with them.
-      throw err instanceof Error ? err : new Error('Something went wrong');
+          cart.items.map((item) => ({
+            menuItemId: item.menu_item.id,
+            modifierIds: item.selected_modifiers.map((m) => m.id),
+            quantity: item.quantity,
+          })),
+        ),
+      ]);
+    } catch {
+      // A network drop mid-way. The order row is in and on the board; anything short is
+      // the barista's to sort out, not a reason to place it again.
     }
+
+    const customerName = cart.customer_name.trim();
+    cartStore.clear();
+    const estimatedWait = queueWait !== null ? queueWait + cartItemCount : null;
+    const waitParam = estimatedWait !== null ? `&wait=${estimatedWait}` : '';
+    const giveParam = give ? '&give=1' : '';
+    router.push(
+      `/checkout/confirmation?name=${encodeURIComponent(customerName)}${waitParam}${giveParam}`,
+    );
+    return true;
   }
 
   const orderingClosed = configLoaded && !canOrderNow(status, !!unlock);
+  const emptyCart = cart.items.length === 0;
 
   return (
-    <div className="min-h-screen bg-bg">
-      <header className="sticky top-0 z-30 border-b border-gray-100 bg-surface">
-        <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-4">
+    <div className="min-h-screen bg-bg pb-10">
+      <header className="sticky top-0 z-30 border-b border-gray-100 bg-surface/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-xl items-center gap-2 px-3 py-3">
           <button
             onClick={() => router.push('/')}
-            className="cursor-pointer text-text-light hover:text-text"
+            aria-label="Back to the menu"
+            className="flex h-10 w-10 cursor-pointer touch-manipulation items-center justify-center rounded-full text-text-dark transition-colors hover:bg-gray-100 active:scale-95"
           >
-            &larr;
+            <svg aria-hidden className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M12.7 4.3a1 1 0 0 1 0 1.4L8.4 10l4.3 4.3a1 1 0 0 1-1.4 1.4l-5-5a1 1 0 0 1 0-1.4l5-5a1 1 0 0 1 1.4 0Z" />
+            </svg>
           </button>
           <h1 className="font-heading text-xl font-bold">Place Your Coffee Order</h1>
         </div>
       </header>
 
-      <main className="mx-auto max-w-xl px-4 py-6">
+      <main className="mx-auto max-w-xl space-y-4 px-4 py-5">
         {orderingClosed && (
-          <div className="mb-6">
-            <ClosedNotice
-              settings={settings}
-              status={status}
-              onUnlock={setUnlock}
-              onCode={cartStore.applyCoupon}
-              atCheckout
-            />
-          </div>
+          <ClosedNotice
+            settings={settings}
+            status={status}
+            onUnlock={setUnlock}
+            onCode={cartStore.applyCoupon}
+            atCheckout
+          />
         )}
 
         {configLoaded && !status.isOpen && !status.isLocked && unlock && (
-          <div className="mb-6 rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
+          <div className="rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
             <p className="font-heading font-bold text-success">
               Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓
             </p>
@@ -558,18 +473,23 @@ function CheckoutForm() {
           </div>
         )}
 
-        <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
-          <Card>
+        <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
+          <Card className="p-5">
+            <StepTitle n={1}>Your name</StepTitle>
             <Input
               id={NAME_INPUT_ID}
-              label="First & Last Name"
-              placeholder="e.g. Sarah K"
+              aria-label="First and last name"
+              placeholder="First name + last initial, e.g. Sarah K"
               value={cart.customer_name}
               maxLength={MAX_NAME_LENGTH}
+              autoComplete="name"
+              autoCapitalize="words"
+              enterKeyHint="done"
               error={nameError}
               onChange={(e) => {
                 cartStore.setCustomerName(e.target.value);
                 if (nameError) setNameError('');
+                if (error && error === nameError) setError('');
               }}
               onBlur={(e) => {
                 const check = validateFullName(e.target.value);
@@ -577,7 +497,7 @@ function CheckoutForm() {
               }}
               required
             />
-            <p className="mt-1.5 font-body text-xs text-text-light">
+            <p className="mt-2 font-body text-xs text-text-light">
               A last initial is enough — it&apos;s how we tell two Sarahs apart when we call
               your order.
             </p>
@@ -586,192 +506,237 @@ function CheckoutForm() {
           {/* The order is reviewed here and nowhere else. The menu page used to open a
               cart drawer first — a whole screen showing this same list — so this list has
               to be editable, or removing a mis-tapped drink would mean starting over. */}
-          <Card>
+          <Card className="p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-heading font-bold text-text-dark">Your Drinks</h3>
+              <StepTitle n={2} className="mb-0">
+                Your drinks
+                {cartItemCount > 0 && (
+                  <span className="ml-2 font-accent text-sm font-semibold text-text-light">
+                    {cartItemCount}
+                  </span>
+                )}
+              </StepTitle>
               <button
                 type="button"
                 onClick={() => router.push('/')}
-                className="cursor-pointer font-accent text-xs font-semibold text-primary hover:underline"
+                className="cursor-pointer rounded-full bg-primary/10 px-3 py-1.5 font-accent text-xs font-semibold text-primary transition-colors hover:bg-primary/15 active:scale-95"
               >
                 + Add another
               </button>
             </div>
 
-            {cart.items.length === 0 ? (
-              <p className="py-4 text-center font-body text-sm text-text-light">
-                Your order is empty — go back to the menu and pick a drink.
-              </p>
+            {emptyCart ? (
+              <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center">
+                <p className="mb-1 text-3xl">☕</p>
+                <p className="font-body text-sm text-text-light">
+                  Your order is empty — go back to the menu and pick a drink.
+                </p>
+              </div>
             ) : (
-              <div className="space-y-3">
+              <ul className="divide-y divide-gray-100">
                 {cart.items.map((item) => (
-                  <div key={item.id} className="rounded-xl bg-bg p-3">
+                  <li key={item.id} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-heading text-sm font-bold text-text-dark">
+                        <p className="font-heading text-base font-bold text-text-dark">
                           {item.menu_item.name}
                         </p>
                         {item.selected_modifiers.length > 0 && (
-                          <p className="mt-0.5 font-body text-xs text-text-light">
-                            {item.selected_modifiers.map((m) => m.name).join(', ')}
+                          <p className="mt-0.5 font-body text-sm text-text-light">
+                            {item.selected_modifiers.map((m) => m.name).join(' · ')}
                           </p>
                         )}
                         {item.special_instructions && (
-                          <p className="mt-0.5 font-body text-xs italic text-warm">
+                          <p className="mt-1 font-body text-sm italic text-warm">
                             &ldquo;{item.special_instructions}&rdquo;
                           </p>
                         )}
                       </div>
-                      <span className="shrink-0 font-accent text-sm font-semibold">
+                      <span className="shrink-0 font-accent text-sm font-semibold text-text-dark">
                         {item.item_total === 0 ? 'Free' : `$${item.item_total.toFixed(2)}`}
                       </span>
                     </div>
 
-                    <div className="mt-2 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          aria-label={`One fewer ${item.menu_item.name}`}
+                    <div className="mt-2.5 flex items-center justify-between">
+                      <div className="flex items-center rounded-full bg-gray-100 p-0.5">
+                        <QtyButton
+                          label={
+                            item.quantity === 1
+                              ? `Remove ${item.menu_item.name}`
+                              : `One fewer ${item.menu_item.name}`
+                          }
                           onClick={() => cartStore.updateQuantity(item.id, item.quantity - 1)}
-                          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-gray-200 bg-surface font-bold hover:bg-gray-50"
                         >
-                          &minus;
-                        </button>
-                        <span className="w-6 text-center font-accent text-sm font-semibold">
+                          {item.quantity === 1 ? (
+                            <svg aria-hidden className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                              <path d="M8 2a1 1 0 0 0-1 1v1H4a1 1 0 0 0 0 2h12a1 1 0 1 0 0-2h-3V3a1 1 0 0 0-1-1H8Zm-3 6 .8 8.1A2 2 0 0 0 7.8 18h4.4a2 2 0 0 0 2-1.9L15 8H5Z" />
+                            </svg>
+                          ) : (
+                            <>&minus;</>
+                          )}
+                        </QtyButton>
+                        <span className="w-8 text-center font-accent text-sm font-bold text-text-dark">
                           {item.quantity}
                         </span>
-                        <button
-                          type="button"
-                          aria-label={`One more ${item.menu_item.name}`}
+                        <QtyButton
+                          label={`One more ${item.menu_item.name}`}
                           onClick={() => cartStore.updateQuantity(item.id, item.quantity + 1)}
-                          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-gray-200 bg-surface font-bold hover:bg-gray-50"
                         >
                           +
-                        </button>
+                        </QtyButton>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => cartStore.removeItem(item.id)}
-                        className="cursor-pointer font-body text-xs text-danger hover:underline"
-                      >
-                        Remove
-                      </button>
+                      {item.quantity > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => cartStore.removeItem(item.id)}
+                          className="cursor-pointer font-body text-xs text-danger hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
                     </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </Card>
 
           {/* While closed, the code box lives in the notice at the top — one box, not two. */}
           {!orderingClosed && (settings.coupons_enabled || cart.coupon) && (
-          <Card>
-            <h3 className="mb-3 font-heading font-bold text-text-dark">Have a Code?</h3>
-            {cart.coupon ? (
-              <div className="flex items-center justify-between rounded-xl bg-success/5 p-3">
-                <div>
-                  <span className="font-accent font-semibold text-success">{cart.coupon.code}</span>
-                  <span className="ml-2 text-sm text-text-light">
-                    {describeCode(cart.coupon, 'customer')}
-                  </span>
-                  {cart.coupon.is_priority && (
-                    <p className="mt-0.5 text-sm font-semibold text-text-dark">
-                      ⚡ Your order goes to the front of the line
-                    </p>
+            <Card className="p-5">
+              <h3 className="mb-3 font-heading text-base font-bold text-text-dark">Have a code?</h3>
+              {cart.coupon ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-success/10 p-3">
+                  <div className="min-w-0">
+                    <span className="font-accent font-semibold text-success">{cart.coupon.code}</span>
+                    <span className="ml-2 text-sm text-text-light">
+                      {describeCode(cart.coupon, 'customer')}
+                    </span>
+                    {cart.coupon.is_priority && (
+                      <p className="mt-0.5 text-sm font-semibold text-text-dark">
+                        ⚡ Your order goes to the front of the line
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => cartStore.removeCoupon()}
+                    className="shrink-0 cursor-pointer text-xs text-danger hover:underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2">
+                  <Input
+                    aria-label="Code"
+                    placeholder="Enter code"
+                    value={couponCode}
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="go"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        applyCoupon();
+                      }
+                    }}
+                    onChange={(e) => {
+                      setCouponCode(e.target.value.toUpperCase());
+                      setCouponNote('');
+                      setCouponError('');
+                    }}
+                    error={couponError}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={applyCoupon}
+                    disabled={couponLoading || !couponCode.trim()}
+                    loading={couponLoading}
+                    className="shrink-0 border border-gray-200"
+                  >
+                    Apply
+                  </Button>
+                </div>
+              )}
+              {couponNote && <p className="mt-2 text-sm text-success">{couponNote}</p>}
+            </Card>
+          )}
+
+          {/* Totals, and the wait, in one place. */}
+          {!emptyCart && (
+            <Card className="p-5">
+              {(cart.discount_amount > 0 || cart.subtotal > 0) && (
+                <div className="mb-2 space-y-1.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-light">Subtotal</span>
+                    <span className="font-accent">${cart.subtotal.toFixed(2)}</span>
+                  </div>
+                  {cart.discount_amount > 0 && (
+                    <div className="flex justify-between text-sm text-success">
+                      <span>Code</span>
+                      <span className="font-accent">-${cart.discount_amount.toFixed(2)}</span>
+                    </div>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => cartStore.removeCoupon()}
-                  className="cursor-pointer text-xs text-danger hover:underline"
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Enter code"
-                  value={couponCode}
-                  onChange={(e) => {
-                    setCouponCode(e.target.value.toUpperCase());
-                    setCouponNote('');
-                  }}
-                  error={couponError}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={applyCoupon}
-                  disabled={couponLoading}
-                  className="shrink-0 border border-gray-200"
-                >
-                  Apply
-                </Button>
-              </div>
-            )}
-            {couponNote && <p className="mt-2 text-sm text-success">{couponNote}</p>}
-          </Card>
-          )}
-
-          <Card>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-text-light">Subtotal</span>
-                <span className="font-accent">${cart.subtotal.toFixed(2)}</span>
-              </div>
-              {cart.discount_amount > 0 && (
-                <div className="flex justify-between text-sm text-success">
-                  <span>Discount</span>
-                  <span className="font-accent">-${cart.discount_amount.toFixed(2)}</span>
-                </div>
               )}
-              {cart.donation_amount > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-text-light">Coffee &amp; Tea</span>
-                  <span className="font-accent">${cart.donation_amount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between border-t border-gray-100 pt-2 font-heading text-lg font-bold">
+              <div
+                className={`flex items-baseline justify-between font-heading text-lg font-bold ${
+                  cart.discount_amount > 0 || cart.subtotal > 0 ? 'border-t border-gray-100 pt-2' : ''
+                }`}
+              >
                 <span>Total</span>
-                <span>{isFreeOrder ? 'Free' : `$${cart.total.toFixed(2)}`}</span>
+                <span className={needsPayment ? 'text-text-dark' : 'text-success'}>
+                  {needsPayment ? `$${cart.total.toFixed(2)}` : 'Free'}
+                </span>
               </div>
-            </div>
-          </Card>
 
-          {queueWait !== null && !orderingClosed && (
-            <div className="flex items-center gap-3 rounded-xl border border-primary/10 bg-primary/5 px-4 py-3">
-              <span className="text-xl">&#8987;</span>
-              <div>
-                <p className="font-body text-sm text-text">
-                  Estimated wait:{' '}
-                  <strong className="font-accent text-primary">
-                    ~{queueWait + cartItemCount} min
-                  </strong>
-                </p>
-                <p className="text-xs text-text-light">Based on current queue + your order</p>
-              </div>
+              {queueWait !== null && !orderingClosed && (
+                <div className="mt-4 flex items-center gap-3 rounded-xl bg-primary/5 px-4 py-3">
+                  <span aria-hidden className="text-xl leading-none">
+                    &#8987;
+                  </span>
+                  <p className="font-body text-sm text-text">
+                    Ready in about{' '}
+                    <strong className="font-accent text-primary">
+                      ~{queueWait + cartItemCount} min
+                    </strong>
+                    <span className="block text-xs text-text-light">
+                      Based on the current line plus your order
+                    </span>
+                  </p>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {needsPayment && (
+            <div className="rounded-2xl border-2 border-warning/40 bg-warning/10 px-5 py-4">
+              <p className="font-heading font-bold text-text-dark">
+                Phone orders are free-only right now
+              </p>
+              <p className="mt-1 font-body text-sm text-text">
+                Something in your order has a price, and we don&apos;t take cards on this
+                page. Please order at the counter — the barista can take payment there.
+              </p>
             </div>
           )}
 
-          {error && <p className="text-center text-sm text-danger">{error}</p>}
+          {error && (
+            <p
+              role="alert"
+              className="rounded-xl bg-danger/10 px-4 py-3 text-center font-body text-sm font-semibold text-danger"
+            >
+              {error}
+            </p>
+          )}
 
-          {/* Two ways out of this page, both of which place the order. Both charge the
-              card the same amount — the drinks — because the $3 is a Pushpay gift, not a
-              Stripe line. The only difference is where the confirmation screen sends them
-              next. See src/lib/giving.ts for why the $3 can't happen on this page. */}
-          {chargedWithoutOrder ? (
-            /* Deliberately a dead end. Every way forward from here charges them twice. */
-            <div className="rounded-2xl border-2 border-danger/40 bg-danger/5 px-5 py-4 text-center">
-              <p className="font-heading font-bold text-danger">
-                Your payment went through, but the order didn&apos;t save
-              </p>
-              <p className="mt-2 font-body text-sm text-text">
-                Please show this screen to the barista at the counter — they can make your
-                drink. Don&apos;t pay again.
-              </p>
-            </div>
-          ) : orderingClosed && !status.isLocked ? (
+          {/* Two ways out of this page, both of which place the same free order. The only
+              difference is where the confirmation screen sends them next — see
+              src/lib/giving.ts for why the $3 can't happen on this page. */}
+          {orderingClosed && !status.isLocked ? (
             /* Not a dead button: the code box is at the top of a long phone page, and a
                disabled button down here reads as "broken" to someone who has a code. */
             <Button
@@ -782,7 +747,7 @@ function CheckoutForm() {
               className="border-2 border-warning/50"
               onClick={() => {
                 const box = document.getElementById(ORDER_CODE_BOX_ID);
-                box?.scrollIntoView({ block: 'center' });
+                box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 box?.querySelector('input')?.focus();
               }}
             >
@@ -799,42 +764,75 @@ function CheckoutForm() {
                 fullWidth
                 size="lg"
                 variant="success"
-                disabled={processing || cart.items.length === 0}
-                onClick={() => handleSubmit(null, true)}
+                disabled={processing || emptyCart || needsPayment}
+                loading={processing && processingGive === true}
+                onClick={() => handleSubmit(true)}
               >
-                {processing
-                  ? 'Placing your order...'
-                  : `\u2615 Place Order & Give $${COFFEE_GIFT_AMOUNT}`}
+                {processing && processingGive === true
+                  ? 'Placing your order…'
+                  : `☕ Place Order & Give $${COFFEE_GIFT_AMOUNT}`}
               </Button>
 
               <Button
                 type="button"
                 fullWidth
                 size="lg"
-                disabled={processing || cart.items.length === 0}
-                onClick={() => handleSubmit(null, false)}
+                disabled={processing || emptyCart || needsPayment}
+                loading={processing && processingGive === false}
+                onClick={() => handleSubmit(false)}
               >
-                {processing ? 'Placing your order...' : 'Place Order \u2014 No Donation'}
+                {processing && processingGive === false
+                  ? 'Placing your order…'
+                  : 'Place Order — No Donation'}
               </Button>
 
-              <p className="text-center font-body text-xs text-text-light">
-                {isFreeOrder
-                  ? `Your drinks are free either way. The $${COFFEE_GIFT_AMOUNT} goes to the Coffee & Tea Ministry through Pushpay, on the next screen.`
-                  : `Your card is charged $${cart.total.toFixed(2)} for the drinks either way. The $${COFFEE_GIFT_AMOUNT} goes to the Coffee & Tea Ministry through Pushpay, on the next screen.`}
+              <p className="px-2 text-center font-body text-xs leading-relaxed text-text-light">
+                {`Your drinks are free either way. The $${COFFEE_GIFT_AMOUNT} goes to the Coffee & Tea Ministry through Pushpay, on the next screen.`}
               </p>
             </div>
           )}
-
         </form>
       </main>
     </div>
   );
 }
 
-export default function CheckoutPage() {
+function StepTitle({
+  n,
+  children,
+  className = 'mb-3',
+}: {
+  n: number;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <Elements stripe={stripePromise}>
-      <CheckoutForm />
-    </Elements>
+    <h2 className={`flex items-center gap-2.5 font-heading text-base font-bold text-text-dark ${className}`}>
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-accent text-xs font-bold text-white">
+        {n}
+      </span>
+      {children}
+    </h2>
+  );
+}
+
+function QtyButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-surface font-bold text-text-dark shadow-sm transition-transform active:scale-90"
+    >
+      {children}
+    </button>
   );
 }

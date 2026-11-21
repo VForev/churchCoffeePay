@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { cartStore } from '@/lib/cart-store';
 import { useCart } from '@/lib/hooks';
@@ -12,12 +12,15 @@ import {
   type AccessUnlock,
 } from '@/lib/access-code';
 import { fetchItemModifierGroups } from '@/lib/menu';
+import { fetchQueueDrinkCount } from '@/lib/queue';
+import { cn } from '@/lib/utils';
 import CategoryTabs from '@/components/menu/CategoryTabs';
-import MenuCard from '@/components/menu/MenuCard';
+import MenuCard, { MenuCardSkeleton } from '@/components/menu/MenuCard';
 import ModifierSelector from '@/components/menu/ModifierSelector';
 import ShopBanner, { ClosedNotice } from '@/components/ShopBanner';
 import CustomOrderBox from '@/components/CustomOrderBox';
 import SpecialtyDrink from '@/components/menu/SpecialtyDrink';
+import { Skeleton } from '@/components/ui/Card';
 import {
   DEFAULT_SPECIALTY,
   fetchSpecialty,
@@ -38,6 +41,9 @@ import { useRouter } from 'next/navigation';
 /** Sentinel id for the synthetic "Custom Order" tab (not a real DB category). */
 const CUSTOM_TAB_ID = 'custom-order-tab';
 
+/** How long the "Added to your order" note stays up. */
+const TOAST_MS = 2200;
+
 export default function MenuPage() {
   const router = useRouter();
   const cart = useCart();
@@ -46,6 +52,7 @@ export default function MenuPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
   /** The drink of the day's build, when the sheet was opened from its card. */
   const [preselectIds, setPreselectIds] = useState<string[] | undefined>(undefined);
   const [specialty, setSpecialty] = useState<SpecialtySettings>(DEFAULT_SPECIALTY);
@@ -54,6 +61,19 @@ export default function MenuPage() {
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [queueWait, setQueueWait] = useState<number | null>(null);
+  /** "Added Latte" — the confirmation that the sheet closing actually did something. */
+  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Each drink's options, once loaded. Opening the same drink twice — or a second
+   * latte after the first — is instant instead of four more round trips. Emptied
+   * whenever the menu or its options change, so a sold-out flag is never stale here.
+   */
+  const optionsCache = useRef(new Map<string, ModifierGroup[]>());
+  /** Which drink the in-flight options request is for, so a slow one can't land late. */
+  const optionsFor = useRef<string | null>(null);
 
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
   const [hours, setHours] = useState<OrderingHours[]>([]);
@@ -78,27 +98,11 @@ export default function MenuPage() {
   const canOrderItem = (item: MenuItem) =>
     codeAtCheckout || canOrderNow(status, unlockAllowsCategory(unlock, item.category_id));
 
-  const fetchQueueWait = useCallback(async () => {
-    const { data: activeOrders } = await supabase
-      .from('orders')
-      .select('id')
-      .in('status', ['pending', 'in_progress'])
-      .is('archived_at', null);
-
-    if (!activeOrders || activeOrders.length === 0) {
-      setQueueWait(0);
-      return;
-    }
-
-    const { data: items } = await supabase
-      .from('order_items')
-      .select('quantity')
-      .in('order_id', activeOrders.map((o) => o.id));
-
-    setQueueWait(items?.reduce((sum, i) => sum + i.quantity, 0) ?? 0);
+  const refreshQueue = useCallback(async () => {
+    setQueueWait(await fetchQueueDrinkCount());
   }, []);
 
-  const fetchMenu = useCallback(async () => {
+  const refreshMenu = useCallback(async () => {
     const [catRes, itemRes, eventRes, config, special, modRes] = await Promise.all([
       supabase.from('categories').select('*').eq('is_active', true).order('display_order'),
       supabase.from('menu_items').select('*').eq('is_available', true).order('display_order'),
@@ -108,6 +112,7 @@ export default function MenuPage() {
       supabase.from('modifiers').select('*'),
     ]);
 
+    optionsCache.current.clear();
     if (catRes.data) {
       setCategories(catRes.data);
       setActiveCategory((prev) => prev ?? catRes.data[0]?.id ?? null);
@@ -125,19 +130,21 @@ export default function MenuPage() {
   }, []);
 
   useEffect(() => {
-    fetchMenu();
-    fetchQueueWait();
+    // Both only set state once their queries come back, which the lint rule can't see.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshMenu();
+    refreshQueue();
 
     // A barista marking something sold out, or an admin flipping the shop
     // open/closed, should reach every phone with the menu open.
     const channel = supabase
       .channel('customer-menu')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchMenu)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'modifiers' }, fetchMenu)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shop_settings' }, fetchMenu)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ordering_hours' }, fetchMenu)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'specialty_drink' }, fetchMenu)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchQueueWait)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, refreshMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'modifiers' }, refreshMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shop_settings' }, refreshMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ordering_hours' }, refreshMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'specialty_drink' }, refreshMenu)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, refreshQueue)
       .subscribe();
 
     // Ticks the clock so ordering closes on schedule without a refresh.
@@ -146,25 +153,9 @@ export default function MenuPage() {
     return () => {
       supabase.removeChannel(channel);
       clearInterval(ticker);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
     };
-  }, [fetchMenu, fetchQueueWait]);
-
-  // Load the selected drink's options, with its per-drink hide/lock rules applied.
-  useEffect(() => {
-    if (!selectedItem) return;
-    let cancelled = false;
-
-    // Clear first, or the modal flashes the previously-opened drink's options.
-    setModifierGroups([]);
-
-    fetchItemModifierGroups(selectedItem.id).then((groups) => {
-      if (!cancelled) setModifierGroups(groups);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedItem]);
+  }, [refreshMenu, refreshQueue]);
 
   const filteredItems = menuItems.filter((item) => item.category_id === activeCategory);
   const isEventFree = activeEvent?.is_all_free || false;
@@ -179,12 +170,18 @@ export default function MenuPage() {
     ? [...categories, { id: CUSTOM_TAB_ID, name: 'Custom Order', display_order: 9999, is_active: true }]
     : categories;
 
+  /** How many of each drink are already in the order, for the count on its card. */
+  const inCart = new Map<string, number>();
+  for (const line of cart.items) {
+    inCart.set(line.menu_item.id, (inCart.get(line.menu_item.id) ?? 0) + line.quantity);
+  }
+
   /**
    * Menu → payment, with nothing in between.
    *
    * There used to be a cart drawer here: tap Order, read the same list of drinks back,
    * tap again. On a phone that second screen was pure friction — it showed nothing the
-   * payment page doesn't already show, and it was one more place to abandon an order.
+   * order page doesn't already show, and it was one more place to abandon an order.
    * The drinks list on /checkout is editable (quantities, remove), so the review didn't
    * go away — it moved onto the page that was always going to be read anyway.
    */
@@ -193,44 +190,86 @@ export default function MenuPage() {
     router.push('/checkout');
   }
 
+  function selectCategory(id: string) {
+    setActiveCategory(id);
+    // Switching from a long list to a short one would otherwise leave the page scrolled
+    // past the end of it, looking empty. Bring the top of the list back under the bar.
+    const list = listRef.current;
+    if (list && list.getBoundingClientRect().top < 0) {
+      window.scrollTo({ top: window.scrollY + list.getBoundingClientRect().top - 140, behavior: 'smooth' });
+    }
+  }
+
   /** The featured card and an ordinary drink card open the same sheet. */
   function openDrink(item: MenuItem, build?: string[]) {
     setPreselectIds(build);
     setSelectedItem(item);
+    optionsFor.current = item.id;
+
+    const cached = optionsCache.current.get(item.id);
+    if (cached) {
+      setModifierGroups(cached);
+      setOptionsLoading(false);
+      return;
+    }
+
+    // Cleared first, or the sheet flashes the previously-opened drink's options.
+    setModifierGroups([]);
+    setOptionsLoading(true);
+    fetchItemModifierGroups(item.id).then((groups) => {
+      optionsCache.current.set(item.id, groups);
+      if (optionsFor.current !== item.id) return;
+      setModifierGroups(groups);
+      setOptionsLoading(false);
+    });
+  }
+
+  function closeDrink() {
+    optionsFor.current = null;
+    setSelectedItem(null);
+    setPreselectIds(undefined);
   }
 
   function handleAddToCart(modifiers: Modifier[], instructions: string) {
     if (!selectedItem) return;
     cartStore.addItem(selectedItem, modifiers, instructions, isEventFree);
-    setSelectedItem(null);
-    setPreselectIds(undefined);
+    setToast({ id: Date.now(), text: `${selectedItem.name} added` });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+    closeDrink();
   }
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
-          <p className="font-body text-text-light">Loading menu...</p>
-        </div>
-      </div>
-    );
-  }
+  const waitLabel =
+    queueWait === null || !canOrder
+      ? null
+      : queueWait === 0
+        ? 'No wait — order now'
+        : `~${queueWait} min wait`;
 
   return (
-    <div className="min-h-screen bg-bg">
-      {/* Compact sticky bar — stays out of the way once you start scrolling */}
-      <header className="sticky top-0 z-30 border-b border-gray-100 bg-surface">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+    <div className="min-h-screen bg-bg pb-28 sm:pb-10">
+      {/* Sticky bar: who we are, how long the wait is, and the categories — the one thing
+          you need again after scrolling a long list. */}
+      <header className="sticky top-0 z-30 border-b border-gray-100 bg-surface/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 pb-2 pt-3">
           <div className="min-w-0">
-            <h2 className="truncate font-heading text-lg font-bold text-primary">
+            <h2 className="truncate font-heading text-lg font-bold leading-tight text-primary">
               {settings.service_title}
             </h2>
-            {queueWait !== null && canOrder && (
+            {waitLabel && (
               <p
-                className={`font-accent text-xs ${queueWait === 0 ? 'text-success' : 'text-text-light'}`}
+                className={cn(
+                  'flex items-center gap-1.5 font-accent text-xs font-semibold',
+                  queueWait === 0 ? 'text-success' : 'text-text-light',
+                )}
               >
-                {queueWait === 0 ? 'No wait — order now!' : `~${queueWait} min current wait`}
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 rounded-full',
+                    queueWait === 0 ? 'animate-pulse bg-success' : 'bg-warning',
+                  )}
+                />
+                {waitLabel}
               </p>
             )}
           </div>
@@ -238,32 +277,57 @@ export default function MenuPage() {
           <div className="flex shrink-0 items-center gap-2">
             <button
               onClick={() => router.push('/yourlive')}
-              className="flex cursor-pointer items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2.5 font-accent text-sm font-semibold text-primary transition-all hover:bg-primary/10"
+              className="flex cursor-pointer touch-manipulation items-center gap-2 rounded-full bg-primary/10 px-3.5 py-2.5 font-accent text-sm font-semibold text-primary transition-colors hover:bg-primary/15 active:scale-95"
             >
               <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
-              Track Order
+              Track
             </button>
             <button
               onClick={goToCheckout}
               disabled={cart.itemCount === 0}
-              className="relative rounded-full bg-primary px-5 py-2.5 font-accent text-sm font-semibold text-white transition-all enabled:cursor-pointer enabled:hover:bg-primary-light disabled:opacity-40"
+              aria-label={`Your order, ${cart.itemCount} drink${cart.itemCount === 1 ? '' : 's'}`}
+              className="relative flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 font-accent text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all enabled:cursor-pointer enabled:hover:bg-primary-light enabled:active:scale-95 disabled:opacity-40 disabled:shadow-none"
             >
               Order
               {cart.itemCount > 0 && (
-                <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-success text-xs font-bold text-white">
+                <span
+                  key={toast?.id ?? 0}
+                  className="flex h-5 min-w-5 animate-pop items-center justify-center rounded-full bg-surface px-1 text-xs font-bold text-primary"
+                >
                   {cart.itemCount}
                 </span>
               )}
             </button>
           </div>
         </div>
+
+        <div className="mx-auto max-w-5xl px-4 pb-2.5">
+          {loading ? (
+            <div className="flex gap-2 py-1">
+              <Skeleton className="h-9 w-20 rounded-full" />
+              <Skeleton className="h-9 w-24 rounded-full" />
+              <Skeleton className="h-9 w-16 rounded-full" />
+            </div>
+          ) : (
+            <CategoryTabs
+              categories={tabCategories}
+              activeId={activeCategory}
+              onSelect={selectCategory}
+            />
+          )}
+        </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 pt-5">
-        <ShopBanner settings={settings} status={status} />
+      <div className="mx-auto max-w-5xl space-y-3 px-4 pt-4">
+        {loading ? (
+          <Skeleton className="h-40 rounded-3xl" />
+        ) : (
+          <ShopBanner settings={settings} status={status} />
+        )}
 
         {activeEvent && (
-          <div className="mt-3 rounded-2xl border border-warm/20 bg-warm/5 px-4 py-3">
+          <div className="flex items-center gap-3 rounded-2xl border border-warm/20 bg-warm/5 px-4 py-3">
+            <span aria-hidden className="text-xl leading-none">🎉</span>
             <p className="font-accent text-sm font-semibold text-warm">
               {activeEvent.name}
               {isEventFree && ' — everything is free today!'}
@@ -271,19 +335,17 @@ export default function MenuPage() {
           </div>
         )}
 
-        {!status.isOpen && !unlock && (
-          <div className="mt-3">
-            <ClosedNotice
-              settings={settings}
-              status={status}
-              onUnlock={setUnlock}
-              onCode={cartStore.applyCoupon}
-            />
-          </div>
+        {!loading && !status.isOpen && !unlock && (
+          <ClosedNotice
+            settings={settings}
+            status={status}
+            onUnlock={setUnlock}
+            onCode={cartStore.applyCoupon}
+          />
         )}
 
         {!status.isOpen && unlock && (
-          <div className="mt-3 rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
+          <div className="rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
             <p className="font-heading font-bold text-success">
               Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓
             </p>
@@ -294,10 +356,8 @@ export default function MenuPage() {
             </p>
           </div>
         )}
-      </div>
 
-      {specialtyState.kind !== 'off' && (
-        <div className="mx-auto max-w-5xl px-4 pt-5">
+        {specialtyState.kind !== 'off' && (
           <SpecialtyDrink
             state={specialtyState}
             onOrder={() =>
@@ -308,30 +368,40 @@ export default function MenuPage() {
               )
             }
           />
-        </div>
-      )}
-
-      <div className="mx-auto max-w-5xl px-4 pt-5">
-        <CategoryTabs categories={tabCategories} activeId={activeCategory} onSelect={setActiveCategory} />
+        )}
       </div>
 
-      <main className="mx-auto max-w-5xl px-4 py-6">
-        {activeCategory === CUSTOM_TAB_ID && unlock?.allowCustomOrder ? (
+      <main ref={listRef} className="mx-auto max-w-5xl px-4 pt-5">
+        {!loading && activeCategory && activeCategory !== CUSTOM_TAB_ID && (
+          <h2 className="mb-3 px-1 font-heading text-xl font-bold text-text-dark">
+            {tabCategories.find((c) => c.id === activeCategory)?.name}
+          </h2>
+        )}
+
+        {loading ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <MenuCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : activeCategory === CUSTOM_TAB_ID && unlock?.allowCustomOrder ? (
           <div className="mx-auto max-w-xl">
             <CustomOrderBox unlock={unlock} queueWait={queueWait} />
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-text-light">No items in this category</p>
+          <div className="rounded-2xl border border-dashed border-gray-200 py-12 text-center">
+            <p className="mb-2 text-4xl">☕</p>
+            <p className="font-body text-text-light">Nothing in this category yet</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div key={activeCategory} className="grid animate-rise grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filteredItems.map((item) => (
               <MenuCard
                 key={item.id}
                 item={item}
                 eventFree={isEventFree}
                 orderingClosed={!canOrderItem(item)}
+                inCart={inCart.get(item.id) ?? 0}
                 onClick={() => openDrink(item)}
               />
             ))}
@@ -339,22 +409,43 @@ export default function MenuPage() {
         )}
       </main>
 
-      {/* The one way out of the menu on a phone, and it goes straight to the payment
+      {/* "Added" — the sheet closing is the only other sign anything happened. */}
+      {toast && (
+        <div
+          key={toast.id}
+          role="status"
+          className="pointer-events-none fixed inset-x-0 bottom-24 z-40 flex animate-rise justify-center px-4 sm:bottom-6"
+        >
+          <span className="flex items-center gap-2 rounded-full bg-text-dark px-4 py-2.5 font-accent text-sm font-semibold text-surface shadow-xl">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-success text-xs text-white">
+              ✓
+            </span>
+            {toast.text}
+          </span>
+        </div>
+      )}
+
+      {/* The one way out of the menu on a phone, and it goes straight to the order
           page — there is no cart drawer in between. See goToCheckout above. */}
       {cart.itemCount > 0 && (canOrder || codeAtCheckout) && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-100 bg-surface/90 p-4 backdrop-blur-sm sm:hidden">
+        <div className="pb-safe fixed inset-x-0 bottom-0 z-30 animate-rise px-4 pt-3 sm:hidden">
           <button
             onClick={goToCheckout}
-            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary py-3 font-accent font-semibold text-white"
+            className="flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-full bg-primary py-2 pl-2 pr-5 font-accent font-semibold text-white shadow-xl shadow-primary/30 transition-transform active:scale-[0.98]"
           >
-            {codeAtCheckout
-              ? 'Continue — Enter Your Code'
-              : cart.total === 0
-                ? 'Place Your Order'
-                : 'Pay & Place Your Order'}{' '}
-            ({cart.itemCount})
-            {cart.total > 0 && !codeAtCheckout && (
-              <span className="text-sm opacity-75">${cart.total.toFixed(2)}</span>
+            <span
+              key={toast?.id ?? 0}
+              className="flex h-10 min-w-10 animate-pop items-center justify-center rounded-full bg-surface px-2 font-heading text-base font-bold text-primary"
+            >
+              {cart.itemCount}
+            </span>
+            <span className="flex-1 text-left">
+              {codeAtCheckout ? 'Continue — Enter Your Code' : 'Place Your Order'}
+            </span>
+            {cart.total > 0 && !codeAtCheckout ? (
+              <span className="text-sm opacity-90">${cart.total.toFixed(2)}</span>
+            ) : (
+              <span aria-hidden>→</span>
             )}
           </button>
         </div>
@@ -363,12 +454,10 @@ export default function MenuPage() {
       {selectedItem && (
         <ModifierSelector
           isOpen={!!selectedItem}
-          onClose={() => {
-            setSelectedItem(null);
-            setPreselectIds(undefined);
-          }}
+          onClose={closeDrink}
           item={selectedItem}
           modifierGroups={modifierGroups}
+          loading={optionsLoading}
           eventFree={isEventFree}
           preselectIds={preselectIds}
           onAddToCart={handleAddToCart}

@@ -16,6 +16,30 @@ import { Suspense, useEffect, useState } from 'react';
  */
 const REDIRECT_SECONDS = 3;
 
+/** The big green tick — draws itself in, so "it worked" lands before any words are read. */
+function DoneMark({ size = 'lg' }: { size?: 'lg' | 'sm' }) {
+  return (
+    <div
+      aria-hidden
+      className={`mx-auto flex animate-check items-center justify-center rounded-full bg-success text-white shadow-lg shadow-success/30 ${
+        size === 'lg' ? 'mb-5 h-20 w-20' : 'mb-3 h-12 w-12'
+      }`}
+    >
+      <svg
+        className={size === 'lg' ? 'h-10 w-10' : 'h-6 w-6'}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={3}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      </svg>
+    </div>
+  );
+}
+
 function ConfirmationContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -123,9 +147,8 @@ function ConfirmationContent() {
           </div>
 
           <Card className="px-6 py-5 text-center">
-            <h2 className="mb-1 font-heading text-lg font-bold text-text-dark">
-              &#9989; Order placed
-            </h2>
+            <DoneMark size="sm" />
+            <h2 className="mb-1 font-heading text-lg font-bold text-text-dark">Order placed</h2>
             {thanks}
             <p className="mb-4 font-body text-sm text-text-light">
               We&apos;ll call your name when it&apos;s ready — it&apos;s at the top of the board
@@ -148,10 +171,10 @@ function ConfirmationContent() {
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-4">
-        <Card className="text-center py-10 px-6">
-          <div className="text-6xl mb-4">&#9989;</div>
-          <h1 className="text-2xl font-heading font-bold text-text-dark mb-2">Order Placed!</h1>
+      <div className="w-full max-w-md space-y-4 animate-rise">
+        <Card className="text-center py-10 px-6 rounded-3xl">
+          <DoneMark />
+          <h1 className="text-3xl font-heading font-bold text-text-dark mb-2">Order placed!</h1>
           {thanks}
           {waitLine}
           <p className="text-text-light font-body mb-8 text-sm">
@@ -160,9 +183,10 @@ function ConfirmationContent() {
           <Button
             onClick={() => router.push('/yourlive')}
             fullWidth
-            variant="secondary"
+            size="lg"
             className="mb-3"
           >
+            <span className="h-2 w-2 animate-pulse rounded-full bg-success-light" />
             Track Your Order Live
           </Button>
           <Button onClick={() => router.push('/')} fullWidth variant="ghost">
@@ -183,7 +207,7 @@ export default function ConfirmationPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-bg flex items-center justify-center">
-          <p>Loading...</p>
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
         </div>
       }
     >

@@ -1,8 +1,7 @@
 'use client';
 
-import Card from '@/components/ui/Card';
-import Badge from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
+import { drinkTemperature } from '@/lib/temperature';
 import type { MenuItem } from '@/types';
 
 interface MenuCardProps {
@@ -11,70 +10,138 @@ interface MenuCardProps {
   effectivePrice?: number;
   /** Ordering is closed — the card still shows, but it can't be tapped. */
   orderingClosed?: boolean;
+  /** How many of this drink are already in the order — shown as a small count. */
+  inCart?: number;
   onClick: () => void;
 }
 
+/**
+ * One drink on the menu, as a row: picture (or a cup), name and blurb, price, and a "+"
+ * that says "tap me" without needing to be read. A real <button>, so it works from a
+ * keyboard and a screen reader says what it is.
+ */
 export default function MenuCard({
   item,
   eventFree,
   effectivePrice,
   orderingClosed,
+  inCart = 0,
   onClick,
 }: MenuCardProps) {
   const price = effectivePrice ?? item.base_price;
   const isFree = eventFree || item.is_free || price === 0;
   const soldOut = item.is_sold_out;
   const disabled = soldOut || orderingClosed;
+  const temp = drinkTemperature(item.name, []);
 
   return (
-    <Card
-      hover={!disabled}
+    <button
+      type="button"
       onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      aria-label={`${item.name}${soldOut ? ', sold out' : ''}${isFree ? ', free' : `, $${price.toFixed(2)}`}`}
       className={cn(
-        'relative flex h-full flex-col justify-between',
-        soldOut && 'opacity-60',
-        disabled && 'cursor-not-allowed',
+        'group relative flex h-full w-full items-stretch gap-3.5 rounded-2xl border bg-surface p-3 text-left shadow-sm transition-all duration-200',
+        disabled
+          ? 'cursor-not-allowed border-gray-100'
+          : 'cursor-pointer touch-manipulation border-gray-100 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-md active:scale-[0.985]',
+        inCart > 0 && !disabled && 'border-primary/40 ring-1 ring-primary/20',
       )}
     >
-      {item.image_url && (
-        <div className="mb-3 h-32 w-full overflow-hidden rounded-xl bg-bg">
+      {/* Picture, or a cup tile in the drink's own temperature so a menu with no photos
+          still reads as drinks rather than a list of words. */}
+      <div
+        className={cn(
+          'relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl',
+          item.image_url ? 'bg-bg' : temp === 'iced' ? 'bg-secondary/15' : 'bg-primary/10',
+          soldOut && 'opacity-60',
+        )}
+      >
+        {item.image_url ? (
+          // A plain <img>: admins paste URLs from anywhere, and next/image would need
+          // every one of those hosts allow-listed in next.config before it would load.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={item.image_url}
-            alt={item.name}
+            alt=""
+            loading="lazy"
+            decoding="async"
             className={cn('h-full w-full object-cover', soldOut && 'grayscale')}
           />
-        </div>
-      )}
-
-      <div className="flex-1">
-        <h3 className="font-heading text-base font-bold leading-tight text-text-dark">
-          {item.name}
-        </h3>
-        {item.description && (
-          <p className="mt-1 line-clamp-2 text-sm text-text-light">{item.description}</p>
+        ) : (
+          <span aria-hidden className="text-4xl leading-none">
+            {temp === 'iced' ? '🧊' : '☕'}
+          </span>
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2">
-        {isFree ? (
-          <Badge variant="success">Free</Badge>
-        ) : (
-          <span
+      <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
+        <div>
+          <h3
             className={cn(
-              'font-accent text-lg font-bold',
-              soldOut ? 'text-text-light line-through' : 'text-primary',
+              'font-heading text-base font-bold leading-tight text-text-dark',
+              soldOut && 'text-text-light line-through',
             )}
           >
-            ${price.toFixed(2)}
-          </span>
-        )}
+            {item.name}
+          </h3>
+          {item.description && (
+            <p className="mt-1 line-clamp-2 font-body text-sm leading-snug text-text-light">
+              {item.description}
+            </p>
+          )}
+        </div>
 
-        {soldOut && (
-          <span className="inline-flex items-center rounded-full bg-danger px-3 py-1 font-accent text-xs font-bold uppercase tracking-wide text-white">
-            Sold Out
-          </span>
-        )}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          {soldOut ? (
+            <span className="inline-flex items-center rounded-full bg-danger px-2.5 py-1 font-accent text-[11px] font-bold uppercase tracking-wide text-white">
+              Sold out
+            </span>
+          ) : isFree ? (
+            <span className="font-accent text-sm font-bold uppercase tracking-wide text-success">
+              Free
+            </span>
+          ) : (
+            <span className="font-accent text-base font-bold text-primary">
+              ${price.toFixed(2)}
+            </span>
+          )}
+
+          {!disabled && (
+            <span
+              aria-hidden
+              className={cn(
+                'flex h-9 min-w-9 items-center justify-center rounded-full px-2 font-accent text-sm font-bold transition-colors',
+                inCart > 0
+                  ? 'bg-primary text-white'
+                  : 'bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white',
+              )}
+            >
+              {inCart > 0 ? `${inCart} ✓` : (
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 4a1 1 0 0 1 1 1v4h4a1 1 0 1 1 0 2h-4v4a1 1 0 1 1-2 0v-4H5a1 1 0 1 1 0-2h4V5a1 1 0 0 1 1-1Z" />
+                </svg>
+              )}
+            </span>
+          )}
+        </div>
       </div>
-    </Card>
+    </button>
+  );
+}
+
+/** The same row's shape in grey, while the menu loads. */
+export function MenuCardSkeleton() {
+  return (
+    <div aria-hidden className="flex gap-3.5 rounded-2xl border border-gray-100 bg-surface p-3 shadow-sm">
+      <div className="h-20 w-20 shrink-0 animate-pulse rounded-xl bg-gray-200/70" />
+      <div className="flex flex-1 flex-col justify-between py-1">
+        <div className="space-y-2">
+          <div className="h-4 w-2/3 animate-pulse rounded-md bg-gray-200/70" />
+          <div className="h-3 w-full animate-pulse rounded-md bg-gray-100" />
+        </div>
+        <div className="h-4 w-14 animate-pulse rounded-md bg-gray-200/70" />
+      </div>
+    </div>
   );
 }

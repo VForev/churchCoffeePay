@@ -164,22 +164,47 @@ export default function LiveOrders({
   }, []);
 
   useEffect(() => {
+    // Both only set state once their queries come back, which the lint rule can't see.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchOrders();
     loadConfig();
 
+    // An order arrives as one row, then a row per drink a moment later. Coalesce the
+    // burst into one refetch — and listen for the drinks too, or a new card sits there
+    // saying "0 items" until something else on the board changes.
+    let refetchTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefetch = () => {
+      if (refetchTimer) clearTimeout(refetchTimer);
+      refetchTimer = setTimeout(fetchOrders, 150);
+    };
+
     const channel = supabase
       .channel('live-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchOrders)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleRefetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, scheduleRefetch)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shop_settings' }, loadConfig)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ordering_hours' }, loadConfig)
       .subscribe();
 
-    // Tick every 30s so countdowns and the open/closed state stay live
-    const ticker = setInterval(() => setNow(Date.now()), 30000);
+    // Tick every 30s so countdowns and the open/closed state stay live — and refetch on
+    // the same beat. The lobby TV runs all morning on church wifi; a websocket that
+    // quietly died must not leave it showing the 9:15 queue at 10:30.
+    const ticker = setInterval(() => {
+      setNow(Date.now());
+      fetchOrders();
+    }, 30000);
+
+    // A phone that was in a pocket comes back to a stale board; catch up on sight.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchOrders();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       supabase.removeChannel(channel);
       clearInterval(ticker);
+      if (refetchTimer) clearTimeout(refetchTimer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [fetchOrders, loadConfig]);
 
@@ -399,7 +424,7 @@ function OrderCard({
 
   return (
     <div
-      className={`rounded-2xl border-2 p-4 transition-all ${config.card} ${
+      className={`animate-rise rounded-2xl border-2 p-4 transition-all ${config.card} ${
         isReady ? 'shadow-lg' : 'shadow-sm'
       } ${mine ? 'ring-2 ring-primary ring-offset-2' : ''}`}
     >
@@ -512,7 +537,7 @@ function MyOrderCard({
 
   return (
     <div
-      className={`rounded-3xl px-5 py-6 text-white shadow-xl transition-colors ${
+      className={`animate-rise rounded-3xl px-5 py-6 text-white shadow-xl transition-colors duration-500 ${
         isReady ? 'bg-success' : 'bg-primary'
       }`}
     >
@@ -527,7 +552,7 @@ function MyOrderCard({
         {isReady ? 'Ready' : 'in line'}
       </p>
 
-      <h2 className="mt-3 text-center font-heading text-2xl font-bold leading-tight">
+      <h2 className="mt-3 text-center font-heading text-2xl font-bold leading-tight text-white">
         {safeDisplayName(order.customer_name)}
       </h2>
       {drinks && <p className="mt-1 text-center font-body text-sm text-white/75">{drinks}</p>}
