@@ -13,7 +13,13 @@ import ModifierSelector from '@/components/menu/ModifierSelector';
 import { fetchItemModifierGroups } from '@/lib/menu';
 import { fetchShopConfig, parseDonationPresets, DEFAULT_SETTINGS } from '@/lib/shop';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
-import { fetchSmsEnabled, normalizeUsPhone, phoneError, subscribeToReadyText } from '@/lib/sms';
+import {
+  fetchSmsEnabled,
+  normalizeUsPhone,
+  phoneError,
+  subscribeToReadyText,
+  wantsReadyText,
+} from '@/lib/sms';
 import ReadyTextOptIn from '@/components/ReadyTextOptIn';
 import { cn } from '@/lib/utils';
 import { generateId } from '@/lib/utils';
@@ -94,7 +100,6 @@ function TabletInner() {
   const [nameError, setNameError] = useState('');
   // "Text me when it's ready" — the barista asks, the customer gives the number
   const [smsEnabled, setSmsEnabled] = useState(false);
-  const [textMe, setTextMe] = useState(false);
   const [textPhone, setTextPhone] = useState('');
   const [textPhoneError, setTextPhoneError] = useState('');
 
@@ -222,7 +227,7 @@ function TabletInner() {
       return;
     }
     setNameError('');
-    if (smsEnabled && textMe) {
+    if (smsEnabled && wantsReadyText(textPhone)) {
       const problem = phoneError(textPhone);
       if (problem) {
         setTextPhoneError(problem);
@@ -311,7 +316,7 @@ function TabletInner() {
         }
 
         // "Text me when it's ready" — best-effort; a failure costs a text, never the order.
-        const textTo = smsEnabled && textMe ? normalizeUsPhone(textPhone) : null;
+        const textTo = smsEnabled && wantsReadyText(textPhone) ? normalizeUsPhone(textPhone) : null;
         if (textTo) {
           const smsError = await subscribeToReadyText(order.id, textTo);
           if (smsError) console.warn('Ready text not set up:', smsError);
@@ -396,7 +401,6 @@ function TabletInner() {
     setCouponCode('');
     setCouponError('');
     setNameError('');
-    setTextMe(false);
     setTextPhone('');
     setTextPhoneError('');
     setPayError('');
@@ -696,11 +700,6 @@ function TabletInner() {
               <div className="bg-surface rounded-2xl p-5 shadow-sm">
                 <ReadyTextOptIn
                   large
-                  checked={textMe}
-                  onCheckedChange={(on) => {
-                    setTextMe(on);
-                    setTextPhoneError('');
-                  }}
                   phone={textPhone}
                   onPhoneChange={(value) => {
                     setTextPhone(value);

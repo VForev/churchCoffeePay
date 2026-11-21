@@ -41,7 +41,13 @@ import Card from '@/components/ui/Card';
 import { ClosedNotice, ORDER_CODE_BOX_ID } from '@/components/ShopBanner';
 import { COFFEE_GIFT_AMOUNT } from '@/lib/giving';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
-import { fetchSmsEnabled, normalizeUsPhone, phoneError, subscribeToReadyText } from '@/lib/sms';
+import {
+  fetchSmsEnabled,
+  normalizeUsPhone,
+  phoneError,
+  subscribeToReadyText,
+  wantsReadyText,
+} from '@/lib/sms';
 import ReadyTextOptIn, { READY_TEXT_PHONE_ID } from '@/components/ReadyTextOptIn';
 import type { ShopSettings, OrderingHours } from '@/types';
 
@@ -81,7 +87,6 @@ function CheckoutForm() {
   const [queueWait, setQueueWait] = useState<number | null>(null);
   /** "Text me when it's ready" — only offered once the server says Telnyx is set up. */
   const [smsEnabled, setSmsEnabled] = useState(false);
-  const [textMe, setTextMe] = useState(false);
   const [textPhone, setTextPhone] = useState('');
   const [textPhoneError, setTextPhoneError] = useState('');
 
@@ -250,7 +255,8 @@ function CheckoutForm() {
 
     // Same rule as the name: a bad number is caught before money moves, and the error is
     // shown at the button as well as at the box.
-    const wantsText = smsEnabled && textMe;
+    // A number in the box is the request for a text; blank means no text.
+    const wantsText = smsEnabled && wantsReadyText(textPhone);
     if (wantsText) {
       const problem = phoneError(textPhone);
       if (problem) {
@@ -619,11 +625,6 @@ function CheckoutForm() {
           {smsEnabled && (
             <Card>
               <ReadyTextOptIn
-                checked={textMe}
-                onCheckedChange={(on) => {
-                  setTextMe(on);
-                  setTextPhoneError('');
-                }}
                 phone={textPhone}
                 onPhoneChange={(value) => {
                   setTextPhone(value);

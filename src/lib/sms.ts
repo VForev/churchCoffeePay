@@ -36,10 +36,20 @@ export function normalizeUsPhone(input: string): string | null {
   return `+1${ten}`;
 }
 
-/** The error shown under the phone box, or '' when it's fine. */
+/**
+ * The error shown under the phone box, or '' when it's fine. Blank is fine — it just
+ * means they don't want a text.
+ */
 export function phoneError(input: string): string {
-  if (!input.trim()) return 'Enter your mobile number, or untick the box.';
-  return normalizeUsPhone(input) ? '' : 'That doesn’t look like a US mobile number.';
+  if (!input.trim()) return '';
+  return normalizeUsPhone(input)
+    ? ''
+    : 'That doesn’t look like a US mobile number — fix it, or clear the box to skip the text.';
+}
+
+/** True when the box has something in it, i.e. they asked for a text. */
+export function wantsReadyText(input: string): boolean {
+  return input.trim().length > 0;
 }
 
 /**

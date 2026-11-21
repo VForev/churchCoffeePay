@@ -5,7 +5,7 @@
  * what it costs: anything outside plain ASCII flips the whole SMS to UCS-2 encoding.
  */
 
-import { normalizeUsPhone, phoneError, readyMessage } from './sms';
+import { normalizeUsPhone, phoneError, readyMessage, wantsReadyText } from './sms';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -25,7 +25,10 @@ for (const input of ['', '555-0199', '012 555 0199', '312 055 0199', '+44 20 794
   check(`rejects ${JSON.stringify(input)}`, normalizeUsPhone(input), null);
 }
 
-check('empty phone error', phoneError('') !== '', true);
+check('blank phone is fine (no text wanted)', phoneError(''), '');
+check('blank phone wants no text', wantsReadyText('  '), false);
+check('typed phone wants a text', wantsReadyText('312'), true);
+check('half a number is an error', phoneError('312 867') !== '', true);
 check('good phone no error', phoneError('312 867 5309'), '');
 
 // Message

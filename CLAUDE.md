@@ -555,8 +555,8 @@ Things worth knowing before changing any of it:
 
 ## Text When Ready (Telnyx SMS)
 
-A customer can tick **Text me when my order is ready** on `/checkout` (or the barista ticks it
-on `/tablet` when the customer asks), and gets **one** text when the barista taps **Mark
+A customer types their mobile number into the optional **📱 Text me when it's ready** box on
+`/checkout` (or the barista types it on `/tablet` when the customer asks), and gets **one** text when the barista taps **Mark
 Ready**. Migration: `supabase-sms-notifications.sql`. Env: `TELNYX_API_KEY`,
 `TELNYX_FROM_NUMBER` (and optionally `TELNYX_MESSAGING_PROFILE_ID`). With no keys,
 `GET /api/sms` says disabled and the box never renders — nothing else changes.
@@ -580,9 +580,11 @@ barista Making→Ready ─────────────────▶ PO
   is a failure: *Couldn't text Sarah K — call their name.*
 - **Subscribe is guarded**: only orders under 15 minutes old that are still pending/making,
   first number wins. The worst misuse is one "your order is ready" text per real order.
-- **The opt-in box's shape is a carrier requirement**, not a design choice:
-  `src/components/ReadyTextOptIn.tsx` — separate checkbox, unchecked by default, names the
-  sender, frequency, "msg & data rates", STOP/HELP, links `/text-messages`. Telnyx's
+- **Typing a number is the opt-in; blank means no text.** No separate checkbox — the box is
+  always visible so people actually see it. It stays **optional**: carriers reject forms
+  that force consent to texts, and a required number would stop someone without a phone
+  buying a coffee. The small print in `src/components/ReadyTextOptIn.tsx` names the
+  sender, frequency, "msg & data rates", STOP/HELP and links `/text-messages`. Telnyx's
   toll-free verification / 10DLC review checks this. Change the wording and the page
   together, or the number can be suspended.
 - **The message is plain ASCII** (`readyMessage()`); an emoji or curly quote switches the

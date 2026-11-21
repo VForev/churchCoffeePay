@@ -25,22 +25,23 @@ export default function TextMessageTermsPage() {
           <h2 className="font-heading text-lg font-bold text-text-dark">What you&apos;ll get</h2>
           <p>
             {SMS_PROGRAM_NAME} is the coffee bar at Light of the Gospel Church. When you order
-            a drink, you can tick <strong>&ldquo;Text me when my order is ready&rdquo;</strong> and
-            enter your mobile number. We send you <strong>one text message</strong> when your order
+            a drink, you can enter your mobile number in the optional{' '}
+            <strong>&ldquo;Text me when it&apos;s ready&rdquo;</strong> box. We send you <strong>one text message</strong> when your order
             is ready to pick up. That&apos;s all.
           </p>
           <p>
             No marketing, no reminders, no follow-ups. Each order is its own opt-in: if you
-            don&apos;t tick the box, you don&apos;t get a text.
+            leave the box blank, you don&apos;t get a text.
           </p>
         </section>
 
         <section className="space-y-2">
           <h2 className="font-heading text-lg font-bold text-text-dark">How to opt in</h2>
           <p>
-            On the order page (or at the counter, where the barista asks you), tick the box
-            labelled &ldquo;Text me when my order is ready&rdquo; and enter your number. The box is
-            unticked unless you choose it, and you can order without it.
+            On the order page (or at the counter, where the barista asks you), type your
+            mobile number into the box labelled &ldquo;Text me when it&apos;s ready (optional)&rdquo;.
+            The text beside the box explains what you&apos;re agreeing to. The box starts empty,
+            and you can order without filling it in.
           </p>
         </section>
 
