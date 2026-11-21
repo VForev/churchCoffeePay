@@ -197,6 +197,26 @@ function orderMatches(order: FullOrder, query: string): boolean {
   return terms.every((t) => hay.includes(t));
 }
 
+/** A short chime for a new order. Module-level: it holds no state and needs none. */
+function playNotification() {
+  try {
+    const audio = new Audio(
+      'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH+Jj4+IfGhaaXaAioyMh3xpXGl3g4uOjoh7aFtteoSMj42He2ZbbHqEjI+NiHtnW2x5hIyPjYh7Z1xse4ONj42Ie2dcbHuDjY+NiHtnXGx7g42PjYh7Z1xse4ONj42Ie2dcbHuDjY+NiHtnXGx7g42PjYh7Z1xse4ONj42Ie2dcbHuDjY+NiHtnXGx7',
+    );
+    audio.volume = 0.5;
+    audio.play().catch(() => {});
+  } catch {}
+}
+
+/**
+ * How long an order has been waiting, as a colour. Read from across the bar: the card
+ * that has been sitting longest should be the one that looks it.
+ */
+function ageTone(createdAt: string, now: number): 'fresh' | 'waiting' | 'late' {
+  const mins = (now - new Date(createdAt).getTime()) / 60000;
+  return mins >= 10 ? 'late' : mins >= 5 ? 'waiting' : 'fresh';
+}
+
 /** The statuses the live board holds, used to drop an order the moment it's completed. */
 const LIVE_STATUSES: OrderStatus[] = ['pending', 'in_progress', 'ready'];
 
@@ -226,7 +246,13 @@ export default function BaristaPage() {
   /** True once a status write came back missing the timing columns — the board keeps
       working, but it can't record how long anything took until the migration is run. */
   const [timingMissing, setTimingMissing] = useState(false);
-  const prevCountRef = useRef(0);
+  const [now, setNow] = useState(() => Date.now());
+  /**
+   * Every order id this screen has already seen. The chime is for an order that is new
+   * to the board — not for the count going up, which an Undo or another barista moving
+   * a card back would also do.
+   */
+  const seenIdsRef = useRef<Set<string> | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const conflictTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -258,11 +284,14 @@ export default function BaristaPage() {
     if (seq !== fetchSeqRef.current) return;
 
     if (data && !error) {
-      setOrders(data as unknown as FullOrder[]);
-      if (data.length > prevCountRef.current && prevCountRef.current > 0) {
+      const next = data as unknown as FullOrder[];
+      setOrders(next);
+      const seen = seenIdsRef.current;
+      // The first load is the board as it was, not a flood of new orders.
+      if (seen && next.some((o) => o.status === 'pending' && !seen.has(o.id))) {
         playNotification();
       }
-      prevCountRef.current = data.length;
+      seenIdsRef.current = new Set([...(seen ?? []), ...next.map((o) => o.id)]);
     }
     setLoading(false);
   }, []);
@@ -286,17 +315,9 @@ export default function BaristaPage() {
     conflictTimerRef.current = setTimeout(() => setConflict(null), 6000);
   }
 
-  function playNotification() {
-    try {
-      const audio = new Audio(
-        'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH+Jj4+IfGhaaXaAioyMh3xpXGl3g4uOjoh7aFtteoSMj42He2ZbbHqEjI+NiHtnW2x5hIyPjYh7Z1xse4ONj42Ie2dcbHuDjY+NiHtnXGx7g42PjYh7Z1xse4ONj42Ie2dcbHuDjY+NiHtnXGx7g42PjYh7Z1xse4ONj42Ie2dcbHuDjY+NiHtnXGx7',
-      );
-      audio.volume = 0.5;
-      audio.play().catch(() => {});
-    } catch {}
-  }
-
   useEffect(() => {
+    // Sets state only once the query comes back, which the lint rule can't see.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchOrders();
 
     // Every table an order is spread across, so a screen that loaded the order row a
@@ -341,6 +362,13 @@ export default function BaristaPage() {
     const id = setInterval(fetchOrders, connected ? 15000 : 4000);
     return () => clearInterval(id);
   }, [connected, fetchOrders]);
+
+  // The ages on the cards ("6 min ago", amber, red) move on their own, not only when an
+  // order changes somewhere.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 20000);
+    return () => clearInterval(id);
+  }, []);
 
   /**
    * Move an order along. Two things matter with several screens on the same board:
@@ -413,7 +441,7 @@ export default function BaristaPage() {
    */
   async function printLabels(orderId: string, cups: number[] | null) {
     const error = await requestLabelPrint(orderId, cups);
-    if (error) alert(error);
+    if (error) showConflict(error);
     fetchOrders();
   }
 
@@ -463,7 +491,7 @@ export default function BaristaPage() {
       .update({ issue_flagged_at: new Date().toISOString(), issue_note: note.trim() || null })
       .eq('id', order.id);
     if (error) {
-      alert(issueSaveError(error));
+      showConflict(issueSaveError(error));
       return;
     }
     setIssueFor(null);
@@ -477,7 +505,7 @@ export default function BaristaPage() {
       .update({ issue_flagged_at: null, issue_note: null })
       .eq('id', order.id);
     if (error) {
-      alert(issueSaveError(error));
+      showConflict(issueSaveError(error));
       return;
     }
     fetchOrders();
@@ -506,6 +534,7 @@ export default function BaristaPage() {
     const shared = {
       key: order.id,
       order,
+      now,
       onPrint: (cups: number[] | null) => printLabels(order.id, cups),
       onDelete: () => deleteOrder(order),
       onFlagIssue: () => setIssueFor(order),
@@ -572,7 +601,7 @@ export default function BaristaPage() {
     <div className="min-h-screen bg-bg">
       <header className="sticky top-0 z-30 bg-primary text-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-3">
-          <h1 className="font-heading text-xl font-bold">Barista Dashboard</h1>
+          <h1 className="font-heading text-xl font-bold text-white">Barista Dashboard</h1>
           <div className="flex items-center gap-4 text-sm">
             {/* Several screens run this board at once — say plainly whether this one is
                 still hearing about new orders, so a dead feed looks different to a lull. */}
@@ -648,10 +677,12 @@ export default function BaristaPage() {
       ) : (
         <main className="mx-auto max-w-7xl p-4">
           {orders.length === 0 ? (
-            <div className="py-20 text-center">
+            <div className="mx-auto mt-10 max-w-md rounded-3xl border-2 border-dashed border-gray-200 px-6 py-16 text-center">
               <p className="mb-4 text-6xl">&#9749;</p>
-              <h2 className="mb-2 font-heading text-2xl font-bold text-text-dark">No Orders</h2>
-              <p className="text-text-light">Waiting for customers...</p>
+              <h2 className="mb-2 font-heading text-2xl font-bold text-text-dark">All caught up</h2>
+              <p className="font-body text-text-light">
+                New orders appear here the moment they&apos;re placed, with a chime.
+              </p>
             </div>
           ) : (
             <>
@@ -814,13 +845,34 @@ function Column({
   const style = COLUMN_STYLES[color];
 
   return (
-    <div>
-      <h2 className={cn('mb-3 flex items-center gap-2 font-heading text-lg font-bold', style.text)}>
-        <span className={cn('h-3 w-3 rounded-full', style.dot, pulse && 'animate-pulse')} />
-        {title} ({count})
+    <section className="min-w-0">
+      <h2
+        className={cn(
+          'mb-3 flex items-center gap-2 font-heading text-lg font-bold',
+          style.text,
+        )}
+      >
+        <span className={cn('h-3 w-3 rounded-full', style.dot, pulse && count > 0 && 'animate-pulse')} />
+        {title}
+        <span
+          className={cn(
+            'ml-auto rounded-full px-2.5 py-0.5 font-accent text-sm font-bold',
+            count > 0 ? cn(style.activeBg, 'text-white') : 'bg-gray-100 text-text-light',
+          )}
+        >
+          {count}
+        </span>
       </h2>
-      <div className="space-y-4">{children}</div>
-    </div>
+      <div className="space-y-4">
+        {count === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-gray-200 py-10 text-center font-body text-sm text-text-light">
+            Nothing here
+          </div>
+        ) : (
+          children
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -835,8 +887,11 @@ function OrderCard({
   onDelete,
   onFlagIssue,
   onClearIssue,
+  now,
 }: {
   order: FullOrder;
+  /** The board's clock, ticked every 20s, so "4 min ago" and its colour keep moving. */
+  now: number;
   actions: React.ReactNode;
   /** Matches the column the card sits in, so status is readable from across the bar. */
   color: ColumnColor;
@@ -851,7 +906,9 @@ function OrderCard({
   onFlagIssue?: () => void;
   onClearIssue?: () => void;
 }) {
-  const timeAgo = getTimeAgo(order.created_at);
+  const timeAgo = getTimeAgo(order.created_at, now);
+  // Only the queue ages: a Ready card is waiting on the customer, not on the bar.
+  const age = order.status === 'ready' ? 'fresh' : ageTone(order.created_at, now);
   const itemCount = orderItemCount(order);
   const style = COLUMN_STYLES[color];
   const cups = cupSummary(order);
@@ -876,7 +933,7 @@ function OrderCard({
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-2xl border border-gray-100 shadow-sm',
+        'relative animate-rise overflow-hidden rounded-2xl border border-gray-100 shadow-sm',
         style.cardBg,
         // A flagged order outranks its column color: red ring, so the one card with a
         // problem is the one you spot first on a full board.
@@ -956,15 +1013,34 @@ function OrderCard({
             <h3 className="font-heading text-2xl font-extrabold leading-tight text-text-dark">
               {order.customer_name}
             </h3>
-            <p className="mt-0.5 font-accent text-sm font-semibold text-text">
-              {timeAgo} · {itemCount} item{itemCount !== 1 ? 's' : ''}
-              {waitMinutes !== null && ` · ~${waitMinutes} min`}
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-accent text-sm font-semibold text-text">
+              {/* Turns amber at 5 minutes and red at 10, so the order that has been
+                  waiting longest is the one that looks it. */}
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5',
+                  age === 'late'
+                    ? 'bg-danger text-white'
+                    : age === 'waiting'
+                      ? 'bg-warning text-white'
+                      : 'bg-gray-100 text-text',
+                )}
+              >
+                {timeAgo}
+              </span>
+              <span>
+                {itemCount} item{itemCount !== 1 ? 's' : ''}
+                {waitMinutes !== null && ` · ~${waitMinutes} min`}
+              </span>
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1">
-            <OrderStatusBadge status={order.status} />
-            <PaymentBadge status={order.payment_status} />
-          </div>
+          {/* Status is the column the card sits in, so it isn't repeated here. Payment is
+              only worth a badge when there's money involved. */}
+          {order.payment_status !== 'free' && (
+            <div className="shrink-0">
+              <PaymentBadge status={order.payment_status} />
+            </div>
+          )}
         </div>
 
         {/* What to make */}
@@ -1032,14 +1108,6 @@ function OrderCard({
         {/* Actions — big enough to hit with a wet hand */}
         <div className="space-y-2">
           {actions}
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="w-full cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface py-2.5 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50"
-            >
-              ← {backLabel}
-            </button>
-          )}
 
           {/* One button per cup, and no "print them all" — nothing prints on its own any
               more, so this list IS how labels get made. Printing the whole order up front
@@ -1047,18 +1115,32 @@ function OrderCard({
               are about to make keeps the label and the cup in the same hand. */}
           {onPrint && <CupPrintList order={order} cups={cupList} onPrint={onPrint} />}
 
-          {onFlagIssue && (
-            <button
-              onClick={onFlagIssue}
-              className={cn(
-                'w-full cursor-pointer touch-manipulation rounded-full border py-2.5 font-accent text-sm font-bold transition-colors',
-                flagged
-                  ? 'border-danger bg-danger/10 text-danger hover:bg-danger/20'
-                  : 'border-gray-300 bg-surface text-text-light hover:border-danger/40 hover:text-danger',
+          {/* The two "something's off" buttons share a row — they're used far less than
+              the big one above, and stacking them made every card a screen tall. */}
+          {(onBack || onFlagIssue) && (
+            <div className="flex gap-2">
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="flex-1 cursor-pointer touch-manipulation rounded-full border border-gray-300 bg-surface px-3 py-2.5 font-accent text-sm font-bold text-text transition-colors hover:bg-gray-50 active:scale-[0.97]"
+                >
+                  ← {backLabel}
+                </button>
               )}
-            >
-              ⚠ {flagged ? 'Edit issue note' : 'Flag an issue'}
-            </button>
+              {onFlagIssue && (
+                <button
+                  onClick={onFlagIssue}
+                  className={cn(
+                    'flex-1 cursor-pointer touch-manipulation rounded-full border px-3 py-2.5 font-accent text-sm font-bold transition-colors active:scale-[0.97]',
+                    flagged
+                      ? 'border-danger bg-danger/10 text-danger hover:bg-danger/20'
+                      : 'border-gray-300 bg-surface text-text-light hover:border-danger/40 hover:text-danger',
+                  )}
+                >
+                  ⚠ {flagged ? 'Edit issue' : 'Flag issue'}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1249,6 +1331,8 @@ function StockPanel() {
   // Whoever runs out of oat milk flips it on whichever screen is nearest. Everyone
   // else's 86 list has to agree straight away, or two baristas will fight over it.
   useEffect(() => {
+    // Sets state only once the queries come back, which the lint rule can't see.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchAll();
     const channel = supabase
       .channel('barista-stock')
@@ -1260,36 +1344,37 @@ function StockPanel() {
     };
   }, [fetchAll]);
 
-  async function toggleItem(item: MenuItem) {
-    setSaving(item.id);
-    const { error } = await supabase
-      .from('menu_items')
-      .update({ is_sold_out: !item.is_sold_out })
-      .eq('id', item.id);
-    if (error) alert(`Could not update: ${error.message}`);
-    else
-      setItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, is_sold_out: !i.is_sold_out } : i)),
-      );
+  const [query, setQuery] = useState('');
+
+  /**
+   * Flip it here first, then tell the database — a barista with oat milk running out
+   * shouldn't wait on church wifi to see the tap land. Put back if the write fails.
+   */
+  async function toggle(table: 'menu_items' | 'modifiers', id: string, soldOut: boolean) {
+    const apply = (value: boolean) => {
+      if (table === 'menu_items') {
+        setItems((prev) => prev.map((i) => (i.id === id ? { ...i, is_sold_out: value } : i)));
+      } else {
+        setModifiers((prev) => prev.map((m) => (m.id === id ? { ...m, is_sold_out: value } : m)));
+      }
+    };
+    setSaving(id);
+    apply(!soldOut);
+    const { error } = await supabase.from(table).update({ is_sold_out: !soldOut }).eq('id', id);
+    if (error) {
+      apply(soldOut);
+      alert(`Could not update: ${error.message}`);
+    }
     setSaving(null);
   }
 
-  async function toggleModifier(mod: Modifier) {
-    setSaving(mod.id);
-    const { error } = await supabase
-      .from('modifiers')
-      .update({ is_sold_out: !mod.is_sold_out })
-      .eq('id', mod.id);
-    if (error) alert(`Could not update: ${error.message}`);
-    else
-      setModifiers((prev) =>
-        prev.map((m) => (m.id === mod.id ? { ...m, is_sold_out: !m.is_sold_out } : m)),
-      );
-    setSaving(null);
-  }
+  const q = query.trim().toLowerCase();
+  const matches = (name: string) => !q || name.toLowerCase().includes(q);
+  const groupName = new Map(groups.map((g) => [g.id, g.name]));
 
-  const soldOutCount =
-    items.filter((i) => i.is_sold_out).length + modifiers.filter((m) => m.is_sold_out).length;
+  const soldOutItems = items.filter((i) => i.is_sold_out);
+  const soldOutMods = modifiers.filter((m) => m.is_sold_out);
+  const soldOutCount = soldOutItems.length + soldOutMods.length;
 
   if (loading) {
     return (
@@ -1301,73 +1386,151 @@ function StockPanel() {
 
   return (
     <main className="mx-auto max-w-4xl p-4">
-      <div className="mb-5 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
+      <div className="mb-4 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
         <p className="font-body text-sm text-text">
           Tap anything you&apos;ve run out of. Customers see it as{' '}
           <strong className="font-accent text-danger">Sold Out</strong> immediately — no refresh
           needed.
         </p>
-        {soldOutCount > 0 && (
-          <p className="mt-1 font-accent text-xs font-semibold text-danger">
-            {soldOutCount} item{soldOutCount !== 1 ? 's' : ''} currently sold out
-          </p>
-        )}
       </div>
 
-      {/* Drinks by category */}
-      <h2 className="mb-3 font-heading text-lg font-bold text-text-dark">Drinks</h2>
-      {categories.map((cat) => {
-        const catItems = items.filter((i) => i.category_id === cat.id);
-        if (catItems.length === 0) return null;
-
-        return (
-          <div key={cat.id} className="mb-5">
-            <h3 className="mb-2 font-accent text-xs font-semibold uppercase tracking-wide text-text-light">
-              {cat.name}
-            </h3>
-            <div className="space-y-2">
-              {catItems.map((item) => (
-                <StockRow
-                  key={item.id}
-                  name={item.name}
-                  soldOut={item.is_sold_out}
-                  busy={saving === item.id}
-                  onToggle={() => toggleItem(item)}
-                />
-              ))}
-            </div>
+      {/* What's out right now, all in one place — the restock list at the end of a rush,
+          without hunting through every category for the red rows. */}
+      {soldOutCount > 0 && (
+        <section className="mb-6 rounded-2xl border-2 border-danger/30 bg-danger/5 p-4">
+          <h2 className="mb-3 flex items-center gap-2 font-heading text-lg font-bold text-danger">
+            Sold out right now
+            <span className="rounded-full bg-danger px-2.5 py-0.5 font-accent text-sm text-white">
+              {soldOutCount}
+            </span>
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {soldOutItems.map((item) => (
+              <RestockChip
+                key={item.id}
+                name={item.name}
+                busy={saving === item.id}
+                onRestock={() => toggle('menu_items', item.id, true)}
+              />
+            ))}
+            {soldOutMods.map((mod) => (
+              <RestockChip
+                key={mod.id}
+                name={mod.name}
+                detail={groupName.get(mod.group_id)}
+                busy={saving === mod.id}
+                onRestock={() => toggle('modifiers', mod.id, true)}
+              />
+            ))}
           </div>
-        );
-      })}
+        </section>
+      )}
 
-      {/* Add-ins by modifier group */}
-      <h2 className="mb-3 mt-8 font-heading text-lg font-bold text-text-dark">
-        Add-ins &amp; Options
-      </h2>
-      {groups.map((group) => {
-        const groupMods = modifiers.filter((m) => m.group_id === group.id);
-        if (groupMods.length === 0) return null;
+      <div className="relative mb-5">
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-text-light">
+          🔍
+        </span>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          type="search"
+          placeholder="Find a drink or add-in… (oat, vanilla, cold brew)"
+          aria-label="Find a drink or add-in"
+          className="w-full rounded-2xl border border-gray-200 bg-surface py-3 pl-11 pr-4 font-body text-base text-text-dark shadow-sm focus:border-primary focus:outline-none"
+        />
+      </div>
 
-        return (
-          <div key={group.id} className="mb-5">
-            <h3 className="mb-2 font-accent text-xs font-semibold uppercase tracking-wide text-text-light">
-              {group.name}
-            </h3>
-            <div className="space-y-2">
-              {groupMods.map((mod) => (
-                <StockRow
-                  key={mod.id}
-                  name={mod.name}
-                  soldOut={mod.is_sold_out}
-                  busy={saving === mod.id}
-                  onToggle={() => toggleModifier(mod)}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      })}
+      <div className="grid gap-x-6 md:grid-cols-2">
+        {/* Drinks by category */}
+        <div>
+          <h2 className="mb-3 font-heading text-lg font-bold text-text-dark">Drinks</h2>
+          {categories.map((cat) => {
+            const catItems = items.filter((i) => i.category_id === cat.id && matches(i.name));
+            if (catItems.length === 0) return null;
+
+            return (
+              <div key={cat.id} className="mb-5">
+                <h3 className="mb-2 font-accent text-xs font-semibold uppercase tracking-wide text-text-light">
+                  {cat.name}
+                </h3>
+                <div className="space-y-2">
+                  {catItems.map((item) => (
+                    <StockRow
+                      key={item.id}
+                      name={item.name}
+                      soldOut={item.is_sold_out}
+                      busy={saving === item.id}
+                      onToggle={() => toggle('menu_items', item.id, item.is_sold_out)}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add-ins by modifier group */}
+        <div>
+          <h2 className="mb-3 mt-4 font-heading text-lg font-bold text-text-dark md:mt-0">
+            Add-ins &amp; Options
+          </h2>
+          {groups.map((group) => {
+            const groupMods = modifiers.filter((m) => m.group_id === group.id && matches(m.name));
+            if (groupMods.length === 0) return null;
+
+            return (
+              <div key={group.id} className="mb-5">
+                <h3 className="mb-2 font-accent text-xs font-semibold uppercase tracking-wide text-text-light">
+                  {group.name}
+                </h3>
+                <div className="space-y-2">
+                  {groupMods.map((mod) => (
+                    <StockRow
+                      key={mod.id}
+                      name={mod.name}
+                      soldOut={mod.is_sold_out}
+                      busy={saving === mod.id}
+                      onToggle={() => toggle('modifiers', mod.id, mod.is_sold_out)}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {q && !items.some((i) => matches(i.name)) && !modifiers.some((m) => matches(m.name)) && (
+        <p className="py-10 text-center font-body text-text-light">Nothing matches “{query.trim()}”</p>
+      )}
     </main>
+  );
+}
+
+function RestockChip({
+  name,
+  detail,
+  busy,
+  onRestock,
+}: {
+  name: string;
+  detail?: string;
+  busy: boolean;
+  onRestock: () => void;
+}) {
+  return (
+    <button
+      onClick={onRestock}
+      disabled={busy}
+      title="Back in stock"
+      className="flex cursor-pointer touch-manipulation items-center gap-2 rounded-full border border-danger/30 bg-surface py-1.5 pl-3.5 pr-1.5 font-body text-sm font-semibold text-text-dark shadow-sm transition-all hover:border-success/50 active:scale-95 disabled:opacity-50"
+    >
+      <span className="line-through decoration-danger/60">{name}</span>
+      {detail && <span className="text-xs font-normal text-text-light">{detail}</span>}
+      <span className="rounded-full bg-success px-2.5 py-1 font-accent text-xs font-bold text-white">
+        Restock
+      </span>
+    </button>
   );
 }
 
@@ -1666,8 +1829,8 @@ function HistoryPanel() {
   );
 }
 
-function getTimeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+function getTimeAgo(dateStr: string, now: number): string {
+  const diff = now - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'Just now';
   if (mins === 1) return '1 min ago';
