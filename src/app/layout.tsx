@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Kumbh_Sans, Nunito, Roboto } from "next/font/google";
 import "./globals.css";
 import ThemeProvider from "@/components/ThemeProvider";
@@ -24,7 +24,16 @@ const roboto = Roboto({
 export const metadata: Metadata = {
   title: "LOTG Coffee",
   description: "Light of the Gospel Church Coffee Bar",
-  viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
+  appleWebApp: { capable: true, title: "LOTG Coffee", statusBarStyle: "default" },
+};
+
+// Its own export since Next 14 — inside `metadata` it is ignored with a build warning,
+// which quietly dropped `viewport-fit=cover` and with it the iPhone safe-area insets the
+// bottom bars rely on.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

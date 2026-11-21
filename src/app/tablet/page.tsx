@@ -381,7 +381,7 @@ function TabletInner() {
       <div className="min-h-screen bg-success flex items-center justify-center p-8">
         <div className="text-center text-white max-w-md">
           <div className="text-8xl mb-6">✓</div>
-          <h1 className="text-4xl font-heading font-bold mb-3">Order Placed!</h1>
+          <h1 className="text-4xl font-heading font-bold mb-3 text-white">Order Placed!</h1>
           <p className="text-xl opacity-90 mb-8">
             {confirmedOrderName}&apos;s order is on its way
           </p>
@@ -410,7 +410,7 @@ function TabletInner() {
             ←
           </button>
           <div>
-            <h1 className="text-xl font-heading font-bold">Payment</h1>
+            <h1 className="text-xl font-heading font-bold text-white">Payment</h1>
             <p className="text-sm opacity-75">{customerName}</p>
           </div>
         </header>
@@ -517,7 +517,7 @@ function TabletInner() {
             ←
           </button>
           <div>
-            <h1 className="text-xl font-heading font-bold">Customer Name</h1>
+            <h1 className="text-xl font-heading font-bold text-white">Customer Name</h1>
             <p className="text-sm opacity-75">
               {totalItemCount} item{totalItemCount !== 1 ? 's' : ''} ·{' '}
               {cart.subtotal === 0 ? 'Free' : `$${cart.subtotal.toFixed(2)}`}
@@ -691,7 +691,7 @@ function TabletInner() {
       <header className="bg-primary text-white px-4 py-3 shrink-0">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-heading font-bold">LOTG Coffee</h1>
+            <h1 className="text-xl font-heading font-bold text-white">LOTG Coffee</h1>
             {activeEvent && (
               <p className="text-xs opacity-75">
                 {activeEvent.name}{isEventFree && ' — Everything Free!'}
@@ -758,6 +758,8 @@ function TabletInner() {
                   >
                     {item.image_url && (
                       <div className="w-full h-20 rounded-xl bg-bg mb-3 overflow-hidden">
+                        {/* Admin-pasted URLs from any host; next/image would need each allow-listed. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={item.image_url}
                           alt={item.name}

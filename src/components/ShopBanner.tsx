@@ -28,7 +28,7 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
           className,
         )}
       >
-        <h1 className="font-heading text-xl font-bold leading-none tracking-tight">
+        <h1 className="font-heading text-xl font-bold leading-none tracking-tight text-white">
           {settings.service_title}
         </h1>
 
@@ -78,7 +78,7 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
       <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-secondary/20 blur-3xl" />
 
       <div className="relative">
-        <h1 className="font-heading text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
+        <h1 className="font-heading text-3xl font-bold leading-tight tracking-tight text-white sm:text-4xl">
           {settings.service_title}
         </h1>
 

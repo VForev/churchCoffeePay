@@ -81,7 +81,7 @@ export default function SpecialtyDrink({
         {settings.ribbon}
       </span>
 
-      <h3 className="mt-3 font-heading text-2xl font-bold leading-tight">{settings.name}</h3>
+      <h3 className="mt-3 font-heading text-2xl font-bold leading-tight text-white">{settings.name}</h3>
       {settings.tagline && (
         <p className="mt-1.5 font-body text-sm leading-relaxed text-white/75">{settings.tagline}</p>
       )}

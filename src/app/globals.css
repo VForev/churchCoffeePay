@@ -79,13 +79,86 @@
   --font-accent: var(--app-accent);
 }
 
-body {
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--app-body);
+/* In the base layer, not loose in the file. Unlayered CSS beats every Tailwind utility
+   whatever its specificity, so when these sat outside a layer `h2.text-primary`,
+   `h1.text-white` and every other coloured heading in the app quietly rendered black. */
+@layer base {
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--app-body);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--app-heading);
+    color: var(--color-text-dark);
+  }
+
+  html {
+    /* The grey flash iOS paints over anything tapped reads as a glitch on coloured
+       buttons; every button here has its own pressed state instead. */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Keyboard focus is visible and on-brand. Base layer, so a component that draws its
+     own focus state (`focus:outline-none` + a border) still gets the last word. */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--app-heading);
-  color: var(--color-text-dark);
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Feel. Nothing below names a colour, a radius or a font — every value is a token,
+ * so all 17 schemes and every look at /admin/theme get the same motion for free.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* Horizontal chip rows (categories) scroll by swipe; the bar itself is noise. */
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes lotg-sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes lotg-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes lotg-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+@keyframes lotg-rise {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes lotg-check {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+@utility animate-sheet-up { animation: lotg-sheet-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@utility animate-fade-in { animation: lotg-fade-in 180ms ease-out both; }
+@utility animate-pop { animation: lotg-pop 320ms ease-out; }
+@utility animate-rise { animation: lotg-rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@utility animate-check { animation: lotg-check 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* Bottom bars sit above the iPhone home indicator rather than under it. */
+@utility pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }
