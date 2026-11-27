@@ -47,8 +47,10 @@ export interface LookOption {
 /* ─────────────────────────────────────────────────────────────────────────────
  * Corners
  *
- * Tailwind's own ramp is 0.125 / 0.25 / 0.375 / 0.5 / 0.75 / 1 / 1.5 / 2 rem. The
- * non-default options scale that ramp and set the button shape to match.
+ * The app's ramp — Tailwind's, with xl / 2xl / 3xl opened up a little in globals.css
+ * for the 2.0 look. Keep these in step with that file: the non-default options scale
+ * this ramp and set the button shape to match, so a stale copy would make "Very round"
+ * barely rounder than the default.
  * ────────────────────────────────────────────────────────────────────────── */
 
 const RADIUS_STEPS: Array<[string, number]> = [
@@ -56,9 +58,9 @@ const RADIUS_STEPS: Array<[string, number]> = [
   ['sm', 0.25],
   ['md', 0.375],
   ['lg', 0.5],
-  ['xl', 0.75],
-  ['2xl', 1],
-  ['3xl', 1.5],
+  ['xl', 0.875],
+  ['2xl', 1.25],
+  ['3xl', 1.75],
   ['4xl', 2],
 ];
 
@@ -83,7 +85,7 @@ export const CORNERS: LookOption[] = [
   {
     id: 'rounded',
     name: 'Rounded — how it is now',
-    blurb: 'The current app: soft cards and pill-shaped buttons.',
+    blurb: 'The current app: soft, iPhone-style cards and pill-shaped buttons.',
     css: '',
   },
   {
@@ -120,7 +122,7 @@ export const DEPTH: LookOption[] = [
   {
     id: 'soft',
     name: 'Soft — how it is now',
-    blurb: 'A light shadow under every card. The current app.',
+    blurb: 'A faint two-layer shadow under every card, the way iOS draws them. The current app.',
     css: '',
   },
   {
@@ -291,8 +293,8 @@ export const BACKGROUNDS: LookOption[] = [
  * Three roles: headings, body, and the small bold UI text (`font-accent`) on buttons and
  * badges. A pairing sets all three.
  *
- * The default pairing loads nothing extra — those three faces are already served by
- * next/font from the app's own domain. Every other pairing costs one stylesheet request
+ * The default pairing loads nothing at all — it is the device's own system face, set in
+ * globals.css. Every other pairing costs one stylesheet request
  * to Google Fonts on first load, which is why `families` is empty for the default and the
  * provider skips the <link> entirely.
  * ────────────────────────────────────────────────────────────────────────── */
@@ -322,12 +324,21 @@ const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 export const FONT_PAIRINGS: FontPairing[] = [
   {
     id: 'default',
-    name: 'Kumbh Sans & Nunito — how it is now',
-    blurb: 'The current app, and the only pairing that loads no extra fonts.',
+    name: 'San Francisco (system) — how it is now',
+    blurb: 'The device’s own font: San Francisco on iPhone and Mac, Segoe UI on Windows. Loads nothing, and feels the most like a real app.',
     families: [],
     heading: '',
     body: '',
     accent: '',
+  },
+  {
+    id: 'church',
+    name: 'Kumbh Sans & Nunito — the church fonts',
+    blurb: 'The faces on lotgchurch.com, and what this app used before 2.0. Warmer and rounder than the system font.',
+    families: ['Kumbh Sans', 'Nunito', 'Roboto'],
+    heading: stack('Kumbh Sans', SANS),
+    body: stack('Nunito', SANS),
+    accent: stack('Roboto', SANS),
   },
   {
     id: 'modern',

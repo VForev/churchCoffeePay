@@ -42,13 +42,17 @@
      status dots and the spinner keep rounded-full — they want to stay circles. */
   --radius-button: 9999px;
 
-  /* The three type roles. next/font loads the faces and exposes them as --font-kumbh /
-     --font-nunito / --font-roboto on <html>; a font pairing chosen at /admin/theme
-     replaces the three lines below wholesale. The literal names after each var() are the
-     fallback for a browser that somehow has the family installed but not the webfont. */
-  --app-heading: var(--font-kumbh), 'Kumbh Sans', ui-sans-serif, system-ui, sans-serif;
-  --app-body: var(--font-nunito), 'Nunito', ui-sans-serif, system-ui, sans-serif;
-  --app-accent: var(--font-roboto), 'Roboto', ui-sans-serif, system-ui, sans-serif;
+  /* The three type roles — all the device's own system face by default: San Francisco on
+     an iPhone, iPad or Mac, Segoe UI on the shop PC, Roboto on Android. It's the single
+     biggest part of "feels like a native app", and it costs nothing: no webfont request,
+     no flash of a fallback face while one loads. A pairing chosen at /admin/theme (the
+     church's own Kumbh Sans & Nunito is one of them) replaces these three lines. */
+  --app-system: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text',
+    'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --app-heading: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI Variable Display',
+    'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --app-body: var(--app-system);
+  --app-accent: var(--app-system);
 }
 
 @theme inline {
@@ -79,29 +83,100 @@
   --font-accent: var(--app-accent);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Shape and motion — the 2.0 look.
+ *
+ * These redefine Tailwind's own scale, so every `rounded-2xl`, `shadow-sm` and
+ * `transition` already in the app picks them up without a component changing. The
+ * "how it is now" options at /admin/theme emit nothing and therefore mean these values;
+ * the other options there scale from the same ramp (see RADIUS_STEPS in theme-looks.ts).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* A touch rounder than Tailwind's, in the range iOS uses for cards and grouped lists. */
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+
+  /* Shadows the way Apple draws them: two layers, a tight contact shadow and a wide,
+     very faint ambient one, instead of a single grey smudge. Tailwind swaps the colour in
+     each layer for `shadow-primary/25` and friends, so tinted shadows keep working. */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 2px 10px -2px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 2px 4px -1px rgb(0 0 0 / 0.05), 0 10px 24px -6px rgb(0 0 0 / 0.10);
+  --shadow-lg: 0 4px 8px -2px rgb(0 0 0 / 0.05), 0 18px 36px -10px rgb(0 0 0 / 0.14);
+  --shadow-xl: 0 8px 16px -4px rgb(0 0 0 / 0.06), 0 28px 56px -14px rgb(0 0 0 / 0.20);
+  --shadow-2xl: 0 12px 24px -8px rgb(0 0 0 / 0.08), 0 40px 80px -20px rgb(0 0 0 / 0.30);
+
+  /* The two curves everything moves on. `ios` is the long, soft settle of a sheet or a
+     push; `snappy` is a quick ease-out for hovers, presses and colour changes. */
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-snappy: cubic-bezier(0.25, 1, 0.5, 1);
+
+  /* Every bare `transition` / `transition-colors` in the app uses these. */
+  --default-transition-duration: 220ms;
+  --default-transition-timing-function: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
 /* In the base layer, not loose in the file. Unlayered CSS beats every Tailwind utility
    whatever its specificity, so when these sat outside a layer `h2.text-primary`,
    `h1.text-white` and every other coloured heading in the app quietly rendered black. */
 @layer base {
+  html {
+    /* The grey flash iOS paints over anything tapped reads as a glitch on coloured
+       buttons; every button here has its own pressed state instead. */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    /* Thin, quiet scrollbars on a desktop, in the scheme's own line colour. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+
   body {
     background: var(--color-bg);
     color: var(--color-text);
     font-family: var(--app-body);
+    font-optical-sizing: auto;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--app-heading);
     color: var(--color-text-dark);
+    /* Display type is set tight, the way Apple sets San Francisco at size. Balanced so a
+       two-line drink name breaks in the middle, not with one word on its own. */
+    letter-spacing: -0.015em;
+    text-wrap: balance;
   }
 
-  html {
-    /* The grey flash iOS paints over anything tapped reads as a glitch on coloured
-       buttons; every button here has its own pressed state instead. */
-    -webkit-tap-highlight-color: transparent;
+  /* Native checkboxes, radios, sliders and progress bars in the scheme's colour instead
+     of the browser's default blue — the cheapest "native" there is. */
+  input, progress {
+    accent-color: var(--color-primary);
   }
 
-  /* Keyboard focus is visible and on-brand. Base layer, so a component that draws its
-     own focus state (`focus:outline-none` + a border) still gets the last word. */
+  /* Every text field and dropdown in the app — the ones written by hand in admin pages as
+     well as <Input> — eases into the same focus halo. Base layer, so any field that
+     draws its own focus with a utility keeps it. */
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']),
+  select,
+  textarea {
+    transition: border-color 200ms, box-shadow 200ms, background-color 200ms;
+  }
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']):focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 15%, transparent);
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  }
+
+  /* Keyboard focus is visible and on-brand: a soft halo, not a hard ring. Base layer, so
+     a component that draws its own focus state still gets the last word. */
   :focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
@@ -122,34 +197,178 @@
   }
 }
 
+/* ── Materials ─────────────────────────────────────────────────────────────
+ * Frosted glass for anything that floats over content: sticky bars, the sheet's
+ * backdrop, toasts. Built from the scheme's own surface colour, so it is light glass on
+ * a light scheme and dark glass on a dark one. The inset top edge is the thin specular
+ * highlight that makes it read as a material rather than a translucent rectangle. */
+
+@utility glass {
+  background-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+}
+
+/* A bar pinned to the top of the page: glass, with a hairline underneath. */
+@utility glass-bar {
+  background-color: color-mix(in srgb, var(--color-surface) 74%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 0.5px 0 0 color-mix(in srgb, var(--color-text-dark) 14%, transparent);
+}
+
+/* The inverse: dark glass on a light scheme (and light glass on a dark one) for toasts
+   and the undo bar, which have to be seen over whatever is under them. Pair it with
+   `text-surface`. */
+@utility glass-ink {
+  background-color: color-mix(in srgb, var(--color-text-dark) 80%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  box-shadow:
+    inset 0 0.5px 0 0 color-mix(in srgb, white 22%, transparent),
+    0 14px 34px -10px rgb(0 0 0 / 0.35);
+}
+
+/* Glass on top of a coloured fill (the barista and tablet headers): a lighter pane of
+   the same colour, so the bar keeps its colour but content scrolling under it blurs. */
+@utility glass-primary {
+  background-color: color-mix(in srgb, var(--color-primary) 88%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* ── Motion ────────────────────────────────────────────────────────────────
+ * Two springs. Where the browser understands linear() (Safari 17.2+, Chrome 113+) the
+ * small things — badges, toasts, the check — get a real spring with a hint of
+ * overshoot; everywhere else the cubic curve on the line above it is what runs. */
+
 @keyframes lotg-sheet-up {
-  from { transform: translateY(24px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes lotg-sheet-down {
+  from { transform: translateY(var(--sheet-drag, 0px)); }
+  to { transform: translateY(100%); }
+}
+@keyframes lotg-dialog-in {
+  from { transform: translateY(12px) scale(0.96); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes lotg-dialog-out {
+  from { transform: none; opacity: 1; }
+  to { transform: translateY(8px) scale(0.97); opacity: 0; }
 }
 @keyframes lotg-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@keyframes lotg-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
 @keyframes lotg-pop {
   0% { transform: scale(1); }
-  40% { transform: scale(1.25); }
+  40% { transform: scale(1.22); }
   100% { transform: scale(1); }
 }
 @keyframes lotg-rise {
-  from { transform: translateY(8px); opacity: 0; }
+  from { transform: translateY(10px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+@keyframes lotg-drop {
+  from { transform: translateY(-14px) scale(0.92); opacity: 0; }
+  to { transform: none; opacity: 1; }
 }
 @keyframes lotg-check {
   0% { transform: scale(0.4); opacity: 0; }
   60% { transform: scale(1.1); opacity: 1; }
   100% { transform: scale(1); }
 }
+@keyframes lotg-draw {
+  from { stroke-dashoffset: var(--draw-length, 24); }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes lotg-ripple {
+  from { transform: scale(1); opacity: 0.45; }
+  to { transform: scale(1.9); opacity: 0; }
+}
+@keyframes lotg-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
 
-@utility animate-sheet-up { animation: lotg-sheet-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-@utility animate-fade-in { animation: lotg-fade-in 180ms ease-out both; }
-@utility animate-pop { animation: lotg-pop 320ms ease-out; }
-@utility animate-rise { animation: lotg-rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-@utility animate-check { animation: lotg-check 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+/* Entry animations fill `backwards` only: an animation outranks inline styles, so one
+   still holding `transform: none` after it ended would pin the sheet in place and the
+   drag-to-dismiss transform written by Modal would never apply. */
+@utility animate-sheet-up {
+  animation: lotg-sheet-up 460ms var(--ease-ios) backwards;
+}
+@utility animate-sheet-down {
+  animation: lotg-sheet-down 260ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+@utility animate-dialog-in {
+  animation: lotg-dialog-in 320ms var(--ease-ios) backwards;
+}
+@utility animate-dialog-out {
+  animation: lotg-dialog-out 180ms ease-in both;
+}
+@utility animate-fade-in { animation: lotg-fade-in 240ms ease-out backwards; }
+@utility animate-fade-out { animation: lotg-fade-out 220ms ease-in both; }
+@utility animate-pop {
+  animation: lotg-pop 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@utility animate-rise {
+  animation: lotg-rise 420ms var(--ease-ios) backwards;
+  /* A list that rises card by card: put `--stagger` on each one (0, 1, 2…). Capped so a
+     long menu doesn't take a second to finish arriving. */
+  animation-delay: calc(min(var(--stagger, 0), 10) * 32ms);
+}
+@utility animate-drop {
+  animation: lotg-drop 480ms cubic-bezier(0.34, 1.4, 0.64, 1) backwards;
+  animation-timing-function: linear(0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%, 0.937 38.1%, 0.968 41.8%, 0.991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001 85.9%, 1);
+}
+@utility animate-check { animation: lotg-check 460ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+
+/* A tick that draws itself in, after the circle under it has landed (Apple Pay's "Done").
+   Set pathLength on the path so --draw-length can stay 24 whatever its real length. */
+@utility animate-draw {
+  stroke-dasharray: var(--draw-length, 24);
+  animation: lotg-draw 420ms var(--ease-snappy) 260ms backwards;
+}
+/* One soft ring spreading out from a success mark. */
+@utility animate-ripple {
+  animation: lotg-ripple 900ms var(--ease-snappy) 200ms both;
+}
+
+/* Loading placeholders: a soft sheen moving across, rather than a block that blinks. */
+@utility animate-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--color-surface) 65%, transparent) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: lotg-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Whole-page arrival on every navigation (src/app/template.tsx). Opacity only, on
+   purpose: a transform on a page wrapper becomes the containing block for every
+   `position: fixed` bar inside it, and the order bar would slide in with the page. */
+@utility animate-page { animation: lotg-fade-in 260ms ease-out backwards; }
+
+/* The squeeze under a finger, for things that aren't a <Button>: list rows, tiles. */
+@utility pressable {
+  transition-property: transform, background-color, border-color, box-shadow, color, opacity;
+  transition-duration: 220ms;
+  transition-timing-function: var(--ease-snappy);
+  touch-action: manipulation;
+  &:active:not(:disabled) {
+    transform: scale(0.975);
+    transition-duration: 90ms;
+  }
+}
 
 /* Bottom bars sit above the iPhone home indicator rather than under it. */
 @utility pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
@@ -157,8 +376,17 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* A browser with no backdrop-filter gets solid surfaces rather than see-through ones
+   with nothing blurring the text behind them. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass, .glass-bar { background-color: var(--color-surface); }
+  .glass-ink { background-color: var(--color-text-dark); }
+  .glass-primary { background-color: var(--color-primary); }
 }

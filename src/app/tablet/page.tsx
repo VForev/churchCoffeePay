@@ -10,6 +10,7 @@ import { recordCodeUses } from '@/lib/codes';
 import { useSubmitLock, type SubmitOutcome } from '@/lib/submit-lock';
 import { flagOrderIssue } from '@/lib/order-issues';
 import ModifierSelector from '@/components/menu/ModifierSelector';
+import CategoryTabs from '@/components/menu/CategoryTabs';
 import { fetchItemModifierGroups } from '@/lib/menu';
 import { fetchShopConfig, parseDonationPresets, DEFAULT_SETTINGS } from '@/lib/shop';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
@@ -79,6 +80,10 @@ function TabletInner() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  // The drink the sheet shows. Follows selectedItem in, but outlives it on close so the
+  // sheet can slide away instead of vanishing.
+  const [sheetItem, setSheetItem] = useState<MenuItem | null>(null);
+  if (selectedItem && selectedItem !== sheetItem) setSheetItem(selectedItem);
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
 
@@ -467,7 +472,10 @@ function TabletInner() {
                       style: {
                         base: {
                           fontSize: '18px',
-                          fontFamily: 'Nunito, sans-serif',
+                          // Stripe draws this field in its own iframe, which can't read
+                          // our CSS variables — so the system stack is spelled out here.
+                          fontFamily:
+                            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                           color: '#54595F',
                           '::placeholder': { color: '#7A7A7A' },
                         },
@@ -688,10 +696,10 @@ function TabletInner() {
   return (
     <div className="min-h-screen bg-bg flex flex-col">
       {/* Header */}
-      <header className="bg-primary text-white px-4 py-3 shrink-0">
+      <header className="glass-primary shrink-0 px-4 py-3 text-white">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-heading font-bold text-white">LOTG Coffee</h1>
+            <h1 className="font-heading text-[1.375rem] font-bold tracking-[-0.02em] text-white">LOTG Coffee</h1>
             {activeEvent && (
               <p className="text-xs opacity-75">
                 {activeEvent.name}{isEventFree && ' — Everything Free!'}
@@ -703,29 +711,19 @@ function TabletInner() {
       </header>
 
       {/* Category tabs — sticky */}
-      <div className="bg-surface border-b border-gray-100 sticky top-0 z-20 shrink-0">
+      <div className="glass-bar sticky top-0 z-20 shrink-0">
         <div className="max-w-5xl mx-auto px-4">
           {menuLoading ? (
             <div className="h-14 flex items-center">
               <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
             </div>
           ) : (
-            <div className="flex gap-2 overflow-x-auto py-2.5 scrollbar-hide">
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={cn(
-                    'px-4 py-2.5 rounded-xl text-sm font-accent font-semibold whitespace-nowrap transition-colors cursor-pointer touch-manipulation shrink-0',
-                    activeCategory === cat.id
-                      ? 'bg-primary text-white'
-                      : 'bg-bg text-text hover:bg-gray-100',
-                  )}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
+            <CategoryTabs
+              categories={categories}
+              activeId={activeCategory}
+              onSelect={setActiveCategory}
+              className="py-2.5"
+            />
           )}
         </div>
       </div>
@@ -750,10 +748,10 @@ function TabletInner() {
                     onClick={() => setSelectedItem(item)}
                     disabled={soldOut}
                     className={cn(
-                      'relative bg-surface rounded-2xl p-4 text-left shadow-sm border border-gray-100 transition-all touch-manipulation',
+                      'pressable relative animate-rise rounded-2xl border border-gray-100/80 bg-surface p-4 text-left shadow-sm',
                       soldOut
                         ? 'cursor-not-allowed border-danger/30 bg-danger/5 opacity-70'
-                        : 'cursor-pointer active:scale-95 hover:shadow-md hover:border-primary/20',
+                        : 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md',
                     )}
                   >
                     {item.image_url && (
@@ -767,7 +765,7 @@ function TabletInner() {
                         />
                       </div>
                     )}
-                    <h3 className="font-heading font-bold text-text-dark text-sm leading-tight mb-1">
+                    <h3 className="mb-1 font-heading text-[15px] font-semibold leading-tight text-text-dark">
                       {item.name}
                     </h3>
                     {item.description && (
@@ -798,7 +796,7 @@ function TabletInner() {
       </main>
 
       {/* Sticky bottom bar — cart summary + continue */}
-      <div className="fixed bottom-0 left-0 right-0 bg-surface border-t border-gray-200 px-4 py-3 z-20">
+      <div className="glass fixed bottom-0 left-0 right-0 z-20 border-t border-gray-200/70 px-4 py-3">
         <div className="max-w-5xl mx-auto">
           {cartItems.length === 0 ? (
             <p className="text-center text-text-light text-sm font-body py-1">
@@ -815,12 +813,12 @@ function TabletInner() {
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <span className="font-heading font-bold text-lg text-text-dark">
+                <span className="font-heading text-lg font-bold tabular-nums text-text-dark">
                   {cart.subtotal === 0 ? 'Free' : `$${cart.subtotal.toFixed(2)}`}
                 </span>
                 <button
                   onClick={() => setView('name')}
-                  className="bg-primary text-white font-accent font-bold px-5 py-3 rounded-xl hover:bg-primary-light cursor-pointer touch-manipulation active:scale-95 transition-all whitespace-nowrap text-base"
+                  className="pressable cursor-pointer whitespace-nowrap rounded-full bg-primary px-6 py-3 font-accent text-base font-semibold text-white shadow-md shadow-primary/25 hover:brightness-110"
                 >
                   Enter Name →
                 </button>
@@ -831,11 +829,11 @@ function TabletInner() {
       </div>
 
       {/* Modifier modal */}
-      {selectedItem && (
+      {sheetItem && (
         <ModifierSelector
-          isOpen
+          isOpen={!!selectedItem}
           onClose={() => setSelectedItem(null)}
-          item={selectedItem}
+          item={sheetItem}
           modifierGroups={modifierGroups}
           eventFree={isEventFree}
           onAddToCart={addToCart}

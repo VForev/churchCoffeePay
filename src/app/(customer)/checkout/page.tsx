@@ -434,22 +434,27 @@ export default function CheckoutPage() {
 
   return (
     <div className="min-h-screen bg-bg pb-10">
-      <header className="sticky top-0 z-30 border-b border-gray-100 bg-surface/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-xl items-center gap-2 px-3 py-3">
+      {/* An iOS navigation bar: the way back on the left in the accent colour, and the
+          page's name as a large title underneath rather than squeezed into the bar. */}
+      <header className="glass-bar sticky top-0 z-30">
+        <div className="mx-auto flex h-12 max-w-xl items-center px-2">
           <button
             onClick={() => router.push('/')}
             aria-label="Back to the menu"
-            className="flex h-10 w-10 cursor-pointer touch-manipulation items-center justify-center rounded-full text-text-dark transition-colors hover:bg-gray-100 active:scale-95"
+            className="flex h-10 cursor-pointer touch-manipulation items-center gap-0.5 rounded-full pl-1 pr-3 font-accent text-[17px] text-primary transition-opacity hover:opacity-70 active:opacity-50"
           >
-            <svg aria-hidden className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M12.7 4.3a1 1 0 0 1 0 1.4L8.4 10l4.3 4.3a1 1 0 0 1-1.4 1.4l-5-5a1 1 0 0 1 0-1.4l5-5a1 1 0 0 1 1.4 0Z" />
+            <svg aria-hidden className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 5l-7 7 7 7" />
             </svg>
+            Menu
           </button>
-          <h1 className="font-heading text-xl font-bold">Place Your Coffee Order</h1>
         </div>
       </header>
 
-      <main className="mx-auto max-w-xl space-y-4 px-4 py-5">
+      <main className="mx-auto max-w-xl space-y-4 px-4 pb-5 pt-2">
+        <h1 className="animate-rise px-1 font-heading text-[2rem] font-bold leading-tight tracking-[-0.03em]">
+          Place Your Coffee Order
+        </h1>
         {orderingClosed && (
           <ClosedNotice
             settings={settings}
@@ -461,7 +466,7 @@ export default function CheckoutPage() {
         )}
 
         {configLoaded && !status.isOpen && !status.isLocked && unlock && (
-          <div className="rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
+          <div className="animate-rise rounded-2xl border border-success/30 bg-success/10 px-5 py-4">
             <p className="font-heading font-bold text-success">
               Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓
             </p>
@@ -519,14 +524,14 @@ export default function CheckoutPage() {
               <button
                 type="button"
                 onClick={() => router.push('/')}
-                className="cursor-pointer rounded-full bg-primary/10 px-3 py-1.5 font-accent text-xs font-semibold text-primary transition-colors hover:bg-primary/15 active:scale-95"
+                className="pressable cursor-pointer rounded-full bg-primary/10 px-3 py-1.5 font-accent text-[13px] font-semibold text-primary hover:bg-primary/15"
               >
                 + Add another
               </button>
             </div>
 
             {emptyCart ? (
-              <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center">
+              <div className="animate-rise rounded-2xl border border-dashed border-gray-200 py-8 text-center">
                 <p className="mb-1 text-3xl">☕</p>
                 <p className="font-body text-sm text-text-light">
                   Your order is empty — go back to the menu and pick a drink.
@@ -534,11 +539,15 @@ export default function CheckoutPage() {
               </div>
             ) : (
               <ul className="divide-y divide-gray-100">
-                {cart.items.map((item) => (
-                  <li key={item.id} className="py-3 first:pt-0 last:pb-0">
+                {cart.items.map((item, index) => (
+                  <li
+                    key={item.id}
+                    style={{ '--stagger': index } as React.CSSProperties}
+                    className="animate-rise py-3 first:pt-0 last:pb-0"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-heading text-base font-bold text-text-dark">
+                        <p className="font-heading text-[17px] font-semibold text-text-dark">
                           {item.menu_item.name}
                         </p>
                         {item.selected_modifiers.length > 0 && (
@@ -552,7 +561,7 @@ export default function CheckoutPage() {
                           </p>
                         )}
                       </div>
-                      <span className="shrink-0 font-accent text-sm font-semibold text-text-dark">
+                      <span className="shrink-0 font-accent text-[15px] font-semibold tabular-nums text-text-dark">
                         {item.item_total === 0 ? 'Free' : `$${item.item_total.toFixed(2)}`}
                       </span>
                     </div>
@@ -575,7 +584,10 @@ export default function CheckoutPage() {
                             <>&minus;</>
                           )}
                         </QtyButton>
-                        <span className="w-8 text-center font-accent text-sm font-bold text-text-dark">
+                        <span
+                          key={item.quantity}
+                          className="w-8 animate-pop text-center font-accent text-[15px] font-semibold tabular-nums text-text-dark"
+                        >
                           {item.quantity}
                         </span>
                         <QtyButton
@@ -604,9 +616,9 @@ export default function CheckoutPage() {
           {/* While closed, the code box lives in the notice at the top — one box, not two. */}
           {!orderingClosed && (settings.coupons_enabled || cart.coupon) && (
             <Card className="p-5">
-              <h3 className="mb-3 font-heading text-base font-bold text-text-dark">Have a code?</h3>
+              <h3 className="mb-3 font-heading text-[17px] font-semibold text-text-dark">Have a code?</h3>
               {cart.coupon ? (
-                <div className="flex items-center justify-between gap-3 rounded-xl bg-success/10 p-3">
+                <div className="flex animate-rise items-center justify-between gap-3 rounded-xl bg-success/10 p-3">
                   <div className="min-w-0">
                     <span className="font-accent font-semibold text-success">{cart.coupon.code}</span>
                     <span className="ml-2 text-sm text-text-light">
@@ -651,11 +663,11 @@ export default function CheckoutPage() {
                   />
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="tinted"
                     onClick={applyCoupon}
                     disabled={couponLoading || !couponCode.trim()}
                     loading={couponLoading}
-                    className="shrink-0 border border-gray-200"
+                    className="shrink-0"
                   >
                     Apply
                   </Button>
@@ -672,12 +684,12 @@ export default function CheckoutPage() {
                 <div className="mb-2 space-y-1.5">
                   <div className="flex justify-between text-sm">
                     <span className="text-text-light">Subtotal</span>
-                    <span className="font-accent">${cart.subtotal.toFixed(2)}</span>
+                    <span className="font-accent tabular-nums">${cart.subtotal.toFixed(2)}</span>
                   </div>
                   {cart.discount_amount > 0 && (
                     <div className="flex justify-between text-sm text-success">
                       <span>Code</span>
-                      <span className="font-accent">-${cart.discount_amount.toFixed(2)}</span>
+                      <span className="font-accent tabular-nums">-${cart.discount_amount.toFixed(2)}</span>
                     </div>
                   )}
                 </div>
@@ -688,7 +700,7 @@ export default function CheckoutPage() {
                 }`}
               >
                 <span>Total</span>
-                <span className={needsPayment ? 'text-text-dark' : 'text-success'}>
+                <span className={`tabular-nums ${needsPayment ? 'text-text-dark' : 'text-success'}`}>
                   {needsPayment ? `$${cart.total.toFixed(2)}` : 'Free'}
                 </span>
               </div>
@@ -713,7 +725,7 @@ export default function CheckoutPage() {
           )}
 
           {needsPayment && (
-            <div className="rounded-2xl border-2 border-warning/40 bg-warning/10 px-5 py-4">
+            <div className="animate-rise rounded-2xl border border-warning/40 bg-warning/10 px-5 py-4">
               <p className="font-heading font-bold text-text-dark">
                 Phone orders are free-only right now
               </p>
@@ -727,7 +739,7 @@ export default function CheckoutPage() {
           {error && (
             <p
               role="alert"
-              className="rounded-xl bg-danger/10 px-4 py-3 text-center font-body text-sm font-semibold text-danger"
+              className="animate-rise rounded-2xl bg-danger/10 px-4 py-3 text-center font-body text-sm font-semibold text-danger"
             >
               {error}
             </p>
@@ -807,8 +819,8 @@ function StepTitle({
   className?: string;
 }) {
   return (
-    <h2 className={`flex items-center gap-2.5 font-heading text-base font-bold text-text-dark ${className}`}>
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-accent text-xs font-bold text-white">
+    <h2 className={`flex items-center gap-2.5 font-heading text-[17px] font-semibold text-text-dark ${className}`}>
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-accent text-xs font-semibold text-white">
         {n}
       </span>
       {children}
@@ -830,7 +842,7 @@ function QtyButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-surface font-bold text-text-dark shadow-sm transition-transform active:scale-90"
+      className="flex h-9 w-9 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-surface font-semibold text-text-dark shadow-sm transition-transform duration-200 ease-snappy hover:scale-105 active:scale-90"
     >
       {children}
     </button>

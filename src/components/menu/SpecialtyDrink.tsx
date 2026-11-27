@@ -55,7 +55,7 @@ export default function SpecialtyDrink({
       <button
         type="button"
         onClick={onOrder}
-        className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-gray-100 border-l-4 border-l-primary bg-surface px-4 py-3 text-left transition-shadow hover:shadow-md"
+        className="pressable flex w-full animate-rise cursor-pointer items-center gap-3 rounded-2xl border border-gray-100/80 border-l-4 border-l-primary bg-surface px-4 py-3 text-left shadow-sm hover:shadow-md"
       >
         <div className="min-w-0 flex-1">
           <span className="font-accent text-[10px] font-bold uppercase tracking-[0.08em] text-primary">
@@ -76,7 +76,7 @@ export default function SpecialtyDrink({
 
   // ── The featured card ──────────────────────────────────────────────────────
   return (
-    <div className="rounded-2xl bg-warm px-5 py-5 text-white">
+    <div className="relative animate-rise overflow-hidden rounded-3xl bg-gradient-to-br from-warm to-warm-light px-5 py-5 text-white shadow-lg shadow-warm/25 ring-1 ring-inset ring-white/10">
       <span className="inline-block rounded-md bg-primary px-2.5 py-1 font-accent text-[10px] font-bold uppercase tracking-[0.09em] text-white">
         {settings.ribbon}
       </span>
@@ -104,7 +104,7 @@ export default function SpecialtyDrink({
         <button
           type="button"
           onClick={onOrder}
-          className="cursor-pointer rounded-full bg-surface px-6 py-2.5 font-accent text-sm font-bold text-warm transition-opacity hover:opacity-90"
+          className="pressable cursor-pointer rounded-full bg-white px-6 py-2.5 font-accent text-sm font-semibold text-warm shadow-sm hover:brightness-95"
         >
           Order this
         </button>

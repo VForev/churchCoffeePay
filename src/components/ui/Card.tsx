@@ -15,11 +15,11 @@ export default function Card({ className, onClick, children, hover = false }: Ca
   return (
     <div
       className={cn(
-        'bg-surface rounded-2xl shadow-sm border border-gray-100 p-4',
+        'bg-surface rounded-2xl shadow-sm border border-gray-100/80 p-4',
         hover &&
-          'hover:shadow-md hover:border-secondary/30 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer',
+          'cursor-pointer transition-[transform,box-shadow,border-color] duration-300 ease-snappy hover:-translate-y-0.5 hover:shadow-md hover:border-primary/15',
         // A tappable card squeezes slightly under the finger, like the buttons do.
-        interactive && 'cursor-pointer touch-manipulation active:scale-[0.985] transition-transform',
+        interactive && 'pressable cursor-pointer',
         className,
       )}
       onClick={onClick}
@@ -43,7 +43,15 @@ export default function Card({ className, onClick, children, hover = false }: Ca
   );
 }
 
-/** A grey placeholder block for loading states — same shape as what's coming. */
+/**
+ * A grey placeholder block for loading states — same shape as what's coming, with a soft
+ * sheen passing over it (iOS-style) rather than the whole block blinking.
+ */
 export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden className={cn('animate-pulse rounded-xl bg-gray-200/70', className)} />;
+  return (
+    <div
+      aria-hidden
+      className={cn('animate-shimmer rounded-xl bg-gray-200/60', className)}
+    />
+  );
 }

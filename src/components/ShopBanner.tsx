@@ -24,11 +24,11 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
     return (
       <div
         className={cn(
-          'flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-2xl bg-gradient-to-r from-primary to-primary-light px-5 py-3 text-white shadow-md',
+          'flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-2xl bg-gradient-to-r from-primary to-primary-light px-5 py-3 text-white shadow-md shadow-primary/20 ring-1 ring-inset ring-white/10',
           className,
         )}
       >
-        <h1 className="font-heading text-xl font-bold leading-none tracking-tight text-white">
+        <h1 className="font-heading text-xl font-bold leading-none tracking-[-0.02em] text-white">
           {settings.service_title}
         </h1>
 
@@ -70,15 +70,17 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-primary-light px-6 py-7 text-white shadow-lg sm:px-8 sm:py-8',
+        'relative animate-rise overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-primary to-primary-light px-6 py-7 text-white shadow-lg shadow-primary/25 ring-1 ring-inset ring-white/10 sm:px-8 sm:py-8',
         className,
       )}
     >
-      {/* Soft decorative glow, purely visual */}
-      <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-secondary/20 blur-3xl" />
+      {/* Soft decorative light, purely visual: two pools of colour, like the gradient
+          wallpapers on an iPhone, built from the scheme's own secondary and primary. */}
+      <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-secondary/35 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-primary-light/50 blur-3xl" />
 
       <div className="relative">
-        <h1 className="font-heading text-3xl font-bold leading-tight tracking-tight text-white sm:text-4xl">
+        <h1 className="font-heading text-[2rem] font-bold leading-[1.1] tracking-[-0.03em] text-white sm:text-[2.5rem]">
           {settings.service_title}
         </h1>
 
@@ -91,12 +93,12 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
         {/* Open / closed state */}
         <div className="mt-5 flex flex-wrap items-center gap-2.5">
           {status.isOpen ? (
-            <span className="inline-flex items-center gap-2 rounded-full bg-success px-4 py-2 font-accent text-sm font-bold shadow-sm">
+            <span className="inline-flex items-center gap-2 rounded-full bg-success px-4 py-2 font-accent text-sm font-semibold shadow-md shadow-success/30">
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-white" />
               Open — ordering now
             </span>
           ) : (
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 font-accent text-sm font-bold ring-1 ring-white/25">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 font-accent text-sm font-semibold ring-1 ring-inset ring-white/25 backdrop-blur-md">
               <span className="h-2.5 w-2.5 rounded-full bg-white/60" />
               Closed
             </span>
@@ -116,7 +118,7 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
         </div>
 
         {/* Weekly schedule */}
-        <div className="mt-4 flex items-start gap-2 border-t border-white/15 pt-4">
+        <div className="mt-5 flex items-start gap-2 border-t border-white/15 pt-4">
           <span className="text-base leading-none">🕒</span>
           <p className="font-body text-sm text-white/80">{status.scheduleSummary}</p>
         </div>

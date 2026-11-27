@@ -23,7 +23,7 @@ export default function GivingBox({
   return (
     <div
       className={cn(
-        'rounded-2xl border-2 border-primary/20 bg-primary/5 px-5 py-5 text-center',
+        'animate-rise rounded-3xl border border-primary/15 bg-primary/[0.06] px-5 py-6 text-center [--stagger:3]',
         className,
       )}
     >
@@ -40,7 +40,7 @@ export default function GivingBox({
           e.preventDefault();
           window.location.href = pushpayLinkWithReturn(window.location.origin);
         }}
-        className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-primary px-7 py-3 font-accent text-base font-bold text-white transition-colors hover:bg-primary-light"
+        className="pressable mt-4 inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-full bg-primary px-7 py-3 font-accent text-[17px] font-semibold text-white shadow-md shadow-primary/25 hover:brightness-110"
       >
         Give with Pushpay
       </a>

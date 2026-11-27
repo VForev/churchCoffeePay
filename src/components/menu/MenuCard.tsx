@@ -12,6 +12,8 @@ interface MenuCardProps {
   orderingClosed?: boolean;
   /** How many of this drink are already in the order — shown as a small count. */
   inCart?: number;
+  /** Position in the list, so the cards arrive one after another rather than as a slab. */
+  index?: number;
   onClick: () => void;
 }
 
@@ -26,6 +28,7 @@ export default function MenuCard({
   effectivePrice,
   orderingClosed,
   inCart = 0,
+  index = 0,
   onClick,
 }: MenuCardProps) {
   const price = effectivePrice ?? item.base_price;
@@ -40,20 +43,26 @@ export default function MenuCard({
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       aria-label={`${item.name}${soldOut ? ', sold out' : ''}${isFree ? ', free' : `, $${price.toFixed(2)}`}`}
+      style={{ '--stagger': index } as React.CSSProperties}
       className={cn(
-        'group relative flex h-full w-full items-stretch gap-3.5 rounded-2xl border bg-surface p-3 text-left shadow-sm transition-all duration-200',
+        'group relative flex h-full w-full animate-rise items-stretch gap-3.5 rounded-2xl border bg-surface p-3 text-left shadow-sm',
+        'transition-[transform,box-shadow,border-color] duration-300 ease-snappy',
         disabled
-          ? 'cursor-not-allowed border-gray-100'
-          : 'cursor-pointer touch-manipulation border-gray-100 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-md active:scale-[0.985]',
-        inCart > 0 && !disabled && 'border-primary/40 ring-1 ring-primary/20',
+          ? 'cursor-not-allowed border-gray-100/80'
+          : 'cursor-pointer touch-manipulation border-gray-100/80 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] active:duration-100',
+        inCart > 0 && !disabled && 'border-primary/30 ring-1 ring-primary/15',
       )}
     >
       {/* Picture, or a cup tile in the drink's own temperature so a menu with no photos
           still reads as drinks rather than a list of words. */}
       <div
         className={cn(
-          'relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl',
-          item.image_url ? 'bg-bg' : temp === 'iced' ? 'bg-secondary/15' : 'bg-primary/10',
+          'relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[0.875rem]',
+          item.image_url
+            ? 'bg-bg'
+            : temp === 'iced'
+              ? 'bg-gradient-to-br from-secondary/25 to-secondary/10'
+              : 'bg-gradient-to-br from-primary/15 to-primary/5',
           soldOut && 'opacity-60',
         )}
       >
@@ -66,7 +75,10 @@ export default function MenuCard({
             alt=""
             loading="lazy"
             decoding="async"
-            className={cn('h-full w-full object-cover', soldOut && 'grayscale')}
+            className={cn(
+              'h-full w-full object-cover transition-transform duration-500 ease-snappy group-hover:scale-105',
+              soldOut && 'grayscale',
+            )}
           />
         ) : (
           <span aria-hidden className="text-4xl leading-none">
@@ -79,14 +91,14 @@ export default function MenuCard({
         <div>
           <h3
             className={cn(
-              'font-heading text-base font-bold leading-tight text-text-dark',
+              'font-heading text-[17px] font-semibold leading-tight text-text-dark',
               soldOut && 'text-text-light line-through',
             )}
           >
             {item.name}
           </h3>
           {item.description && (
-            <p className="mt-1 line-clamp-2 font-body text-sm leading-snug text-text-light">
+            <p className="mt-1 line-clamp-2 font-body text-[14px] leading-snug text-text-light">
               {item.description}
             </p>
           )}
@@ -94,15 +106,15 @@ export default function MenuCard({
 
         <div className="mt-2 flex items-center justify-between gap-2">
           {soldOut ? (
-            <span className="inline-flex items-center rounded-full bg-danger px-2.5 py-1 font-accent text-[11px] font-bold uppercase tracking-wide text-white">
+            <span className="inline-flex items-center rounded-full bg-danger/10 px-2.5 py-1 font-accent text-xs font-semibold text-danger">
               Sold out
             </span>
           ) : isFree ? (
-            <span className="font-accent text-sm font-bold uppercase tracking-wide text-success">
+            <span className="font-accent text-[15px] font-semibold text-success">
               Free
             </span>
           ) : (
-            <span className="font-accent text-base font-bold text-primary">
+            <span className="font-accent text-[15px] font-semibold tabular-nums text-text-dark">
               ${price.toFixed(2)}
             </span>
           )}
@@ -111,10 +123,10 @@ export default function MenuCard({
             <span
               aria-hidden
               className={cn(
-                'flex h-9 min-w-9 items-center justify-center rounded-full px-2 font-accent text-sm font-bold transition-colors',
+                'flex h-8 min-w-8 items-center justify-center rounded-full px-2 font-accent text-sm font-semibold transition-[background-color,color,transform] duration-300 ease-snappy',
                 inCart > 0
-                  ? 'bg-primary text-white'
-                  : 'bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white',
+                  ? 'animate-check bg-primary text-white'
+                  : 'bg-primary/10 text-primary group-hover:scale-110 group-hover:bg-primary group-hover:text-white',
               )}
             >
               {inCart > 0 ? `${inCart} ✓` : (
@@ -133,14 +145,14 @@ export default function MenuCard({
 /** The same row's shape in grey, while the menu loads. */
 export function MenuCardSkeleton() {
   return (
-    <div aria-hidden className="flex gap-3.5 rounded-2xl border border-gray-100 bg-surface p-3 shadow-sm">
-      <div className="h-20 w-20 shrink-0 animate-pulse rounded-xl bg-gray-200/70" />
+    <div aria-hidden className="flex gap-3.5 rounded-2xl border border-gray-100/80 bg-surface p-3 shadow-sm">
+      <div className="h-20 w-20 shrink-0 animate-shimmer rounded-[0.875rem] bg-gray-200/60" />
       <div className="flex flex-1 flex-col justify-between py-1">
         <div className="space-y-2">
-          <div className="h-4 w-2/3 animate-pulse rounded-md bg-gray-200/70" />
-          <div className="h-3 w-full animate-pulse rounded-md bg-gray-100" />
+          <div className="h-4 w-2/3 animate-shimmer rounded-md bg-gray-200/60" />
+          <div className="h-3 w-full animate-shimmer rounded-md bg-gray-100" />
         </div>
-        <div className="h-4 w-14 animate-pulse rounded-md bg-gray-200/70" />
+        <div className="h-4 w-14 animate-shimmer rounded-md bg-gray-200/60" />
       </div>
     </div>
   );

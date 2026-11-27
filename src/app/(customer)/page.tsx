@@ -51,6 +51,11 @@ export default function MenuPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  /**
+   * The drink the sheet is showing. Outlives `selectedItem` on close so the sheet stays
+   * mounted long enough to slide away, instead of vanishing mid-gesture.
+   */
+  const [sheetItem, setSheetItem] = useState<MenuItem | null>(null);
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(false);
   /** The drink of the day's build, when the sheet was opened from its card. */
@@ -204,6 +209,7 @@ export default function MenuPage() {
   function openDrink(item: MenuItem, build?: string[]) {
     setPreselectIds(build);
     setSelectedItem(item);
+    setSheetItem(item);
     optionsFor.current = item.id;
 
     const cached = optionsCache.current.get(item.id);
@@ -250,16 +256,16 @@ export default function MenuPage() {
     <div className="min-h-screen bg-bg pb-28 sm:pb-10">
       {/* Sticky bar: who we are, how long the wait is, and the categories — the one thing
           you need again after scrolling a long list. */}
-      <header className="sticky top-0 z-30 border-b border-gray-100 bg-surface/90 backdrop-blur-md">
+      <header className="glass-bar sticky top-0 z-30">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 pb-2 pt-3">
           <div className="min-w-0">
-            <h2 className="truncate font-heading text-lg font-bold leading-tight text-primary">
+            <h2 className="truncate font-heading text-[19px] font-bold leading-tight tracking-[-0.02em] text-text-dark">
               {settings.service_title}
             </h2>
             {waitLabel && (
               <p
                 className={cn(
-                  'flex items-center gap-1.5 font-accent text-xs font-semibold',
+                  'mt-0.5 flex items-center gap-1.5 font-accent text-xs font-medium',
                   queueWait === 0 ? 'text-success' : 'text-text-light',
                 )}
               >
@@ -277,7 +283,7 @@ export default function MenuPage() {
           <div className="flex shrink-0 items-center gap-2">
             <button
               onClick={() => router.push('/yourlive')}
-              className="flex cursor-pointer touch-manipulation items-center gap-2 rounded-full bg-primary/10 px-3.5 py-2.5 font-accent text-sm font-semibold text-primary transition-colors hover:bg-primary/15 active:scale-95"
+              className="pressable flex cursor-pointer items-center gap-2 rounded-full bg-primary/10 px-3.5 py-2 font-accent text-sm font-semibold text-primary hover:bg-primary/15"
             >
               <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
               Track
@@ -286,7 +292,7 @@ export default function MenuPage() {
               onClick={goToCheckout}
               disabled={cart.itemCount === 0}
               aria-label={`Your order, ${cart.itemCount} drink${cart.itemCount === 1 ? '' : 's'}`}
-              className="relative flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 font-accent text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all enabled:cursor-pointer enabled:hover:bg-primary-light enabled:active:scale-95 disabled:opacity-40 disabled:shadow-none"
+              className="pressable relative flex items-center gap-2 rounded-full bg-primary px-4 py-2 font-accent text-sm font-semibold text-white shadow-sm shadow-primary/30 enabled:cursor-pointer enabled:hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
             >
               Order
               {cart.itemCount > 0 && (
@@ -326,7 +332,7 @@ export default function MenuPage() {
         )}
 
         {activeEvent && (
-          <div className="flex items-center gap-3 rounded-2xl border border-warm/20 bg-warm/5 px-4 py-3">
+          <div className="flex animate-rise items-center gap-3 rounded-2xl border border-warm/15 bg-warm/[0.06] px-4 py-3">
             <span aria-hidden className="text-xl leading-none">🎉</span>
             <p className="font-accent text-sm font-semibold text-warm">
               {activeEvent.name}
@@ -345,7 +351,7 @@ export default function MenuPage() {
         )}
 
         {!status.isOpen && unlock && (
-          <div className="rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-4">
+          <div className="animate-rise rounded-2xl border border-success/30 bg-success/10 px-5 py-4">
             <p className="font-heading font-bold text-success">
               Ordering unlocked{unlock.label ? ` for ${unlock.label}` : ''} 🔓
             </p>
@@ -373,7 +379,10 @@ export default function MenuPage() {
 
       <main ref={listRef} className="mx-auto max-w-5xl px-4 pt-5">
         {!loading && activeCategory && activeCategory !== CUSTOM_TAB_ID && (
-          <h2 className="mb-3 px-1 font-heading text-xl font-bold text-text-dark">
+          <h2
+            key={activeCategory}
+            className="mb-3 animate-rise px-1 font-heading text-[1.625rem] font-bold tracking-[-0.025em] text-text-dark"
+          >
             {tabCategories.find((c) => c.id === activeCategory)?.name}
           </h2>
         )}
@@ -389,15 +398,16 @@ export default function MenuPage() {
             <CustomOrderBox unlock={unlock} queueWait={queueWait} />
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-200 py-12 text-center">
+          <div className="animate-rise rounded-3xl border border-dashed border-gray-200 py-14 text-center">
             <p className="mb-2 text-4xl">☕</p>
             <p className="font-body text-text-light">Nothing in this category yet</p>
           </div>
         ) : (
-          <div key={activeCategory} className="grid animate-rise grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredItems.map((item) => (
+          <div key={activeCategory} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredItems.map((item, index) => (
               <MenuCard
                 key={item.id}
+                index={index}
                 item={item}
                 eventFree={isEventFree}
                 orderingClosed={!canOrderItem(item)}
@@ -414,10 +424,10 @@ export default function MenuPage() {
         <div
           key={toast.id}
           role="status"
-          className="pointer-events-none fixed inset-x-0 bottom-24 z-40 flex animate-rise justify-center px-4 sm:bottom-6"
+          className="pointer-events-none fixed inset-x-0 bottom-24 z-40 flex justify-center px-4 sm:bottom-6"
         >
-          <span className="flex items-center gap-2 rounded-full bg-text-dark px-4 py-2.5 font-accent text-sm font-semibold text-surface shadow-xl">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-success text-xs text-white">
+          <span className="glass-ink flex animate-drop items-center gap-2.5 rounded-full py-2.5 pl-2.5 pr-4 font-accent text-sm font-semibold text-surface">
+            <span className="flex h-6 w-6 animate-check items-center justify-center rounded-full bg-success text-xs text-white">
               ✓
             </span>
             {toast.text}
@@ -428,10 +438,10 @@ export default function MenuPage() {
       {/* The one way out of the menu on a phone, and it goes straight to the order
           page — there is no cart drawer in between. See goToCheckout above. */}
       {cart.itemCount > 0 && (canOrder || codeAtCheckout) && (
-        <div className="pb-safe fixed inset-x-0 bottom-0 z-30 animate-rise px-4 pt-3 sm:hidden">
+        <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-0 z-30 animate-rise bg-gradient-to-t from-bg via-bg/80 to-transparent px-4 pt-6 sm:hidden">
           <button
             onClick={goToCheckout}
-            className="flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-full bg-primary py-2 pl-2 pr-5 font-accent font-semibold text-white shadow-xl shadow-primary/30 transition-transform active:scale-[0.98]"
+            className="pressable pointer-events-auto flex w-full cursor-pointer items-center gap-3 rounded-full bg-primary py-2 pl-2 pr-5 font-accent text-[17px] font-semibold tracking-[-0.01em] text-white shadow-xl shadow-primary/35"
           >
             <span
               key={toast?.id ?? 0}
@@ -443,7 +453,7 @@ export default function MenuPage() {
               {codeAtCheckout ? 'Continue — Enter Your Code' : 'Place Your Order'}
             </span>
             {cart.total > 0 && !codeAtCheckout ? (
-              <span className="text-sm opacity-90">${cart.total.toFixed(2)}</span>
+              <span className="text-[15px] tabular-nums opacity-90">${cart.total.toFixed(2)}</span>
             ) : (
               <span aria-hidden>→</span>
             )}
@@ -451,11 +461,11 @@ export default function MenuPage() {
         </div>
       )}
 
-      {selectedItem && (
+      {sheetItem && (
         <ModifierSelector
           isOpen={!!selectedItem}
           onClose={closeDrink}
-          item={selectedItem}
+          item={sheetItem}
           modifierGroups={modifierGroups}
           loading={optionsLoading}
           eventFree={isEventFree}

@@ -116,7 +116,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Sidebar overlay for mobile */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 animate-fade-in bg-black/40 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 animate-fade-in bg-black/30 backdrop-blur-[6px] lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -124,19 +124,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-100 bg-surface lg:static',
-          'transform transition-transform duration-300 lg:transform-none',
+          // Translucent, like a macOS sidebar: the page colour shows faintly through it.
+          'glass fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200/60 lg:static',
+          'transform transition-transform duration-500 ease-ios lg:transform-none',
           sidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0',
         )}
       >
         {/* Sidebar header */}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 p-5">
+        <div className="flex shrink-0 items-center justify-between gap-3 px-5 pb-4 pt-5">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-xl text-white shadow-sm shadow-primary/30">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary-light to-primary text-xl text-white shadow-md shadow-primary/30 ring-1 ring-inset ring-white/15">
               ☕
             </span>
             <div>
-              <h1 className="font-heading text-lg font-bold leading-tight text-primary">LOTG Coffee</h1>
+              <h1 className="font-heading text-[17px] font-bold leading-tight text-text-dark">LOTG Coffee</h1>
               <p className="font-accent text-xs text-text-light">Admin</p>
             </div>
           </div>
@@ -150,10 +151,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-1">
           {navSections.map((section) => (
             <div key={section.title} className="mb-4">
-              <p className="mb-1 px-3 font-accent text-[11px] font-semibold uppercase tracking-wider text-text-light">
+              <p className="mb-1 px-3 font-accent text-[11px] font-semibold text-text-light">
                 {section.title}
               </p>
               <div className="space-y-0.5">
@@ -168,15 +169,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       onClick={() => setSidebarOpen(false)}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'relative flex items-center gap-3 rounded-xl px-3 py-2.5 font-body text-sm transition-colors',
+                        'relative flex items-center gap-3 rounded-[0.625rem] px-3 py-2 font-body text-[14px] transition-[background-color,color] duration-200',
                         active
-                          ? 'bg-primary/10 font-semibold text-primary'
-                          : 'text-text hover:bg-gray-50 hover:text-text-dark',
+                          ? 'bg-primary font-semibold text-white shadow-sm shadow-primary/25'
+                          : 'text-text-dark hover:bg-gray-200/50 active:bg-gray-200/80',
                       )}
                     >
-                      {active && (
-                        <span className="absolute inset-y-2 left-0 w-1 rounded-full bg-primary" />
-                      )}
                       <span className="w-5 text-center">{item.icon}</span>
                       {item.label}
                     </Link>
@@ -187,7 +185,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           ))}
 
           <div className="mb-1 px-3 pt-1">
-            <p className="font-accent text-[11px] font-semibold uppercase tracking-wider text-text-light">
+            <p className="font-accent text-[11px] font-semibold text-text-light">
               Open in a new tab
             </p>
           </div>
@@ -197,7 +195,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               href={item.href}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-3 rounded-xl px-3 py-2 font-body text-sm text-text-light transition-colors hover:bg-gray-50 hover:text-text"
+              className="flex items-center gap-3 rounded-[0.625rem] px-3 py-2 font-body text-[14px] text-text transition-colors hover:bg-gray-200/50 hover:text-text-dark"
             >
               <span className="w-5 text-center">{item.icon}</span>
               {item.label}
@@ -207,13 +205,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </nav>
 
         {/* Sign out */}
-        <div className="shrink-0 border-t border-gray-100 p-3">
+        <div className="shrink-0 border-t border-gray-200/60 p-3">
           <button
             onClick={async () => {
               await supabase.auth.signOut();
               router.push('/admin/login');
             }}
-            className="w-full cursor-pointer rounded-xl px-3 py-2.5 text-left font-body text-sm text-danger transition-colors hover:bg-danger/5"
+            className="w-full cursor-pointer rounded-[0.625rem] px-3 py-2 text-left font-body text-[14px] text-danger transition-colors hover:bg-danger/10"
           >
             Sign out
           </button>
@@ -223,17 +221,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobile top bar */}
-        <div className="sticky top-0 z-30 flex shrink-0 items-center gap-3 border-b border-gray-100 bg-surface px-4 py-3 lg:hidden">
+        <div className="glass-bar sticky top-0 z-30 flex shrink-0 items-center gap-3 px-4 py-2.5 lg:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="flex h-10 w-10 cursor-pointer touch-manipulation items-center justify-center rounded-xl text-text-dark hover:bg-gray-100"
+            className="flex h-10 w-10 cursor-pointer touch-manipulation items-center justify-center rounded-full text-primary transition-[background-color,transform] hover:bg-primary/10 active:scale-90"
             aria-label="Open menu"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <h1 className="flex-1 font-heading font-bold text-primary">
+          <h1 className="flex-1 font-heading text-[17px] font-semibold text-text-dark">
             {current ? `${current.icon} ${current.label}` : 'Admin'}
           </h1>
         </div>

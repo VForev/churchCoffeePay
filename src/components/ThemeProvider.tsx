@@ -31,8 +31,8 @@ import {
  *    change colour under them on every page load.
  *  - **Subscribes to the row.** Changing the theme mid-service repaints the TV on the
  *    wall and the tablet at the counter without anyone walking over to them.
- *  - **Loads a webfont only when one is actually chosen.** The default pairing is already
- *    served by next/font from our own domain, so `fontHref` returns null for it and no
+ *  - **Loads a webfont only when one is actually chosen.** The default pairing is the
+ *    device's own system font, so `fontHref` returns null for it and no
  *    request to Google is made. A shop that never touches this page pays nothing for it.
  */
 export default function ThemeProvider() {

@@ -328,16 +328,57 @@ heading directly, which beats any colour it would inherit from the container.
 
 ### Fonts
 
-Also editable — `/admin/theme` → **Fonts** offers eight pairings. The defaults:
+Also editable — `/admin/theme` → **Fonts** offers nine pairings. **Since 2.0 the default is
+the device's own system font** — San Francisco on iPhone/iPad/Mac, Segoe UI on Windows,
+Roboto on Android — for all three roles (`--app-heading`, `--app-body`, `--app-accent` in
+`globals.css`). Nothing is downloaded and there is no next/font in the root layout. The
+church's own **Kumbh Sans & Nunito** (with Roboto for UI) is the `church` pairing, loaded
+from Google Fonts only when picked.
 
-- **Headings:** Kumbh Sans (`font-heading`, `--app-heading`)
-- **Body:** Nunito (`font-body`, `--app-body`)
-- **Accents/UI:** Roboto (`font-accent`, `--app-accent`)
+A chosen pairing replaces the three `--app-*` stacks. **Don't put a literal family name in
+`@theme inline`** — that's what used to stop `font-heading` reaching the loaded font at all.
+Stripe's card field (`/tablet`) runs in its own iframe and can't read our variables, so
+its `fontFamily` spells out the system stack.
 
-next/font loads those three and exposes them as `--font-kumbh` / `--font-nunito` /
-`--font-roboto`; `globals.css` composes them into the three `--app-*` stacks, and a chosen
-pairing replaces those. **Don't put a literal family name in `@theme inline`** — that's
-what used to stop `font-heading` reaching the loaded font at all.
+## The 2.0 Look — Apple-style Materials and Motion
+
+`src/app/globals.css` sets the feel of every screen without components knowing. Change it
+there, not per component.
+
+- **Shape and depth.** `@theme` opens up `--radius-xl/2xl/3xl` (14 / 20 / 28px) and
+  redefines `--shadow-*` as two-layer iOS-style shadows (a tight contact shadow plus a faint
+  wide one). The "how it is now" options at `/admin/theme` emit nothing and so mean these
+  values. **`RADIUS_STEPS` in `theme-looks.ts` must match the ramp**, or "Very round"
+  scales from the wrong numbers.
+- **Materials.** `glass` (sidebars, sheets' bars), `glass-bar` (sticky top bars: glass plus
+  a hairline), `glass-ink` (toasts and the undo bar: inverse glass, pair with
+  `text-surface`), `glass-primary` (the barista and tablet headers). All are built from
+  theme tokens, so dark schemes get dark glass. A browser without `backdrop-filter` falls
+  back to a solid surface.
+- **Motion.** `ease-ios` (long soft settle: sheets, sliding pills) and `ease-snappy`
+  (presses, hovers). `--default-transition-*` makes every bare `transition` use them.
+  Animations: `animate-sheet-up/down`, `animate-dialog-in/out`, `animate-rise` (put
+  `--stagger: n` on list items to cascade them), `animate-drop` (a real `linear()` spring
+  where supported), `animate-check`, `animate-draw` + `animate-ripple` (the confirmation
+  tick), `animate-shimmer` (skeletons). `pressable` is the press-squeeze for things that
+  aren't a `<Button>`. Reduced motion collapses all of it.
+- **Entry animations fill `backwards`, never `both`.** An animation outranks inline styles,
+  so one holding its last frame would pin `transform` and break the Modal's
+  drag-to-dismiss. Only exits (`sheet-down`, `dialog-out`, `fade-out`) hold their end state.
+- **Page transitions** are `template.tsx` files (root, `(customer)`, `checkout`, `admin`)
+  that fade each page in. **Opacity only**: a transform on a page wrapper becomes the
+  containing block for every `position: fixed` bar inside it.
+- **`Modal` animates out, and drags.** It stays mounted for one exit animation and shows
+  its last open content meanwhile (so `{editing && …}` children don't empty mid-slide). For
+  the exit to play the parent must keep the Modal mounted and flip `isOpen` — the menu and
+  `/tablet` keep a `sheetItem` that outlives `selectedItem` for exactly this. On a phone the
+  handle/title strip drags; past 110px or a quick flick closes it.
+- **`CategoryTabs` has one sliding selection capsule**, placed by writing to its style in a
+  layout effect (no state, no extra render). `/tablet` uses the same component.
+- **Fields** (`Input`) are iOS filled wells that lift to the surface with a halo on focus.
+  Hand-written `<input>`/`<select>` elements get the same halo from the base layer.
+- **`Button`** has a new `tinted` variant (soft brand fill, coloured label) for the second
+  action beside a filled one. Hover is `brightness-110`, not a second colour.
 
 ---
 
@@ -516,15 +557,14 @@ Things worth knowing before changing any of it:
   whatever is written in it, so `--font-heading: 'Kumbh Sans', sans-serif` meant
   `font-heading` never reached the face next/font actually loads (only the `h1`–`h6` rule
   and `body`, which used `var()`, did). They now go through `--app-heading` and friends,
-  which is both the fix and the hook the pairings hang on. next/font's own variables were
-  renamed `--font-kumbh` / `--font-nunito` / `--font-roboto` to make room.
+  which is both the fix and the hook the pairings hang on.
 - **Roominess has a deliberately narrow range.** `--spacing` also scales `w-12` and
   `h-12`; much past ±10% and fixed-size things start to look wrong.
 - **Text size stops at +18%.** Past roughly 1.2× the barista board stops fitting three
   columns on a tablet, which is worse than small text.
 - **A non-default font costs one stylesheet request to Google Fonts.** The default pairing
-  is already served by next/font from our own domain, so `fontHref()` returns `null` for
-  it and the provider renders no `<link>` at all. A shop that never touches this page pays
+  is the system font, so `fontHref()` returns `null` for it and the provider renders no
+  `<link>` at all. A shop that never touches this page pays
   nothing for any of this.
 
 ### Things worth knowing about the whole thing

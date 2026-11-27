@@ -70,7 +70,7 @@ function countdownMinutes(
 const STATUS_CONFIG = {
   pending: {
     label: 'Up Next',
-    card: 'bg-warning/10 border-warning',
+    card: 'bg-warning/10 border-warning/45',
     badge: 'bg-warning text-white',
     dot: 'bg-white',
     numberChip: 'bg-warning text-white',
@@ -78,7 +78,7 @@ const STATUS_CONFIG = {
   },
   in_progress: {
     label: 'Being Made',
-    card: 'bg-primary/10 border-primary',
+    card: 'bg-primary/[0.07] border-primary/35',
     badge: 'bg-primary text-white',
     dot: 'bg-white animate-pulse',
     numberChip: 'bg-primary text-white',
@@ -86,7 +86,7 @@ const STATUS_CONFIG = {
   },
   ready: {
     label: 'Ready!',
-    card: 'bg-success/10 border-success',
+    card: 'bg-success/10 border-success/50',
     badge: 'bg-success text-white',
     dot: 'bg-white animate-pulse',
     numberChip: 'bg-success text-white',
@@ -424,9 +424,9 @@ function OrderCard({
 
   return (
     <div
-      className={`animate-rise rounded-2xl border-2 p-4 transition-all ${config.card} ${
+      className={`animate-rise rounded-2xl border p-4 transition-[background-color,border-color,box-shadow] duration-500 ${config.card} ${
         isReady ? 'shadow-lg' : 'shadow-sm'
-      } ${mine ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+      } ${mine ? 'ring-2 ring-primary ring-offset-2 ring-offset-bg' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
@@ -537,15 +537,15 @@ function MyOrderCard({
 
   return (
     <div
-      className={`animate-rise rounded-3xl px-5 py-6 text-white shadow-xl transition-colors duration-500 ${
-        isReady ? 'bg-success' : 'bg-primary'
+      className={`relative animate-rise overflow-hidden rounded-3xl px-5 py-6 text-white shadow-xl ring-1 ring-inset ring-white/10 transition-[background-color,box-shadow] duration-700 ${
+        isReady ? 'bg-success shadow-success/30' : 'bg-primary shadow-primary/30'
       }`}
     >
       <p className="text-center font-accent text-xs font-bold uppercase tracking-[0.2em] text-white/70">
         Your order
       </p>
 
-      <p className="mt-1.5 text-center font-heading text-5xl font-bold leading-none">
+      <p key={isReady ? 'ready' : (position ?? 'none')} className="mt-1.5 animate-check text-center font-heading text-5xl font-bold leading-none tabular-nums tracking-[-0.03em]">
         {isReady ? '✓' : (position ?? '—')}
       </p>
       <p className="mt-1 text-center font-accent text-xs font-semibold uppercase tracking-wide text-white/60">
@@ -560,7 +560,7 @@ function MyOrderCard({
       <div className="mt-5 flex gap-1.5">
         {steps.map((label, i) => (
           <div key={label} className="flex-1">
-            <div className={`h-1.5 rounded-full ${i < reached ? 'bg-white' : 'bg-white/25'}`} />
+            <div className={`h-1.5 rounded-full transition-colors duration-700 ${i < reached ? 'bg-white' : 'bg-white/25'}`} />
             <p
               className={`mt-1.5 text-center font-accent text-[10px] font-semibold uppercase tracking-wide ${
                 i < reached ? 'text-white' : 'text-white/50'

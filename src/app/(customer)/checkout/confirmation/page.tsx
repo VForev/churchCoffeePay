@@ -18,24 +18,27 @@ const REDIRECT_SECONDS = 3;
 
 /** The big green tick — draws itself in, so "it worked" lands before any words are read. */
 function DoneMark({ size = 'lg' }: { size?: 'lg' | 'sm' }) {
+  // The circle springs in, the tick draws itself once it has landed, and one soft ring
+  // spreads out behind it — the "it worked" beat, so nobody wonders whether to tap again.
   return (
     <div
       aria-hidden
-      className={`mx-auto flex animate-check items-center justify-center rounded-full bg-success text-white shadow-lg shadow-success/30 ${
-        size === 'lg' ? 'mb-5 h-20 w-20' : 'mb-3 h-12 w-12'
-      }`}
+      className={`relative mx-auto ${size === 'lg' ? 'mb-5 h-20 w-20' : 'mb-3 h-12 w-12'}`}
     >
-      <svg
-        className={size === 'lg' ? 'h-10 w-10' : 'h-6 w-6'}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={3}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M5 12.5l4.5 4.5L19 7.5" />
-      </svg>
+      <span className="absolute inset-0 animate-ripple rounded-full bg-success" />
+      <div className="relative flex h-full w-full animate-check items-center justify-center rounded-full bg-success text-white shadow-lg shadow-success/30">
+        <svg
+          className={size === 'lg' ? 'h-10 w-10' : 'h-6 w-6'}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={3}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path className="animate-draw" pathLength={24} d="M5 12.5l4.5 4.5L19 7.5" />
+        </svg>
+      </div>
     </div>
   );
 }
@@ -110,9 +113,9 @@ function ConfirmationContent() {
     return (
       <div className="min-h-screen bg-bg pb-6">
         <div className="mx-auto w-full max-w-md space-y-4 px-4 pt-6">
-          <div className="rounded-2xl border-2 border-success/40 bg-success/10 px-5 py-6 text-center">
+          <div className="animate-rise rounded-3xl border border-success/30 bg-success/10 px-5 py-6 text-center">
             <p className="mb-1 text-3xl leading-none">&#9749;</p>
-            <h1 className="font-heading text-xl font-bold text-text-dark">
+            <h1 className="font-heading text-[1.375rem] font-bold tabular-nums text-text-dark">
               {redirecting
                 ? `Taking you to Pushpay in ${secondsLeft}…`
                 : `Your $${COFFEE_GIFT_AMOUNT} gift`}
@@ -123,7 +126,7 @@ function ConfirmationContent() {
 
             <a
               href={COFFEE_GIVING_LINK}
-              className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-success px-7 py-3 font-accent text-base font-bold text-white transition-colors hover:bg-success-light"
+              className="pressable mt-4 inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-full bg-success px-7 py-3 font-accent text-[17px] font-semibold text-white shadow-md shadow-success/25 hover:brightness-110"
             >
               {redirecting ? 'Go now' : `Give $${COFFEE_GIFT_AMOUNT} with Pushpay`}
             </a>
@@ -146,7 +149,7 @@ function ConfirmationContent() {
             </p>
           </div>
 
-          <Card className="px-6 py-5 text-center">
+          <Card className="animate-rise px-6 py-5 text-center [--stagger:2]">
             <DoneMark size="sm" />
             <h2 className="mb-1 font-heading text-lg font-bold text-text-dark">Order placed</h2>
             {thanks}
@@ -174,7 +177,7 @@ function ConfirmationContent() {
       <div className="w-full max-w-md space-y-4 animate-rise">
         <Card className="text-center py-10 px-6 rounded-3xl">
           <DoneMark />
-          <h1 className="text-3xl font-heading font-bold text-text-dark mb-2">Order placed!</h1>
+          <h1 className="mb-2 font-heading text-[2rem] font-bold tracking-[-0.03em] text-text-dark">Order placed!</h1>
           {thanks}
           {waitLine}
           <p className="text-text-light font-body mb-8 text-sm">
@@ -189,7 +192,7 @@ function ConfirmationContent() {
             <span className="h-2 w-2 animate-pulse rounded-full bg-success-light" />
             Track Your Order Live
           </Button>
-          <Button onClick={() => router.push('/')} fullWidth variant="ghost">
+          <Button onClick={() => router.push('/')} fullWidth variant="tinted">
             Order Another Drink
           </Button>
         </Card>

@@ -205,7 +205,7 @@ export default function ModifierSelector({
   const footerContent = (
     <div className="border-t border-gray-100 bg-surface px-5 pb-4 pt-3">
       {nudged && missingGroups.length > 0 && (
-        <p className="mb-2 text-center font-accent text-sm font-semibold text-danger" role="alert">
+        <p className="mb-2 animate-rise text-center font-accent text-sm font-semibold text-danger" role="alert">
           Choose {missingGroups.map((g) => g.name.toLowerCase()).join(' and ')} first
         </p>
       )}
@@ -221,7 +221,7 @@ export default function ModifierSelector({
       >
         <span className="flex w-full items-center justify-between gap-3">
           <span>{loading ? 'Loading options…' : 'Add to Order'}</span>
-          <span className="font-heading">{totalPrice === 0 ? 'Free' : money(totalPrice)}</span>
+          <span className="font-heading tabular-nums">{totalPrice === 0 ? 'Free' : money(totalPrice)}</span>
         </span>
       </Button>
     </div>
@@ -281,24 +281,24 @@ export default function ModifierSelector({
                 key={group.id}
                 id={`modgroup-${group.id}`}
                 className={cn(
-                  'scroll-mt-4 rounded-2xl transition-colors',
+                  'scroll-mt-4 rounded-2xl transition-[background-color,box-shadow] duration-300',
                   flagged && '-m-3 bg-danger/5 p-3 ring-2 ring-danger/40',
                 )}
               >
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <h3 className="font-heading text-base font-bold text-text-dark">{group.name}</h3>
+                <div className="mb-2.5 flex flex-wrap items-center gap-2">
+                  <h3 className="font-heading text-[17px] font-semibold text-text-dark">{group.name}</h3>
                   {group.is_required ? (
                     chosen ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 font-accent text-[11px] font-bold uppercase tracking-wide text-success">
+                      <span className="inline-flex animate-check items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 font-accent text-[11px] font-semibold text-success">
                         ✓ Done
                       </span>
                     ) : (
-                      <span className="rounded-full bg-danger/10 px-2 py-0.5 font-accent text-[11px] font-bold uppercase tracking-wide text-danger">
+                      <span className="rounded-full bg-danger/10 px-2 py-0.5 font-accent text-[11px] font-semibold text-danger">
                         Required
                       </span>
                     )
                   ) : (
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 font-accent text-[11px] font-semibold uppercase tracking-wide text-text-light">
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 font-accent text-[11px] font-medium text-text-light">
                       {group.allow_multiple ? 'Pick any' : 'Optional'}
                     </span>
                   )}
@@ -310,7 +310,7 @@ export default function ModifierSelector({
                     {locked.map((mod) => (
                       <span
                         key={mod.id}
-                        className="inline-flex items-center gap-1.5 rounded-xl border-2 border-primary/25 bg-primary/10 px-3 py-2 font-body text-sm text-primary"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-primary/10 px-3 py-2 font-body text-sm font-medium text-primary"
                         title="Always included with this drink"
                       >
                         <span className="text-xs">🔒</span>
@@ -331,8 +331,8 @@ export default function ModifierSelector({
                   )
                 ) : useLargeList ? (
                   /* Large group — searchable scrollable list */
-                  <div className="overflow-hidden rounded-2xl border border-gray-200">
-                    <div className="border-b border-gray-100 bg-gray-50 p-2">
+                  <div className="overflow-hidden rounded-2xl bg-surface ring-1 ring-gray-200">
+                    <div className="border-b border-gray-100 p-2">
                       <input
                         type="search"
                         placeholder={`Search ${group.name.toLowerCase()}…`}
@@ -342,7 +342,7 @@ export default function ModifierSelector({
                         }
                         // 16px, not 14: anything smaller makes iOS Safari zoom the whole
                         // page in when the box is tapped, and it doesn't zoom back out.
-                        className="w-full rounded-xl border border-gray-200 bg-surface px-3 py-2 font-body text-base text-text-dark placeholder:text-text-light focus:border-primary focus:outline-none"
+                        className="w-full rounded-xl border border-transparent bg-gray-100 px-3 py-2 font-body text-base text-text-dark placeholder:text-text-light focus:bg-surface focus:outline-none"
                       />
                     </div>
 
@@ -351,7 +351,7 @@ export default function ModifierSelector({
                         {removableChips.map((mod) => (
                           <span
                             key={mod.id}
-                            className="inline-flex items-center gap-1 rounded-full bg-primary py-1 pl-3 pr-1 font-body text-xs text-white"
+                            className="inline-flex animate-check items-center gap-1 rounded-full bg-primary py-1 pl-3 pr-1 font-body text-xs font-medium text-white"
                           >
                             {mod.name}
                             {mod.price_adjustment > 0 && !eventFree && (
@@ -386,12 +386,12 @@ export default function ModifierSelector({
                               aria-pressed={selected}
                               onClick={() => toggleModifier(group, modifier)}
                               className={cn(
-                                'flex w-full touch-manipulation items-center justify-between px-4 py-3 text-left font-body text-sm transition-colors',
+                                'flex w-full touch-manipulation items-center justify-between px-4 py-3 text-left font-body text-[15px] transition-colors duration-150',
                                 soldOut
-                                  ? 'cursor-not-allowed bg-gray-50/50 text-text-light'
+                                  ? 'cursor-not-allowed text-text-light'
                                   : selected
-                                    ? 'cursor-pointer bg-primary/10 font-semibold text-primary'
-                                    : 'cursor-pointer text-text hover:bg-gray-50',
+                                    ? 'cursor-pointer bg-primary/[0.06] font-semibold text-primary'
+                                    : 'cursor-pointer text-text-dark hover:bg-gray-50 active:bg-gray-100',
                               )}
                             >
                               <span className="flex items-center gap-2.5">
@@ -432,15 +432,15 @@ export default function ModifierSelector({
                           aria-pressed={selected}
                           onClick={() => toggleModifier(group, modifier)}
                           className={cn(
-                            'relative flex min-h-12 touch-manipulation flex-col items-start justify-center rounded-xl border-2 px-3 py-2 text-left font-body text-sm transition-all duration-150 enabled:active:scale-[0.97]',
+                            'pressable relative flex min-h-[3.25rem] flex-col items-start justify-center rounded-2xl border-2 px-3.5 py-2 text-left font-body text-[15px]',
                             soldOut
-                              ? 'cursor-not-allowed border-gray-100 bg-gray-50 text-text-light'
+                              ? 'cursor-not-allowed border-transparent bg-gray-50 text-text-light'
                               : selected
-                                ? 'cursor-pointer border-primary bg-primary text-white shadow-sm shadow-primary/30'
-                                : 'cursor-pointer border-gray-200 bg-surface text-text hover:border-primary/40',
+                                ? 'cursor-pointer border-primary bg-primary/[0.07] text-primary'
+                                : 'cursor-pointer border-transparent bg-gray-100 text-text-dark hover:bg-gray-200/70',
                           )}
                         >
-                          <span className={cn('pr-4 font-semibold leading-tight', soldOut && 'line-through')}>
+                          <span className={cn('pr-6 font-semibold leading-tight', soldOut && 'line-through')}>
                             {modifier.name}
                           </span>
                           {soldOut ? (
@@ -448,12 +448,15 @@ export default function ModifierSelector({
                           ) : (
                             modifier.price_adjustment > 0 &&
                             !eventFree && (
-                              <span className="text-xs opacity-75">+{money(modifier.price_adjustment)}</span>
+                              <span className="text-[13px] opacity-75 tabular-nums">+{money(modifier.price_adjustment)}</span>
                             )
                           )}
                           {selected && !soldOut && (
-                            <span aria-hidden className="absolute right-2 top-2 text-xs">
-                              ✓
+                            <span
+                              aria-hidden
+                              className="absolute right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 animate-check items-center justify-center rounded-full bg-primary text-white"
+                            >
+                              <CheckGlyph />
                             </span>
                           )}
                         </button>
@@ -478,24 +481,29 @@ export default function ModifierSelector({
   );
 }
 
+/** The iOS list checkmark: an empty ring that fills and springs a tick in. */
 function CheckBox({ on, muted }: { on: boolean; muted?: boolean }) {
   return (
     <span
       aria-hidden
       className={cn(
-        'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors',
+        'flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-[background-color,border-color] duration-200',
         muted ? 'border-gray-200 bg-gray-100' : on ? 'border-primary bg-primary' : 'border-gray-300',
       )}
     >
       {on && (
-        <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-          <path
-            fillRule="evenodd"
-            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-            clipRule="evenodd"
-          />
-        </svg>
+        <span className="animate-check text-white">
+          <CheckGlyph />
+        </span>
       )}
     </span>
+  );
+}
+
+function CheckGlyph() {
+  return (
+    <svg className="h-3 w-3" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={2.4}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 8.5l3 3 6-7" />
+    </svg>
   );
 }

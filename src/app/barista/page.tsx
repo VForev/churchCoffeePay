@@ -599,9 +599,9 @@ export default function BaristaPage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <header className="sticky top-0 z-30 bg-primary text-white">
+      <header className="glass-primary sticky top-0 z-30 text-white shadow-sm shadow-primary/20">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-3">
-          <h1 className="font-heading text-xl font-bold text-white">Barista Dashboard</h1>
+          <h1 className="font-heading text-[1.375rem] font-bold tracking-[-0.02em] text-white">Barista Dashboard</h1>
           <div className="flex items-center gap-4 text-sm">
             {/* Several screens run this board at once — say plainly whether this one is
                 still hearing about new orders, so a dead feed looks different to a lull. */}
@@ -647,26 +647,32 @@ export default function BaristaPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="mx-auto flex max-w-7xl gap-1 px-4">
-          {(
-            [
-              ['orders', 'Orders'],
-              ['stock', "Sold Out / 86"],
-              ['history', 'History'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={cn(
-                'cursor-pointer touch-manipulation rounded-t-xl px-5 py-2.5 font-accent text-sm font-semibold transition-colors',
-                tab === key ? 'bg-bg text-primary' : 'text-white/70 hover:bg-white/10',
-              )}
-            >
-              {label}
-            </button>
-          ))}
+        {/* Tabs — an iOS segmented control, sitting in the bar. */}
+        <div className="mx-auto max-w-7xl px-4 pb-3">
+          <div role="tablist" className="inline-flex rounded-full bg-black/15 p-1 ring-1 ring-inset ring-white/10">
+            {(
+              [
+                ['orders', 'Orders'],
+                ['stock', "Sold Out / 86"],
+                ['history', 'History'],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={tab === key}
+                onClick={() => setTab(key)}
+                className={cn(
+                  'cursor-pointer touch-manipulation rounded-full px-5 py-2 font-accent text-sm font-semibold transition-[background-color,color,box-shadow,transform] duration-300 ease-snappy active:scale-95',
+                  tab === key
+                    ? 'bg-white text-primary shadow-md shadow-black/15'
+                    : 'text-white/80 hover:bg-white/10 hover:text-white',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -784,7 +790,7 @@ export default function BaristaPage() {
       {/* The board still works without the timing migration; it just can't record how
           long anything took, and silently losing that data is worse than one line of text. */}
       {timingMissing && (
-        <div className="fixed bottom-4 left-1/2 z-30 w-[min(92vw,32rem)] -translate-x-1/2 rounded-2xl bg-text-dark px-5 py-3 text-white shadow-xl">
+        <div className="glass-ink fixed bottom-4 left-1/2 z-30 w-[min(92vw,32rem)] -translate-x-1/2 animate-drop rounded-2xl px-5 py-3 text-surface">
           <p className="font-body text-sm">
             Order times aren&apos;t being recorded. Run{' '}
             <strong className="font-accent">supabase-order-timing.sql</strong> in Supabase to see
@@ -795,7 +801,7 @@ export default function BaristaPage() {
 
       {/* Two screens, one order — tell whoever lost the race what happened */}
       {conflict && (
-        <div className="fixed bottom-20 left-1/2 z-40 w-[min(92vw,28rem)] -translate-x-1/2 rounded-2xl bg-warning px-5 py-3 text-white shadow-xl">
+        <div className="fixed bottom-20 left-1/2 z-40 w-[min(92vw,28rem)] -translate-x-1/2 animate-drop rounded-2xl bg-warning px-5 py-3 text-white shadow-xl shadow-warning/30">
           <p className="font-body text-sm font-semibold">{conflict}</p>
         </div>
       )}
@@ -812,14 +818,14 @@ export default function BaristaPage() {
 
       {/* Undo bar for an accidental "Picked Up" */}
       {justCompleted && (
-        <div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-4 rounded-2xl bg-text-dark px-5 py-3 text-white shadow-xl">
+        <div className="glass-ink fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 animate-drop items-center gap-4 rounded-full py-2.5 pl-5 pr-2.5 text-surface">
           <span className="font-body text-sm">
             <strong className="font-heading">{justCompleted.customer_name}</strong>&apos;s order
             marked picked up
           </span>
           <button
             onClick={undoComplete}
-            className="cursor-pointer touch-manipulation rounded-full bg-white px-4 py-1.5 font-accent text-sm font-bold text-text-dark transition-colors hover:bg-gray-100"
+            className="pressable cursor-pointer rounded-full bg-surface px-4 py-1.5 font-accent text-sm font-semibold text-primary hover:brightness-95"
           >
             Undo
           </button>

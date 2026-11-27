@@ -394,7 +394,7 @@ export default function SpecialtyAdminPage() {
       </div>
 
       {/* ── Save ───────────────────────────────────────────────────────────── */}
-      <div className="sticky bottom-0 mt-6 -mx-4 flex flex-wrap items-center gap-3 border-t border-gray-100 bg-surface/95 px-4 py-4 backdrop-blur-sm">
+      <div className="sticky bottom-0 mt-6 -mx-4 flex flex-wrap items-center gap-3 glass border-t border-gray-200/60 px-4 py-4">
         <Button onClick={save} disabled={saving || !dirty}>
           {saving ? 'Saving…' : 'Save'}
         </Button>

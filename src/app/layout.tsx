@@ -1,25 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Kumbh_Sans, Nunito, Roboto } from "next/font/google";
 import "./globals.css";
 import ThemeProvider from "@/components/ThemeProvider";
 
-const kumbhSans = Kumbh_Sans({
-  variable: "--font-kumbh",
-  subsets: ["latin"],
-  weight: ["400", "600", "700"],
-});
-
-const nunito = Nunito({
-  variable: "--font-nunito",
-  subsets: ["latin"],
-  weight: ["400", "600", "700"],
-});
-
-const roboto = Roboto({
-  variable: "--font-roboto",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-});
+// No next/font here any more. The default type is the device's own system face (San
+// Francisco on Apple devices) — see --app-heading in globals.css — so there is nothing
+// to download. The church's Kumbh Sans & Nunito are one choice away at /admin/theme →
+// Fonts, loaded only when picked.
 
 export const metadata: Metadata = {
   title: "LOTG Coffee",
@@ -42,10 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${kumbhSans.variable} ${nunito.variable} ${roboto.variable} h-full antialiased`}
-    >
+    <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col font-body">
         {/* First thing in the body so every page's own <style> still wins over it —
             /admin/theme previews unsaved colours that way. */}
