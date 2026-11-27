@@ -45,6 +45,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { href: '/admin/labels', label: 'Cup Labels', icon: '🏷️' },
       { href: '/admin/print-setup', label: 'Printer Setup', icon: '🖨️' },
       { href: '/admin/theme', label: 'Look & Colours', icon: '🎨' },
+      { href: '/admin/pictures', label: 'Pictures', icon: '🖼️' },
     ],
   },
 ];

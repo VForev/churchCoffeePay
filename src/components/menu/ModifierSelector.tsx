@@ -7,6 +7,9 @@ import { Skeleton } from '@/components/ui/Card';
 import { TextArea } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import { selectableModifiers, lockedModifiers } from '@/lib/menu';
+import { drinkPhoto } from '@/lib/pictures';
+import { useSitePictures } from '@/lib/use-pictures';
+import { Photo } from './DrinkPicture';
 import type { MenuItem, ModifierGroup, Modifier } from '@/types';
 
 const DROPDOWN_THRESHOLD = 8; // groups with this many+ options get a searchable list
@@ -99,6 +102,7 @@ export default function ModifierSelector({
     seedSelections(modifierGroups, preselectIds),
   );
   const [instructions, setInstructions] = useState('');
+  const photo = drinkPhoto(item, useSitePictures());
   const [groupSearch, setGroupSearch] = useState<Record<string, string>>({});
   /** Groups the customer tried to skip — highlighted after a tap on a disabled Add. */
   const [nudged, setNudged] = useState(false);
@@ -236,6 +240,17 @@ export default function ModifierSelector({
       size="md"
       footer={footerContent}
     >
+      {/* The drink, big, at the top — it scrolls away as they move down to the options. */}
+      {photo && (
+        <Photo
+          url={photo}
+          alt={item.name}
+          eager
+          soldOut={item.is_sold_out}
+          className="mb-5 aspect-[16/10] w-full rounded-2xl shadow-sm"
+        />
+      )}
+
       {blockedGroup && (
         <div className="mb-4 rounded-2xl border border-danger/30 bg-danger/5 px-4 py-3">
           <p className="font-accent text-sm font-semibold text-danger">

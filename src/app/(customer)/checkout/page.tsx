@@ -38,6 +38,10 @@ import {
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
+import PageBackdrop, { pageBg } from '@/components/PageBackdrop';
+import { Photo } from '@/components/menu/DrinkPicture';
+import { drinkPhoto, safeImageUrl } from '@/lib/pictures';
+import { useSitePictures } from '@/lib/use-pictures';
 import { ClosedNotice, ORDER_CODE_BOX_ID } from '@/components/ShopBanner';
 import { COFFEE_GIFT_AMOUNT } from '@/lib/giving';
 import { validateFullName, MAX_NAME_LENGTH } from '@/lib/profanity';
@@ -87,6 +91,8 @@ export default function CheckoutPage() {
   // page restart wipes it (see access-code.ts), which is what re-asks for the code.
   const [unlock, setUnlock] = useState<AccessUnlock | null>(() => getActiveUnlock());
   const cartItemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+  const pictures = useSitePictures();
+  const backdrop = safeImageUrl(pictures.page_background_image);
   /** Something in the cart has a price, and this page doesn't take cards. */
   const needsPayment = cart.items.length > 0 && cart.total > 0;
 
@@ -433,7 +439,8 @@ export default function CheckoutPage() {
   const emptyCart = cart.items.length === 0;
 
   return (
-    <div className="min-h-screen bg-bg pb-10">
+    <div className={`min-h-screen pb-10 ${pageBg(!!backdrop)}`}>
+      <PageBackdrop url={backdrop} />
       {/* An iOS navigation bar: the way back on the left in the accent colour, and the
           page's name as a large title underneath rather than squeezed into the bar. */}
       <header className="glass-bar sticky top-0 z-30">
@@ -546,7 +553,14 @@ export default function CheckoutPage() {
                     className="animate-rise py-3 first:pt-0 last:pb-0"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      {/* A small photo, when the drink has one — the quickest way to spot a
+                          mis-tapped drink in a list of three. Never a cup icon here: in a
+                          list this short a row of identical cups says nothing. */}
+                      {(() => {
+                        const photo = drinkPhoto(item.menu_item, pictures);
+                        return photo ? <Photo url={photo} className="h-12 w-12 rounded-xl" /> : null;
+                      })()}
+                      <div className="min-w-0 flex-1">
                         <p className="font-heading text-[17px] font-semibold text-text-dark">
                           {item.menu_item.name}
                         </p>

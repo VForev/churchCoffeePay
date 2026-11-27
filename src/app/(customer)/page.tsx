@@ -20,6 +20,9 @@ import ModifierSelector from '@/components/menu/ModifierSelector';
 import ShopBanner, { ClosedNotice } from '@/components/ShopBanner';
 import CustomOrderBox from '@/components/CustomOrderBox';
 import SpecialtyDrink from '@/components/menu/SpecialtyDrink';
+import PageBackdrop, { pageBg } from '@/components/PageBackdrop';
+import { safeImageUrl, specialtyPicture } from '@/lib/pictures';
+import { useSitePictures } from '@/lib/use-pictures';
 import { Skeleton } from '@/components/ui/Card';
 import {
   DEFAULT_SPECIALTY,
@@ -168,6 +171,8 @@ export default function MenuPage() {
   // Recomputed from the same menu everyone else on this page is reading, so a barista
   // 86-ing the syrup flips the card to "sold out" with no extra round trip.
   const specialtyState = resolveSpecialty(specialty, menuItems, allModifiers);
+  const pictures = useSitePictures();
+  const backdrop = safeImageUrl(pictures.page_background_image);
 
   // A write-in code adds a "Custom Order" tab at the very end — never the default,
   // so it's not the first thing anyone sees.
@@ -253,7 +258,8 @@ export default function MenuPage() {
         : `~${queueWait} min wait`;
 
   return (
-    <div className="min-h-screen bg-bg pb-28 sm:pb-10">
+    <div className={cn('min-h-screen pb-28 sm:pb-10', pageBg(!!backdrop))}>
+      <PageBackdrop url={backdrop} />
       {/* Sticky bar: who we are, how long the wait is, and the categories — the one thing
           you need again after scrolling a long list. */}
       <header className="glass-bar sticky top-0 z-30">
@@ -328,7 +334,7 @@ export default function MenuPage() {
         {loading ? (
           <Skeleton className="h-40 rounded-3xl" />
         ) : (
-          <ShopBanner settings={settings} status={status} />
+          <ShopBanner settings={settings} status={status} image={pictures.banner_image} />
         )}
 
         {activeEvent && (
@@ -365,6 +371,7 @@ export default function MenuPage() {
 
         {specialtyState.kind !== 'off' && (
           <SpecialtyDrink
+            picture={specialtyPicture(specialtyState.settings, specialtyState.item, pictures)}
             state={specialtyState}
             onOrder={() =>
               specialtyState.kind === 'ready' &&

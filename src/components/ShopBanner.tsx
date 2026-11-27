@@ -6,6 +6,7 @@ import type { Coupon, ShopSettings } from '@/types';
 import type { ShopStatus } from '@/lib/shop';
 import { setActiveUnlock, type AccessUnlock } from '@/lib/access-code';
 import { describeCode, isUnlockOnly, lookupCode } from '@/lib/codes';
+import { cssImage, safeImageUrl } from '@/lib/pictures';
 
 interface ShopBannerProps {
   settings: ShopSettings;
@@ -13,21 +14,49 @@ interface ShopBannerProps {
   /** Single-line bar instead of the tall hero — for the TV screen, where vertical space is orders. */
   compact?: boolean;
   className?: string;
+  /** A photo behind the banner (set at /admin/pictures), under a tint of the brand colour. */
+  image?: string | null;
+}
+
+/**
+ * The banner's photo, if it has one: the picture, then the brand colour washed over it —
+ * strong on the left where the words are, lighter on the right where the photo shows. The
+ * words are white, so the wash is what keeps them readable on a pale picture.
+ */
+function BannerPhoto({ image }: { image: string | null | undefined }) {
+  if (!safeImageUrl(image)) return null;
+  return (
+    <>
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-cover bg-center transition-transform duration-[2s] ease-snappy"
+        style={{ backgroundImage: cssImage(image) }}
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/70 to-primary/30"
+      />
+      <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+    </>
+  );
 }
 
 /**
  * The big "who we are / when we're open" header. This is the first thing a
  * customer sees, so it has to answer: what is this, and can I order right now?
  */
-export default function ShopBanner({ settings, status, compact, className }: ShopBannerProps) {
+export default function ShopBanner({ settings, status, compact, className, image }: ShopBannerProps) {
   if (compact) {
     return (
       <div
         className={cn(
-          'flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-2xl bg-gradient-to-r from-primary to-primary-light px-5 py-3 text-white shadow-md shadow-primary/20 ring-1 ring-inset ring-white/10',
+          'relative isolate flex flex-wrap items-center gap-x-4 gap-y-1.5 overflow-hidden rounded-2xl bg-gradient-to-r from-primary to-primary-light px-5 py-3 text-white shadow-md shadow-primary/20 ring-1 ring-inset ring-white/10',
           className,
         )}
       >
+        <div aria-hidden className="absolute inset-0 -z-10">
+          <BannerPhoto image={image} />
+        </div>
         <h1 className="font-heading text-xl font-bold leading-none tracking-[-0.02em] text-white">
           {settings.service_title}
         </h1>
@@ -74,10 +103,16 @@ export default function ShopBanner({ settings, status, compact, className }: Sho
         className,
       )}
     >
-      {/* Soft decorative light, purely visual: two pools of colour, like the gradient
-          wallpapers on an iPhone, built from the scheme's own secondary and primary. */}
-      <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-secondary/35 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-primary-light/50 blur-3xl" />
+      {safeImageUrl(image) ? (
+        <BannerPhoto image={image} />
+      ) : (
+        <>
+          {/* Soft decorative light, purely visual: two pools of colour, like the gradient
+              wallpapers on an iPhone, built from the scheme's own secondary and primary. */}
+          <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-secondary/35 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-primary-light/50 blur-3xl" />
+        </>
+      )}
 
       <div className="relative">
         <h1 className="font-heading text-[2rem] font-bold leading-[1.1] tracking-[-0.03em] text-white sm:text-[2.5rem]">

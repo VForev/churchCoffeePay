@@ -5,6 +5,9 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import GivingBox from '@/components/GivingBox';
 import LiveOrders from '@/components/LiveOrders';
+import PageBackdrop, { pageBg } from '@/components/PageBackdrop';
+import { safeImageUrl } from '@/lib/pictures';
+import { useSitePictures } from '@/lib/use-pictures';
 import { COFFEE_GIVING_LINK, COFFEE_GIFT_AMOUNT } from '@/lib/giving';
 import { Suspense, useEffect, useState } from 'react';
 
@@ -44,6 +47,7 @@ function DoneMark({ size = 'lg' }: { size?: 'lg' | 'sm' }) {
 }
 
 function ConfirmationContent() {
+  const backdrop = safeImageUrl(useSitePictures().page_background_image);
   const searchParams = useSearchParams();
   const router = useRouter();
   const name = searchParams.get('name') || 'there';
@@ -111,7 +115,8 @@ function ConfirmationContent() {
    */
   if (wantsToGive) {
     return (
-      <div className="min-h-screen bg-bg pb-6">
+      <div className={`min-h-screen pb-6 ${pageBg(!!backdrop)}`}>
+        <PageBackdrop url={backdrop} />
         <div className="mx-auto w-full max-w-md space-y-4 px-4 pt-6">
           <div className="animate-rise rounded-3xl border border-success/30 bg-success/10 px-5 py-6 text-center">
             <p className="mb-1 text-3xl leading-none">&#9749;</p>
@@ -173,7 +178,8 @@ function ConfirmationContent() {
   }
 
   return (
-    <div className="min-h-screen bg-bg flex items-center justify-center p-4">
+    <div className={`flex min-h-screen items-center justify-center p-4 ${pageBg(!!backdrop)}`}>
+      <PageBackdrop url={backdrop} />
       <div className="w-full max-w-md space-y-4 animate-rise">
         <Card className="text-center py-10 px-6 rounded-3xl">
           <DoneMark />

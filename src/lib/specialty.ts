@@ -33,6 +33,8 @@ export interface SpecialtySettings {
   /** "YYYY-MM-DD", or null for no end date. */
   show_until: string | null;
   sold_out_note: string;
+  /** Its own picture (supabase-pictures.sql). Null: it borrows the base drink's. */
+  image_url: string | null;
 }
 
 export const DEFAULT_SPECIALTY: SpecialtySettings = {
@@ -45,6 +47,7 @@ export const DEFAULT_SPECIALTY: SpecialtySettings = {
   display_style: 'big',
   show_until: null,
   sold_out_note: 'Back next Sunday',
+  image_url: null,
 };
 
 /**
@@ -92,6 +95,7 @@ export function fromRow(row: Record<string, unknown> | null): SpecialtySettings 
       typeof row.sold_out_note === 'string' && row.sold_out_note
         ? row.sold_out_note
         : DEFAULT_SPECIALTY.sold_out_note,
+    image_url: typeof row.image_url === 'string' && row.image_url.trim() ? row.image_url.trim() : null,
   };
 }
 
@@ -109,8 +113,8 @@ export async function fetchSpecialty(): Promise<SpecialtySettings> {
 
 export async function saveSpecialty(
   settings: SpecialtySettings,
-): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from('specialty_drink').upsert({
+): Promise<{ ok: boolean; error?: string; note?: string }> {
+  const row: Record<string, unknown> = {
     id: 1,
     is_enabled: settings.is_enabled,
     ribbon: settings.ribbon.trim(),
@@ -121,10 +125,24 @@ export async function saveSpecialty(
     display_style: settings.display_style,
     show_until: settings.show_until || null,
     sold_out_note: settings.sold_out_note.trim() || DEFAULT_SPECIALTY.sold_out_note,
+    image_url: settings.image_url?.trim() || null,
     updated_at: new Date().toISOString(),
-  });
+  };
 
-  if (!error) return { ok: true };
+  let { error } = await supabase.from('specialty_drink').upsert(row);
+
+  // The picture column comes from a later migration. Losing the whole special over a
+  // picture nobody can store yet is the worse half of that trade: save the rest, and say.
+  let note: string | undefined;
+  if (error && /image_url/i.test(error.message)) {
+    delete row.image_url;
+    ({ error } = await supabase.from('specialty_drink').upsert(row));
+    if (!error && settings.image_url) {
+      note = 'Saved — but not the picture. Run supabase-pictures.sql in the Supabase SQL editor to keep one.';
+    }
+  }
+
+  if (!error) return { ok: true, note };
 
   const missingTable = /specialty_drink/i.test(error.message) || error.code === '42P01';
   return {

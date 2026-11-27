@@ -8,6 +8,9 @@ import { TextArea } from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
+import ImagePicker from '@/components/admin/ImagePicker';
+import { Photo } from '@/components/menu/DrinkPicture';
+import { safeImageUrl } from '@/lib/pictures';
 import { cn } from '@/lib/utils';
 import type {
   Category,
@@ -244,6 +247,19 @@ export default function AdminMenuPage() {
                       </button>
                     </div>
 
+                    {/* Its photo, so a menu full of pictures is easy to scan here too. */}
+                    {safeImageUrl(item.image_url) ? (
+                      <Photo url={safeImageUrl(item.image_url)!} className="h-11 w-11 rounded-lg" />
+                    ) : (
+                      <span
+                        aria-hidden
+                        title="No picture"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-base opacity-60"
+                      >
+                        ☕
+                      </span>
+                    )}
+
                     {/* Item info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -315,7 +331,13 @@ export default function AdminMenuPage() {
               </div>
               <Input label="Price" type="number" step="0.01" min="0" value={editItem.base_price || 0} onChange={(e) => setEditItem({ ...editItem, base_price: parseFloat(e.target.value) })} />
             </div>
-            <Input label="Image URL" value={editItem.image_url || ''} onChange={(e) => setEditItem({ ...editItem, image_url: e.target.value })} placeholder="https://..." />
+            <ImagePicker
+              label="Picture"
+              folder="drinks"
+              value={editItem.image_url ?? null}
+              onChange={(url) => setEditItem({ ...editItem, image_url: url })}
+              hint="Optional. A square-ish photo of the drink looks best. Without one, the menu shows a cup or your default picture — set at Pictures."
+            />
             <div className="flex gap-4 flex-wrap">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={editItem.is_free || false} onChange={(e) => setEditItem({ ...editItem, is_free: e.target.checked })} className="accent-primary w-4 h-4" />

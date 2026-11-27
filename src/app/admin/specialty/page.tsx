@@ -6,6 +6,9 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import SpecialtyDrink from '@/components/menu/SpecialtyDrink';
+import ImagePicker from '@/components/admin/ImagePicker';
+import { specialtyPicture } from '@/lib/pictures';
+import { useSitePictures } from '@/lib/use-pictures';
 import {
   DEFAULT_SPECIALTY,
   fetchSpecialty,
@@ -33,6 +36,9 @@ export default function SpecialtyAdminPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [savedNote, setSavedNote] = useState(false);
+  /** Saved, but something couldn't be — the picture, before supabase-pictures.sql. */
+  const [warning, setWarning] = useState('');
+  const pictures = useSitePictures();
 
   const load = useCallback(async () => {
     const [special, itemRes, catRes, groupRes, modRes] = await Promise.all([
@@ -87,6 +93,7 @@ export default function SpecialtyAdminPage() {
   async function save() {
     setSaving(true);
     setError('');
+    setWarning('');
     const res = await saveSpecialty(working);
     setSaving(false);
     if (!res.ok) {
@@ -95,6 +102,7 @@ export default function SpecialtyAdminPage() {
     }
     setSaved(working);
     setSavedNote(true);
+    if (res.note) setWarning(res.note);
   }
 
   if (loading) {
@@ -121,6 +129,11 @@ export default function SpecialtyAdminPage() {
       {error && (
         <div className="mb-6 rounded-2xl bg-danger/10 px-5 py-4 font-body text-sm text-text">
           {error}
+        </div>
+      )}
+      {warning && (
+        <div className="mb-6 rounded-2xl bg-warning/10 px-5 py-4 font-body text-sm text-text">
+          {warning}
         </div>
       )}
 
@@ -172,6 +185,19 @@ export default function SpecialtyAdminPage() {
               placeholder="THIS SUNDAY"
               value={working.ribbon}
               onChange={(e) => set('ribbon', e.target.value)}
+            />
+
+            <ImagePicker
+              label="Picture"
+              folder="specials"
+              aspect="wide"
+              value={working.image_url}
+              onChange={(url) => set('image_url', url)}
+              hint={
+                baseItem?.image_url
+                  ? `Optional. Without one it uses the ${baseItem.name}'s picture. A wide photo fills the big card best.`
+                  : 'Optional. With one, the big card becomes a full photo with the name over it. A wide photo works best.'
+              }
             />
           </Card>
 
@@ -363,6 +389,7 @@ export default function SpecialtyAdminPage() {
                       soldOutName: null,
                     }}
                     onOrder={() => {}}
+                    picture={specialtyPicture(working, baseItem, pictures)}
                   />
                 </div>
 
@@ -379,6 +406,7 @@ export default function SpecialtyAdminPage() {
                       soldOutName: build[0]?.name ?? baseItem?.name ?? null,
                     }}
                     onOrder={() => {}}
+                    picture={specialtyPicture(working, baseItem, pictures)}
                   />
                 </div>
               </div>

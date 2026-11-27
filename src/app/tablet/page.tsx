@@ -10,6 +10,9 @@ import { recordCodeUses } from '@/lib/codes';
 import { useSubmitLock, type SubmitOutcome } from '@/lib/submit-lock';
 import { flagOrderIssue } from '@/lib/order-issues';
 import ModifierSelector from '@/components/menu/ModifierSelector';
+import { Photo } from '@/components/menu/DrinkPicture';
+import { drinkPhoto } from '@/lib/pictures';
+import { useSitePictures } from '@/lib/use-pictures';
 import CategoryTabs from '@/components/menu/CategoryTabs';
 import { fetchItemModifierGroups } from '@/lib/menu';
 import { fetchShopConfig, parseDonationPresets, DEFAULT_SETTINGS } from '@/lib/shop';
@@ -90,6 +93,7 @@ function TabletInner() {
    * latte with no size and no milk, because a sheet with no groups has no required ones.
    */
   const [groupsFor, setGroupsFor] = useState<string | null>(null);
+  const pictures = useSitePictures();
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
 
@@ -767,17 +771,12 @@ function TabletInner() {
                         : 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md',
                     )}
                   >
-                    {item.image_url && (
-                      <div className="w-full h-20 rounded-xl bg-bg mb-3 overflow-hidden">
-                        {/* Admin-pasted URLs from any host; next/image would need each allow-listed. */}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={item.image_url}
-                          alt={item.name}
-                          className={cn('w-full h-full object-cover', soldOut && 'grayscale')}
-                        />
-                      </div>
-                    )}
+                    {(() => {
+                      const photo = drinkPhoto(item, pictures);
+                      return photo ? (
+                        <Photo url={photo} alt={item.name} soldOut={soldOut} className="mb-3 h-24 w-full rounded-xl" />
+                      ) : null;
+                    })()}
                     <h3 className="mb-1 font-heading text-[15px] font-semibold leading-tight text-text-dark">
                       {item.name}
                     </h3>

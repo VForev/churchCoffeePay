@@ -147,6 +147,13 @@ corners, shadows, text size, roominess, page background and the font pairing. Ad
 `supabase-theme.sql` first. Until it runs colours still save — `saveTheme()` retries
 without the column and says so on screen — and every screen uses the standard look.
 
+**`supabase-pictures.sql`** — Required for **uploading pictures** and for the settings at
+`/admin/pictures` (see *Pictures* below). Creates `site_pictures` (single row, `id = 1`,
+readable by anyone, writable only by a signed-in admin), adds `specialty_drink.image_url`,
+and creates the public `pictures` storage bucket that only admins can upload to. Until it
+runs, the app looks as it does now: drink photos pasted as links still show, nothing can be
+uploaded, and the page says to run this file.
+
 **`supabase-giving-intent.sql`** — Required for the **$3 gift metric** on `/admin`
 (*The $3 Coffee & Tea gift* panel). Adds `orders.giving_intent` — which of the two Place
 Order buttons the customer tapped. Until it runs, checkout quietly drops the column from
@@ -207,6 +214,7 @@ nothing is recorded — `/admin/coupons` says so.
 | `/admin/print-setup` | Non-technical, step-by-step guide to installing the printer software on the shop PC; downloads the agent bundle |
 | `/admin/specialty` | **Drink of the Day** — the seasonal special at the top of the customer menu: big card or one line, with its build and an end date |
 | `/admin/theme` | **Look & Colours** — 17 colour schemes (light, dark and seasonal), any individual colour, and the six things that aren't colours: corners, shadows, text size, roominess, page background, fonts. Plus **Surprise me** and a shareable look code. Previews on the page itself; saves to every screen at once |
+| `/admin/pictures` | **Pictures** — how drinks without a photo look (cup / our default picture / no pictures), every drink's photo in one grid (saves as you go), the banner photo, and background pictures for the customer pages and the lobby TV |
 | `/admin/settings` | Service banner text, weekly ordering hours, force open/closed, **lock everything**, donation on/off, coupon box on/off, **spam-order limit** |
 
 ---
@@ -243,6 +251,8 @@ src/
 │   ├── theme-presets.ts            # The 17 colour schemes, and the rules they all obey
 │   ├── theme-looks.ts              # Corners, shadows, text size, roominess, background, fonts
 │   ├── specialty.ts                 # Drink of the day — settings and what to show
+│   ├── pictures.ts                  # Which picture shows where; safe URLs; upload + shrink
+│   ├── use-pictures.ts              # The live picture settings, one shared subscription
 │   ├── my-order.ts                  # Which orders on the board are this phone's
 │   ├── queue.ts                     # Drinks in the queue (the "~N min wait") — one query
 │   ├── inventory.ts                 # Batched stock deduction after an order
@@ -443,6 +453,65 @@ Not on `/tablet` — the barista knows what the special is, and the counter POS 
 above the fold for an ad. The cup label doesn't call it out either; a seasonal build
 printed as a numbered recipe on the sticker is a separate job (it needs the order item to
 remember it was the special).
+
+## Pictures
+
+Drink photos, the drink of the day's picture, the banner photo, and background pictures —
+all optional, all set at **`/admin/pictures`** (a drink's photo also at `/admin/menu`, the
+special's at `/admin/specialty`). Migration: `supabase-pictures.sql`.
+
+### Which picture shows where — `src/lib/pictures.ts`
+
+**Every screen asks `drinkPicture()` / `drinkPhoto()` / `specialtyPicture()`; nothing
+decides on its own.** That is what stops a drink having a photo on the menu and a cup in
+the sheet. `npm run test:pictures` covers the rules.
+
+| Drink mode | Drink with a photo | Drink without |
+|---|---|---|
+| `icon` (default) | its photo | a cup tile |
+| `default` | its photo | the shop's default picture (a cup until one is chosen) |
+| `none` | nothing — names-only rows | nothing |
+
+- **The menu card and the tablet tile** use `DrinkPicture` / its photo. The tablet shows
+  photos only, never cup tiles — a wall of identical cups slows the counter down.
+- **The drink sheet** shows the photo large at the top (scrolls away with the options).
+- **Checkout** shows a small photo beside each drink, never a cup.
+- **The drink of the day** uses its own picture, even when the menu is set to "No
+  pictures" (it was put there on purpose). Without one it borrows the base drink's photo,
+  which *does* respect "No pictures". With a picture the big card is a full-bleed photo
+  with the name over a dark fade; the one-line card gets a thumbnail; sold out greys it.
+- **Banner photo** sits under a wash of `primary`, strongest on the left behind the white
+  words. Also on the TV's compact bar.
+- **Backgrounds** (`PageBackdrop`) are fixed behind the page under a veil of `bg`. Customer
+  pages use `page_background_image` with a heavy veil; `/live` uses
+  `live_background_image` with a lighter one. A page showing one must use `pageBg()` for
+  its own background instead of `bg-bg`, or it paints over the picture. **Barista, tablet
+  and admin never get one** — they're for working.
+
+### Things worth knowing
+
+- **Only http(s) links and site paths reach the page.** `safeImageUrl()` runs every
+  address through the URL parser (which percent-encodes quotes), and `cssImage()` is the
+  only way one goes into a CSS `url("…")`. Never interpolate a stored address yourself.
+- **Uploads are shrunk in the browser first** (`uploadPicture`): longest side 1000px for
+  drinks, 1400 for specials, 2200 for backgrounds, re-encoded as WebP. A 6 MB phone photo
+  becomes ~150 KB. GIFs go up untouched (a canvas would keep one frame). iPhone HEIC only
+  converts in Safari; elsewhere the message says how to fix it.
+- **Every upload gets a new random name** and a year's cache. Replacing a picture never
+  serves anyone the old one, and old files are left in the bucket rather than risk deleting
+  one still in use.
+- **Pictures are the one setting that isn't open to the public key.** `site_pictures` and
+  the bucket are readable by anyone but writable only by a signed-in admin, unlike the other
+  settings tables — a picture is how a prankster with the anon key could put anything on
+  the menu. (`menu_items.image_url` is still open, like the rest of that table.)
+- **Settings are read once for the whole app** (`useSitePictures()`), cached in
+  localStorage for the first paint, and live over realtime — saving reaches every phone and
+  the TV a moment later.
+- **The drinks grid on `/admin/pictures` saves each drink as you go**; the rest of the page
+  waits for Save, because a background is worth previewing first.
+- **A dead link shows a soft grey tile, not a torn-image icon** (`Photo`'s broken state).
+  Only a link that isn't an address at all falls back to the cup — `drinkPicture` can't
+  know a working-looking link will 404.
 
 ## Look and Colours
 

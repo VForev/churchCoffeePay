@@ -7,6 +7,9 @@ import { safeDisplayName } from '@/lib/profanity';
 import { getMyOrderIds } from '@/lib/my-order';
 import { compareQueue } from '@/lib/priority';
 import ShopBanner from '@/components/ShopBanner';
+import PageBackdrop, { pageBg } from '@/components/PageBackdrop';
+import { safeImageUrl } from '@/lib/pictures';
+import { useSitePictures } from '@/lib/use-pictures';
 import GivingBox from '@/components/GivingBox';
 import type { Order, OrderItem, ShopSettings, OrderingHours } from '@/types';
 
@@ -133,6 +136,12 @@ export default function LiveOrders({
    * which is when a new id needs picking up.
    */
   const [myIds] = useState<string[]>(() => (highlightMine ? getMyOrderIds() : []));
+  // The lobby TV has its own background picture; a phone gets the customer pages' one.
+  // Embedded in the confirmation page, that page draws the picture and this stays clear.
+  const pictures = useSitePictures();
+  const backdrop = safeImageUrl(
+    twoColumn ? pictures.live_background_image : pictures.page_background_image,
+  );
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SETTINGS);
   const [hours, setHours] = useState<OrderingHours[]>([]);
 
@@ -265,7 +274,7 @@ export default function LiveOrders({
   if (loading) {
     return (
       <div
-        className={`flex items-center justify-center bg-bg ${embedded ? 'py-16' : 'min-h-screen'}`}
+        className={`flex items-center justify-center ${pageBg(!!backdrop)} ${embedded ? 'py-16' : 'min-h-screen'}`}
       >
         <div className="text-center">
           <div className="mx-auto mb-4 h-14 w-14 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
@@ -276,9 +285,12 @@ export default function LiveOrders({
   }
 
   return (
-    <div className={embedded ? 'bg-bg' : 'min-h-screen bg-bg'}>
+    <div className={`${pageBg(!!backdrop)} ${embedded ? '' : 'min-h-screen'}`}>
+      {!embedded && <PageBackdrop url={backdrop} strength={twoColumn ? 'bold' : 'soft'} />}
       <div className={`mx-auto max-w-2xl px-4 pt-3 ${twoColumn ? 'lg:max-w-[1500px]' : ''}`}>
-        {!embedded && <ShopBanner settings={settings} status={status} compact />}
+        {!embedded && (
+          <ShopBanner settings={settings} status={status} compact image={pictures.banner_image} />
+        )}
 
         <div className="mt-2.5 flex items-center justify-between px-1">
           <h2 className="font-accent text-xs font-bold uppercase tracking-wide text-text-light">

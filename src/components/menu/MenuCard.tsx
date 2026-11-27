@@ -1,7 +1,8 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { drinkTemperature } from '@/lib/temperature';
+import { useSitePictures } from '@/lib/use-pictures';
+import DrinkPicture from './DrinkPicture';
 import type { MenuItem } from '@/types';
 
 interface MenuCardProps {
@@ -35,7 +36,7 @@ export default function MenuCard({
   const isFree = eventFree || item.is_free || price === 0;
   const soldOut = item.is_sold_out;
   const disabled = soldOut || orderingClosed;
-  const temp = drinkTemperature(item.name, []);
+  const pictures = useSitePictures();
 
   return (
     <button
@@ -53,39 +54,14 @@ export default function MenuCard({
         inCart > 0 && !disabled && 'border-primary/30 ring-1 ring-primary/15',
       )}
     >
-      {/* Picture, or a cup tile in the drink's own temperature so a menu with no photos
-          still reads as drinks rather than a list of words. */}
-      <div
-        className={cn(
-          'relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[0.875rem]',
-          item.image_url
-            ? 'bg-bg'
-            : temp === 'iced'
-              ? 'bg-gradient-to-br from-secondary/25 to-secondary/10'
-              : 'bg-gradient-to-br from-primary/15 to-primary/5',
-          soldOut && 'opacity-60',
-        )}
-      >
-        {item.image_url ? (
-          // A plain <img>: admins paste URLs from anywhere, and next/image would need
-          // every one of those hosts allow-listed in next.config before it would load.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.image_url}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className={cn(
-              'h-full w-full object-cover transition-transform duration-500 ease-snappy group-hover:scale-105',
-              soldOut && 'grayscale',
-            )}
-          />
-        ) : (
-          <span aria-hidden className="text-4xl leading-none">
-            {temp === 'iced' ? '🧊' : '☕'}
-          </span>
-        )}
-      </div>
+      {/* Its photo, the shop's default picture, a cup tile, or — with "No pictures" set
+          at /admin/pictures — nothing, and the card becomes a names-only row. */}
+      <DrinkPicture
+        item={item}
+        pictures={pictures}
+        soldOut={soldOut}
+        className="h-20 w-20 rounded-[0.875rem]"
+      />
 
       <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
         <div>
