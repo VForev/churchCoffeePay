@@ -695,7 +695,7 @@ export default function CheckoutPage() {
                 </div>
               )}
               <div
-                className={`flex items-baseline justify-between font-heading text-lg font-bold ${
+                className={`flex items-baseline justify-between font-heading text-lg font-bold text-text-dark ${
                   cart.discount_amount > 0 || cart.subtotal > 0 ? 'border-t border-gray-100 pt-2' : ''
                 }`}
               >

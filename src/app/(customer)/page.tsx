@@ -380,7 +380,9 @@ export default function MenuPage() {
       <main ref={listRef} className="mx-auto max-w-5xl px-4 pt-5">
         {!loading && activeCategory && activeCategory !== CUSTOM_TAB_ID && (
           <h2
-            key={activeCategory}
+            // Its own key, distinct from the grid's below: two siblings sharing one key
+            // makes React keep stale copies, and the old category titles stack up.
+            key={`title-${activeCategory}`}
             className="mb-3 animate-rise px-1 font-heading text-[1.625rem] font-bold tracking-[-0.025em] text-text-dark"
           >
             {tabCategories.find((c) => c.id === activeCategory)?.name}
@@ -403,7 +405,7 @@ export default function MenuPage() {
             <p className="font-body text-text-light">Nothing in this category yet</p>
           </div>
         ) : (
-          <div key={activeCategory} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div key={`grid-${activeCategory}`} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filteredItems.map((item, index) => (
               <MenuCard
                 key={item.id}

@@ -84,6 +84,12 @@ function TabletInner() {
   // sheet can slide away instead of vanishing.
   const [sheetItem, setSheetItem] = useState<MenuItem | null>(null);
   if (selectedItem && selectedItem !== sheetItem) setSheetItem(selectedItem);
+  /**
+   * Which drink `modifierGroups` belongs to. Until it matches the open drink the sheet
+   * shows "Loading options…" and Add to Order stays down — otherwise a quick tap added a
+   * latte with no size and no milk, because a sheet with no groups has no required ones.
+   */
+  const [groupsFor, setGroupsFor] = useState<string | null>(null);
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
 
@@ -165,9 +171,13 @@ function TabletInner() {
 
     // Clear first, or the modal flashes the previously-tapped drink's options.
     setModifierGroups([]);
+    setGroupsFor(null);
 
-    fetchItemModifierGroups(selectedItem.id).then((groups) => {
-      if (!cancelled) setModifierGroups(groups);
+    const itemId = selectedItem.id;
+    fetchItemModifierGroups(itemId).then((groups) => {
+      if (cancelled) return;
+      setModifierGroups(groups);
+      setGroupsFor(itemId);
     });
 
     return () => {
@@ -586,7 +596,7 @@ function TabletInner() {
                       placeholder="Coupon or priority code"
                       value={couponCode}
                       onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(''); }}
-                      className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-body focus:outline-none focus:border-primary min-w-0"
+                      className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-base font-body focus:outline-none focus:border-primary min-w-0"
                     />
                     <button
                       onClick={applyCoupon}
@@ -631,7 +641,7 @@ function TabletInner() {
                       placeholder="Other"
                       value={donationAmount || ''}
                       onChange={(e) => setDonationAmount(Math.max(0, parseFloat(e.target.value) || 0))}
-                      className="w-28 rounded-xl border border-gray-200 px-3 py-2.5 font-body text-sm focus:border-primary focus:outline-none"
+                      className="w-28 rounded-xl border border-gray-200 px-3 py-2.5 font-body text-base focus:border-primary focus:outline-none"
                     />
                   </div>
                 </div>
@@ -718,12 +728,15 @@ function TabletInner() {
               <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
             </div>
           ) : (
-            <CategoryTabs
-              categories={categories}
-              activeId={activeCategory}
-              onSelect={setActiveCategory}
-              className="py-2.5"
-            />
+            // Spacing on a wrapper, not passed in: cn() only joins classes, so a second
+            // padding class on the row would fight the one it already has.
+            <div className="py-1.5">
+              <CategoryTabs
+                categories={categories}
+                activeId={activeCategory}
+                onSelect={setActiveCategory}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -835,6 +848,7 @@ function TabletInner() {
           onClose={() => setSelectedItem(null)}
           item={sheetItem}
           modifierGroups={modifierGroups}
+          loading={!!selectedItem && groupsFor !== selectedItem.id}
           eventFree={isEventFree}
           onAddToCart={addToCart}
         />

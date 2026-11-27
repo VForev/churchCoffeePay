@@ -249,7 +249,7 @@ function AccessCodeBox({
             if (error) setError('');
           }}
           placeholder="Enter your code"
-          className="w-full rounded-xl border-2 border-warning/50 bg-surface px-4 py-2.5 font-mono text-sm text-text-dark placeholder:font-body placeholder:text-text-light focus:border-warning focus:outline-none"
+          className="w-full rounded-xl border-2 border-warning/50 bg-surface px-4 py-2.5 font-mono text-base text-text-dark placeholder:font-body placeholder:text-text-light focus:border-warning focus:outline-none focus:ring-4 focus:ring-warning/20"
         />
         {error && <p className="mt-1.5 font-body text-xs text-danger">{error}</p>}
       </div>

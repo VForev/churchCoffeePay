@@ -377,6 +377,14 @@ there, not per component.
   layout effect (no state, no extra render). `/tablet` uses the same component.
 - **Fields** (`Input`) are iOS filled wells that lift to the surface with a halo on focus.
   Hand-written `<input>`/`<select>` elements get the same halo from the base layer.
+- **`cn()` merges, it doesn't just join** (`tailwind-merge`, in `src/lib/utils.ts`). When
+  two classes set the same thing the last wins, so a component's built-ins go first and the
+  caller's `className` last. Plain joining left it to stylesheet sort order — `<Card
+  className="p-0">` kept its `p-4`. Our own names (`font-heading`, `text-text-dark`,
+  `shadow-xs`) are taught to it there; `npm run test:cn` checks they survive.
+- **Two siblings must never share a `key`.** Keying an element on state to replay its
+  animation (`key={`title-${id}`}`) is fine, but give each sibling its own prefix — the
+  menu's title and grid once shared `key={activeCategory}` and old titles stacked up.
 - **`Button`** has a new `tinted` variant (soft brand fill, coloured label) for the second
   action beside a filled one. Hover is `brightness-110`, not a second colour.
 
